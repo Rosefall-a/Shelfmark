@@ -4158,7 +4158,7 @@ function formatPlaytime(minutes: number) {
   </main>
     <DocumentViewer
       v-if="documentViewerFile"
-      :game-id="game.id"
+      :game-id="game?.id ?? ''
       :filename="documentViewerFile.filename"
       :open="true"
       @close="closeDocument"
