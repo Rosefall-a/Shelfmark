@@ -31,6 +31,7 @@ nav:
       - Anime: user-guide/anime.md
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
+      - Calendar & ICS: user-guide/calendar.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
@@ -49,3 +50,4 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md
+      - Calendar / ICS: development/calendar-ics.md
