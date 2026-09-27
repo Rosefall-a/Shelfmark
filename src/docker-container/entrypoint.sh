@@ -10,6 +10,7 @@ STATUS_FILE="$STATUS_DIR/status.json"
 DETAILS_FILE="$STATUS_DIR/details.txt"
 BACKEND_LOG="$STATUS_DIR/backend.log"
 MIGRATION_LOG="$STATUS_DIR/migration.log"
+MIGRATION_FIFO="$STATUS_DIR/migration.pipe"
 BACKEND_FIFO="$STATUS_DIR/backend.pipe"
 NGINX_PID="/run/nginx.pid"
 
@@ -18,6 +19,7 @@ mkdir -p "$STATUS_DIR"
 : > "$DETAILS_FILE"
 : > "$BACKEND_LOG"
 : > "$MIGRATION_LOG"
+rm -f "$MIGRATION_FIFO"
 rm -f "$BACKEND_FIFO"
 
 write_status() {
@@ -107,7 +109,17 @@ write_status "MIGRATING_DATABASE" "starting" "ready" "starting" "unknown" "unkno
 
 attempt=1
 while :; do
-  if alembic upgrade heads 2>&1 | python /srv/startup/redact_logs.py | tee -a "$MIGRATION_LOG"; then
+  rm -f "$MIGRATION_FIFO"
+  mkfifo "$MIGRATION_FIFO"
+  python /srv/startup/redact_logs.py < "$MIGRATION_FIFO" | tee -a "$MIGRATION_LOG" &
+  MIGRATION_REDACTOR_PID="$!"
+  set +e
+  alembic upgrade heads > "$MIGRATION_FIFO" 2>&1
+  migration_rc="$?"
+  set -e
+  wait "$MIGRATION_REDACTOR_PID" 2>/dev/null || true
+  rm -f "$MIGRATION_FIFO"
+  if [ "$migration_rc" -eq 0 ]; then
     break
   fi
   log "Migration attempt $attempt failed"
