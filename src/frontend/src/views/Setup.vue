@@ -500,44 +500,7 @@ async function submit() {
                     autocomplete="new-password"
                     @update:model-value="setField(field, $event)"
                   />
-                 <select
-                    v-if="field.type === 'choice'"
-                    :value="fieldValue(field) as string"
-                    :disabled="field.locked"
-                    @change="setField(field, ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option
-                      v-for="choice in field.choices"
-                      :key="choice.value"
-                      :value="choice.value"
-                    >
-                      {{ choice.label }}
-                    </option>
-                  </select>
 
-                  <input
-                    v-else-if="field.type === 'boolean'"
-                    :checked="Boolean(fieldValue(field))"
-                    type="checkbox"
-                    :disabled="field.locked"
-                    @change="setField(field, ($event.target as HTMLInputElement).checked)"
-                  />
-
-                  <PasswordInput
-                    v-else-if="field.type === 'secret'"
-                    :model-value="String(fieldValue(field) ?? '')"
-                    :placeholder="fieldPlaceholder(field)"
-                    :required="fieldRequired(field) && !field.configured"
-                    :disabled="field.locked || (field.generated && field.configured)"
-                    :mode="field.configured ? 'replace' : 'new'"
-                    autocomplete="new-password"
-                    @update:model-value="setField(field, $event)"
-                  />
-                  <PasswordRequirements
-                    v-if="field.name === 'PRIMARY_USER_PASSWORD' && passwordPolicy"
-                    :password="String(fieldValue(field) ?? '')"
-                    :policy="passwordPolicy"
-                  />
                   <input
                     v-else
                     :value="inputValue(field)"
@@ -553,15 +516,7 @@ async function submit() {
                     :password="String(fieldValue(field) ?? '')"
                     :policy="passwordPolicy"
                   />
-                  <input
-                    v-else
-                    :value="inputValue(field)"
-                    :type="inputType(field)"
-                    :placeholder="fieldPlaceholder(field)"
-                    :required="fieldRequired(field) && !field.configured"
-                    :disabled="field.locked || (field.generated && field.configured)"
-                    @input="setField(field, ($event.target as HTMLInputElement).value)"
-                  />
+
                   <small v-if="field.description">{{ field.description }}</small>
                   <small v-if="field.hint">{{ field.hint }}</small>
                   <small v-if="field.env_only && !field.configured" class="env-help">
