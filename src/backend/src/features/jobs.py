@@ -26,6 +26,7 @@ from src.database.models.job_setting import JobSetting
 from src.database.session import SessionLocal
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
+from src.features.notification_providers.delivery import process_pending_deliveries
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,8 @@ async def run_jobs_loop() -> None:
     while True:
         await asyncio.sleep(TICK_SECONDS)
         try:
+            async with SessionLocal() as db:
+                await process_pending_deliveries(db)
             now = int(time.time())
             async with SessionLocal() as db:
                 due = []

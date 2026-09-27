@@ -23,7 +23,9 @@ from src.core.preferences import load_preferences
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
+from src.features.notification_providers.registry import PROVIDER_IDS
 
 # How far back "just aired" reaches. A week covers someone away for a few
 # days without turning first use into a flood of old episodes.
@@ -56,8 +58,12 @@ async def _insert(db: AsyncSession, user_id: UUID, rows: list[dict[str, Any]]) -
         .values([{**r, "user_id": user_id, "created_at": now} for r in rows])
         .on_conflict_do_nothing(constraint="uq_notifications_user_dedupe")
     )
-    result = await db.execute(stmt)
-    return max(result.rowcount or 0, 0)
+    result = await db.execute(stmt.returning(Notification.id))
+    ids = list(result.scalars())
+    for notification_id in ids:
+        for provider_id in PROVIDER_IDS:
+            db.add(NotificationDelivery(notification_id=notification_id, provider_id=provider_id, status="pending", attempts=0, next_attempt_at=now))
+    return len(ids)
 
 
 def _episode_row(

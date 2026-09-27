@@ -18,6 +18,7 @@ import AdminSection from "../components/settings/AdminSection.vue";
 import StatsSection from "../components/settings/StatsSection.vue";
 import ExportImportSection from "../components/settings/ExportImportSection.vue";
 import CalendarNotificationsSection from "../components/settings/CalendarNotificationsSection.vue";
+import NotificationProvidersSection from "../components/settings/NotificationProvidersSection.vue";
 import MediaPreferencesSection from "../components/settings/MediaPreferencesSection.vue";
 import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
@@ -41,6 +42,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "appearance", label: "Appearance" },
         { id: "api-keys", label: "API Keys" },
         { id: "calendar-notifications", label: "Calendar and Notifications" },
+        { id: "notification-providers", label: "Notification Providers" },
       ],
     },
     {
@@ -141,6 +143,9 @@ watch(activeSection, async () => {
           <AppearanceSection v-else-if="activeSection === 'appearance'" />
           <CalendarNotificationsSection
             v-else-if="activeSection === 'calendar-notifications'"
+          />
+          <NotificationProvidersSection
+            v-else-if="activeSection === 'notification-providers'"
           />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
           <UploadSection v-else-if="activeSection === 'upload'" />

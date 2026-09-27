@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, String, Text
+from sqlalchemy import BigInteger, Boolean, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -50,6 +50,14 @@ class AppIntegrationSettings(Base):
     # user-specific refresh/access tokens remain on User.
     xbox_client_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     xbox_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    smtp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    smtp_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    smtp_port: Mapped[int] = mapped_column(Integer, nullable=False, default=587)
+    smtp_username: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    smtp_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    smtp_from_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    smtp_security: Mapped[str] = mapped_column(String(16), nullable=False, default="starttls")
 
     updated_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=time.time, onupdate=time.time

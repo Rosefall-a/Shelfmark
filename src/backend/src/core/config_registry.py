@@ -432,6 +432,13 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         description="Optional profile: development, testing, or empty/default.",
         visible=False,
     ),
+    ConfigSpec("SMTP_ENABLED", "general", ConfigSource.BOTH, label="Enable SMTP notifications", input_type="boolean", default=False, storage="app_integration"),
+    ConfigSpec("SMTP_HOST", "general", ConfigSource.BOTH, label="SMTP host", storage="app_integration"),
+    ConfigSpec("SMTP_PORT", "general", ConfigSource.BOTH, label="SMTP port", input_type="integer", default=587, storage="app_integration"),
+    ConfigSpec("SMTP_USERNAME", "general", ConfigSource.BOTH, label="SMTP username", storage="app_integration"),
+    ConfigSpec("SMTP_PASSWORD", "general", ConfigSource.BOTH, label="SMTP password", input_type="secret", secret=True, storage="app_integration"),
+    ConfigSpec("SMTP_FROM_EMAIL", "general", ConfigSource.BOTH, label="SMTP sender address", input_type="email", storage="app_integration"),
+    ConfigSpec("SMTP_SECURITY", "general", ConfigSource.BOTH, label="SMTP security", input_type="choice", choices=(("none","None"),("starttls","STARTTLS"),("ssl","SSL/TLS")), default="starttls", storage="app_integration"),
     ConfigSpec(
         "MAX_UPLOAD_SIZE_MB",
         "general",
