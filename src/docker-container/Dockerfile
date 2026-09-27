@@ -40,7 +40,7 @@ RUN mkdir -p /run/unnamed-tracking /var/log/nginx \
 
 EXPOSE 80 443
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-    CMD if [ "${NGINX_TLS_ENABLED:-false}" = "true" ]; then curl -kfsS https://127.0.0.1/_startup/status.json; else curl -fsS http://127.0.0.1/_startup/status.json; fi | grep -q '"overall":"ready"'
+    CMD case "${NGINX_TLS_ENABLED:-false}" in true|TRUE|1|yes|YES) curl -kfsS https://127.0.0.1/_startup/status.json ;; *) curl -fsS http://127.0.0.1/_startup/status.json ;; esac | grep -q '"overall":"ready"'
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["./entrypoint.sh"]
