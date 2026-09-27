@@ -81,4 +81,8 @@ class SMTPNotificationProvider:
         return DeliveryResult(True)
 
 async def smtp_provider(db:AsyncSession)->SMTPNotificationProvider:
-    return SMTPNotificationProvider(await load_smtp_config(db))
+    try:
+        return SMTPNotificationProvider(await load_smtp_config(db))
+    except Exception:
+        logger.warning("SMTP notification configuration could not be loaded")
+        return SMTPNotificationProvider(SMTPConfig(False, None, 587, None, None, None, "starttls"))
