@@ -550,7 +550,7 @@ async def upload_game_screenshots(
         await _get_profile_or_404(profile_id, game_id, db)
 
     results: list[dict] = []
-    for file in upload_files:
+    for file in files:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
