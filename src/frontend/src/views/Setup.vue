@@ -12,6 +12,8 @@ import {
 } from "../services/setup";
 import { currentUser, checkAuth } from "../state/auth";
 import PasswordInput from "../components/PasswordInput.vue";
+import PasswordRequirements from "../components/settings/PasswordRequirements.vue";
+import { fetchPasswordPolicy, passwordValidationErrors, type PasswordPolicy } from "../services/passwordPolicy";
 
 const route = useRoute();
 const router = useRouter();
@@ -24,6 +26,7 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const saved = ref(false);
+const passwordPolicy = ref<PasswordPolicy | null>(null);
 
 const sections = computed(() => (configuration.value?.sections ?? []).filter((section) => section.visible));
 const current = computed(() =>
@@ -169,10 +172,12 @@ function initialize(config: SetupConfiguration) {
 
 onMounted(async () => {
   try {
-    const [status, config] = await Promise.all([
+    const [status, config, policy] = await Promise.all([
       fetchSetupStatus(),
       fetchSetupConfiguration(),
+      fetchPasswordPolicy(),
     ]);
+    passwordPolicy.value = policy;
 
     if (!status.setup_required && status.startup_mode === "development") {
       await checkAuth();
@@ -302,6 +307,19 @@ async function submit() {
         error.value = `“${field.label}” is required before continuing.`;
         return;
       }
+    }
+  }
+
+  const passwordField = sections.value
+    .find((section) => section.id === "first_admin")
+    ?.fields.find((field) => field.name === "PRIMARY_USER_PASSWORD");
+  const password = passwordField ? textFieldValue(passwordField) : "";
+  if (password && passwordPolicy.value) {
+    const validationErrors = passwordValidationErrors(password, passwordPolicy.value);
+    if (validationErrors.length) {
+      currentSection.value = "first_admin";
+      error.value = validationErrors[0];
+      return;
     }
   }
 
@@ -481,6 +499,11 @@ async function submit() {
                     :mode="field.configured ? 'replace' : 'new'"
                     autocomplete="new-password"
                     @update:model-value="setField(field, $event)"
+                  />
+                  <PasswordRequirements
+                    v-if="field.name === 'PRIMARY_USER_PASSWORD' && passwordPolicy"
+                    :password="String(fieldValue(field) ?? '')"
+                    :policy="passwordPolicy"
                   />
                   <input
                     v-else
