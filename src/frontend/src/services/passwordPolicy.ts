@@ -15,7 +15,7 @@ export async function updatePasswordPolicy(policy: PasswordPolicy): Promise<Pass
   });
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(\`Failed to save password policy: \${response.status} \${message}\`);
+    throw new Error(`Failed to save password policy: ${response.status} ${message}`);
   }
   return await response.json();
 }

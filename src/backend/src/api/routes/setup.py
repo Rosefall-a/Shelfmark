@@ -17,6 +17,7 @@ from src.core.auth import (
     get_current_admin,
     hash_password,
     hash_token,
+    set_password_policy_override,
     validate_password,
 )
 from src.core.config import settings
@@ -330,13 +331,21 @@ async def update_setup_configuration(
     selected = set(payload.sections)
     await _save_configuration(db, payload.configuration, selected, str(request.url_for("oidc_callback")))
     await db.commit()
-    set_password_policy_override({
-        "min_length": app.password_min_length,
-        "require_uppercase": app.password_require_uppercase,
-        "require_lowercase": app.password_require_lowercase,
-        "require_digit": app.password_require_digit,
-        "require_symbol": app.password_require_symbol,
-    })
+    app = await _app_row(db)
+    if (
+        app.password_min_length is not None
+        and app.password_require_uppercase is not None
+        and app.password_require_lowercase is not None
+        and app.password_require_digit is not None
+        and app.password_require_symbol is not None
+    ):
+        set_password_policy_override({
+            "min_length": app.password_min_length,
+            "require_uppercase": app.password_require_uppercase,
+            "require_lowercase": app.password_require_lowercase,
+            "require_digit": app.password_require_digit,
+            "require_symbol": app.password_require_symbol,
+        })
     apply_deployment_provider_credentials(app)
     return await _configuration(db, request)
 
