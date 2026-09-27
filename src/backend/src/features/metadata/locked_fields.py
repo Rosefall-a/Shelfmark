@@ -15,11 +15,24 @@ def apply_updates_with_locking(
     updates: dict[str, Any],
     lockable_fields: frozenset[str],
 ) -> None:
-    """Applies `updates` onto `entity`. Any field in `lockable_fields`
-    whose value actually changes is added to `entity.locked_fields`."""
+    """Apply updates while tracking deliberately changed metadata fields.
+
+    ``title_lock`` is an explicit override used by edit forms. When omitted,
+    changing a title keeps the existing behaviour of locking it automatically.
+    Passing ``True`` locks the title; passing ``False`` explicitly unlocks it.
+    """
+    updates = dict(updates)
+    title_lock = updates.pop("title_lock", None)
+
     locked = set(entity.locked_fields)
     for field, value in updates.items():
         if field in lockable_fields and value != getattr(entity, field):
             locked.add(field)
         setattr(entity, field, value)
+
+    if title_lock is True:
+        locked.add("title")
+    elif title_lock is False:
+        locked.discard("title")
+
     entity.locked_fields = sorted(locked)
