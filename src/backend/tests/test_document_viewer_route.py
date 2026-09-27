@@ -35,6 +35,7 @@ async def test_document_view_endpoint_uses_current_user_game_scope(
     )
 
     assert response.media_type == "text/plain"
+    games._get_game_or_404.assert_awaited_once_with("game-id", db, "owner-id")
 
 
 @pytest.mark.asyncio
