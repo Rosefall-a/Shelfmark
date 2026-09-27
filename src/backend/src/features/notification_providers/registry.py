@@ -3,6 +3,8 @@ from src.features.notification_providers.base import NotificationProvider
 from src.features.notification_providers.discord import discord_provider
 from src.features.notification_providers.smtp import smtp_provider
 
+PROVIDER_IDS = ("smtp", "discord")
+
 async def get_notification_providers(db:AsyncSession)->dict[str,NotificationProvider]:
     return {"smtp":await smtp_provider(db),"discord":discord_provider}
 
