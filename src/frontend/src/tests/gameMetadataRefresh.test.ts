@@ -5,7 +5,11 @@ import {
 } from "../services/games";
 import type { Game } from "../types/game";
 
-const game = { id: "game-1", title: "Example", updatedAt: 123 } as Game;
+const game = {
+  id: "game-1",
+  title: "Example",
+  updatedAt: 123,
+} as Game;
 
 afterEach(() => {
   vi.unstubAllGlobals();
