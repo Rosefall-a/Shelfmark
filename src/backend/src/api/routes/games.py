@@ -528,8 +528,7 @@ def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
 @router.post("/{game_id}/screenshots")
 async def upload_game_screenshots(
     game_id: UUID,
-    files: list[UploadFile] | None = File(None),
-    file: UploadFile | None = File(None),
+    files: list[UploadFile] = _FILE_UPLOAD,
     profile_id: UUID | None = _NONE_FORM,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
