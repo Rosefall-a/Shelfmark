@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse, PlainTextResponse, Response
@@ -122,9 +123,19 @@ def _looks_like_text_document(path: Path) -> bool:
     )
 
 
-def document_view_response(path: Path, filename: str) -> Response:
+def document_view_response(
+    path: Path, filename: str, allowed_root: Path | None = None
+) -> Response:
     """Validate and build the response for the document viewer endpoint."""
     safe_document_filename(filename)
+    if allowed_root is not None:
+        try:
+            path.resolve(strict=False).relative_to(allowed_root.resolve(strict=False))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found.",
+            ) from exc
     if not path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -158,6 +169,6 @@ def document_view_response(path: Path, filename: str) -> Response:
         media_type="text/plain",
         headers={
             **headers,
-            "Content-Disposition": f'inline; filename="{original_name}"',
+            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#            "Content-Disposition": f'inline; filename="{original_name}"',+-.^_|~"),
         },
     )
