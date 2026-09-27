@@ -807,7 +807,9 @@ async def upload_game_files(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
         )
 
-    upload_files = files or ([file] if file is not None else [])
+    upload_files = (files if isinstance(files, list) else []) or (
+        [file] if isinstance(file, UploadFile) else []
+    )
     if not upload_files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="At least one file is required."
