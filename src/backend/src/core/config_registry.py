@@ -482,7 +482,8 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ConfigSpec("PASSWORD_REQUIRE_LOWERCASE", "general", ConfigSource.ENV, label="Require lowercase", input_type="boolean", default=True, visible=False),
     ConfigSpec("PASSWORD_REQUIRE_DIGIT", "general", ConfigSource.ENV, label="Require number", input_type="boolean", default=False, visible=False),
     ConfigSpec("PASSWORD_REQUIRE_SYMBOL", "general", ConfigSource.ENV, label="Require symbol", input_type="boolean", default=True, visible=False),
-    ConfigSpec("VITE_USE_MOCK_DATA,
+    ConfigSpec(
+        "VITE_USE_MOCK_DATA",
         "general",
         ConfigSource.ENV,
         label="Frontend mock data",
