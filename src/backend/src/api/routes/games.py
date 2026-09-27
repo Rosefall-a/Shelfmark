@@ -896,6 +896,10 @@ async def list_game_file_trash(
                 "filename": item.filename,
                 "deleted_at": item.deleted_at,
                 "purge_at": item.deleted_at + RETENTION_SECONDS,
+            }
+        )
+    return {"files": files}
+
 
 @router.get("/{game_id}/files/{kind}/{filename}/view", response_class=Response)
 async def view_game_document(
@@ -922,12 +926,6 @@ async def view_game_document(
         / name
     )
     return document_view_response(path, name)
-
-
-.deleted_at + RETENTION_SECONDS,
-            }
-        )
-    return {"files": files}
 
 
 @router.get("/{game_id}/files/{kind}/{filename}", response_class=FileResponse)
