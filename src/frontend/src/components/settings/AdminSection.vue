@@ -32,11 +32,16 @@ const showCreateForm = ref(false);
 const newUsername = ref("");
 const newEmail = ref("");
 const newPassword = ref("");
+const confirmPassword = ref("");
 const newIsAdmin = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
 
 async function handleCreateUser() {
+  if (newPassword.value !== confirmPassword.value) {
+    createError.value = "The passwords do not match.";
+    return;
+  }
   creating.value = true;
   createError.value = null;
   try {
@@ -49,6 +54,7 @@ async function handleCreateUser() {
     newUsername.value = "";
     newEmail.value = "";
     newPassword.value = "";
+    confirmPassword.value = "";
     newIsAdmin.value = false;
     showCreateForm.value = false;
     await loadUsers();
