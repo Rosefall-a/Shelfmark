@@ -114,7 +114,7 @@ while :; do
     python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG"
     break
   fi
-  python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG" >/dev/null
+  python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG"
   log "Migration attempt $attempt failed"
   if [ "$attempt" -ge 30 ]; then
     printf 'Migration attempts exhausted. See /run/unnamed-tracking/migration.log for command output.\n' >> "$DETAILS_FILE"
