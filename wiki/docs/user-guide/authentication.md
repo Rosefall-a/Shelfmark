@@ -8,6 +8,17 @@ Local accounts use the application's username/password login. A successful login
 
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
+## Password and secret fields
+
+Password and editable secret fields are masked by default. The eye control in the field can reveal the value temporarily and can be used with keyboard focus.
+
+- New-password fields start empty and are intended for values being entered now, such as local sign-in, account creation, and profile password changes.
+- Replaceable secrets also start empty when a saved value already exists. For example, an OIDC client secret is never populated into the browser; leave the field blank to keep the saved secret, or enter a replacement.
+- Generated API keys are shown only when they are created. Existing keys are represented by their prefix rather than their full secret, and the generated value is not persisted in the browser after the one-time display is dismissed.
+- The application does not add a client-side encryption layer to password or token requests. These credentials are sent in authenticated request bodies; deployments should use HTTPS/TLS to protect them in transit.
+
+The application supplies its own visibility control and suppresses Edge's native password-reveal control so that password fields do not show two reveal buttons.
+
 ## API keys
 
 Users can create API keys for integrations that need to authenticate without a browser session.
