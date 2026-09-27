@@ -22,7 +22,7 @@ services:
       SECRET_KEY: smoke-test-secret-key
       PRIMARY_USER_USERNAME: smoke
       PRIMARY_USER_EMAIL: smoke@example.invalid
-      PRIMARY_USER_PASSWORD: smoke-password
+      PRIMARY_USER_PASSWORD: Smoke-password
       AUTH_COOKIE_SECURE: "false"
     ports:
       - "127.0.0.1:18080:80"
