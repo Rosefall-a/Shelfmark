@@ -28,8 +28,8 @@ API_KEY_PREFIX: Final = "utk_"
 
 def validate_password(password: str) -> str:
     """Validate the minimum password policy and return the original value."""
-    if len(password) < 9:
-        raise ValueError("Password must be at least 9 characters long.")
+    if len(password) < settings.PASSWORD_MIN_LENGTH:
+        raise ValueError(f"Password must be at least {settings.PASSWORD_MIN_LENGTH} characters long.")
     if not re.search(r"[A-Z]", password):
         raise ValueError("Password must contain an uppercase letter.")
     if not re.search(r"[a-z]", password):
