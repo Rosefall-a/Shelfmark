@@ -169,6 +169,6 @@ def document_view_response(
         media_type="text/plain",
         headers={
             **headers,
-            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#            "Content-Disposition": f'inline; filename="{original_name}"',+-.^_|~"),
+            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#            "Content-Disposition": f'inline; filename="{original_name}"',+-.^_|~"),+-.^_|~"),
         },
     )
