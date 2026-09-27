@@ -6,6 +6,20 @@ export interface PasswordPolicy {
   require_symbol: boolean;
 }
 
+export async function updatePasswordPolicy(policy: PasswordPolicy): Promise<PasswordPolicy> {
+  const response = await fetch("/api/auth/password-policy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(policy),
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(\`Failed to save password policy: \${response.status} \${message}\`);
+  }
+  return await response.json();
+}
+
 export async function fetchPasswordPolicy(): Promise<PasswordPolicy> {
   const response = await fetch("/api/auth/password-policy", { credentials: "include" });
   if (!response.ok) throw new Error(`Failed to load password policy: ${response.status}`);
