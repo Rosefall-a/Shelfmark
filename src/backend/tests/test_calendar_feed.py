@@ -69,7 +69,7 @@ class _FakeDb:
 
 @pytest.mark.asyncio
 async def test_feed_preferences_match_calendar_semantics(monkeypatch):
-    from src.api.routes import calendar_feed as feed_module
+    import src.api.routes.calendar_feed as feed_module
 
     user = User(id=uuid4(), username="calendar-test", email="calendar@example.test", password_hash="x")
     captured = {}
@@ -85,10 +85,12 @@ async def test_feed_preferences_match_calendar_semantics(monkeypatch):
         captured["days"] = days
         captured["game_releases"] = game_releases
         return [
-            {"media_type": "game", "media_id": uuid4(), "title": "Game", "next_episode_number": None, "air_at": 1, "kind": "release"},
             {"media_type": "tv", "media_id": uuid4(), "title": "Confirmed", "next_episode_number": 1, "air_at": 1, "kind": "episode", "is_projected": False},
             {"media_type": "tv", "media_id": uuid4(), "title": "Estimated", "next_episode_number": 2, "air_at": 2, "kind": "episode", "is_projected": True},
         ]
+        if game_releases:
+            entries.append({"media_type": "game", "media_id": uuid4(), "title": "Game", "next_episode_number": None, "air_at": 1, "kind": "release"})
+        return entries
 
     monkeypatch.setattr(feed_module, "load_preferences", fake_preferences)
     monkeypatch.setattr(feed_module, "build_calendar_entries", fake_entries)
@@ -97,7 +99,7 @@ async def test_feed_preferences_match_calendar_semantics(monkeypatch):
     assert captured == {"days": 90, "game_releases": False}
     assert "Confirmed" in body
     assert "Estimated" not in body
-    assert "Game" in body
+    assert "Game" not in body
 
 
 @pytest.mark.asyncio
