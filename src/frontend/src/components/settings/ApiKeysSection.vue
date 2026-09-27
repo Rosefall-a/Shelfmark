@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import PasswordInput from "../PasswordInput.vue";
 import {
   createApiKey,
   fetchApiKeys,
@@ -104,7 +105,13 @@ onMounted(loadKeys);
     <div v-if="createdKey" class="created-key">
       <strong>API key created</strong>
       <p>Copy this key now. It will not be shown again.</p>
-      <code>{{ createdKey }}</code>
+      <PasswordInput
+        v-model="createdKey"
+        mode="replace"
+        readonly
+        autocomplete="off"
+        aria-label="Generated API key"
+      />
       <button type="button" class="secondary" @click="createdKey = ''">
         Done
       </button>
@@ -237,6 +244,10 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.created-key :deep(.password-input-field) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .created-key strong {
