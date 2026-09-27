@@ -793,7 +793,8 @@ async def _sync_game_file_items(game_id: UUID, game_dir: Path, db: AsyncSession)
 async def upload_game_files(
     game_id: UUID,
     kind: GameFileKind,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
@@ -817,7 +818,7 @@ async def upload_game_files(
     limit_mb = settings.MAX_WORLD_SAVE_SIZE_MB if kind == "modpack" else settings.MAX_UPLOAD_SIZE_MB
     max_bytes = limit_mb * 1024 * 1024
     results: list[dict] = []
-    for file in files:
+    for file in upload_files:
         data = await file.read()
         if len(data) > max_bytes:
             results.append(
