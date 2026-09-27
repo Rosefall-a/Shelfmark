@@ -478,6 +478,7 @@ async function submit() {
                     :placeholder="fieldPlaceholder(field)"
                     :required="fieldRequired(field) && !field.configured"
                     :disabled="field.locked || (field.generated && field.configured)"
+                    :mode="field.configured ? 'replace' : 'new'"
                     autocomplete="new-password"
                     @update:model-value="setField(field, $event)"
                   />
