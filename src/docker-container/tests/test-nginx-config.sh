@@ -51,6 +51,11 @@ if NGINX_TLS_ENABLED=maybe "$render" "$work/invalid-env.conf"; then
   echo "invalid TLS enabled value unexpectedly succeeded" >&2
   exit 1
 fi
+if NGINX_TLS_ENABLED=false NGINX_TLS_REDIRECT_HTTP=true "$render" "$work/invalid-redirect.conf"; then
+  echo "HTTP redirect unexpectedly succeeded while TLS was disabled" >&2
+  exit 1
+fi
+
 
 printf '%s\n' 'not a private key' > "$work/tls/invalid-key.pem"
 if NGINX_TLS_ENABLED=true \
