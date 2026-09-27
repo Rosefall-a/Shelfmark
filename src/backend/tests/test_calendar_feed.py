@@ -173,8 +173,8 @@ def test_ics_fixture_has_well_formed_vcalendar_and_vevent_boundaries():
     for block in ics.split("BEGIN:VEVENT\r\n")[1:]:
         event = block.split("END:VEVENT\r\n", 1)[0]
         assert any(line.startswith("UID:") for line in event.split("\r\n"))
-        assert any(line.startswith("DTSTART") for line in event.split("\\r\\n"))
-        assert any(line.startswith("SUMMARY:") for line in event.split("\\r\\n"))
+        assert any(line.startswith("DTSTART") for line in event.split("\r\n"))
+        assert any(line.startswith("SUMMARY:") for line in event.split("\r\n"))
 
 
 def test_ics_uids_are_stable_for_the_same_source_entries():
