@@ -26,7 +26,7 @@ jobs:
   runtime-smoke:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 15 # Bounded runtime validation window.
     steps:
       - name: Check out source
         uses: actions/checkout@v4
