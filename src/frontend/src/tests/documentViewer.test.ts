@@ -7,6 +7,7 @@ import {
 describe("document viewer service", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("loads PDFs as blob URLs", async () => {
