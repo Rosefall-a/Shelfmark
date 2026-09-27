@@ -26,11 +26,12 @@ async def test_document_view_endpoint_uses_current_user_game_scope(
     document.parent.mkdir(parents=True)
     document.write_text("safe", encoding="utf-8")
 
+    db = AsyncMock()
     response = await games.view_game_document(
         "game-id",
         "doc",
         "manual.txt",
-        db=AsyncMock(),
+        db=db,
         current_user=user,
     )
 
