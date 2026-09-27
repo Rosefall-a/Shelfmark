@@ -64,10 +64,10 @@ def test_build_ics_contains_valid_core_properties_for_release_episode_and_manual
     assert "BEGIN:VCALENDAR\r\n" in ics
     assert "VERSION:2.0\r\n" in ics
     assert "CALSCALE:GREGORIAN\r\n" in ics
-    assert "DTSTART;VALUE=DATE:20260911" in ics
-    assert "DTEND;VALUE=DATE:20260912" in ics
-    assert "DTSTART:20260911T175320Z" in ics
-    assert "DTEND:20260911T182320Z" in ics
+    assert "DTSTART;VALUE=DATE:20270115" in ics
+    assert "DTEND;VALUE=DATE:20270116" in ics
+    assert "DTSTART:20270115T090000Z" in ics
+    assert "DTEND:20270115T093000Z" in ics
     assert "DTSTART;VALUE=DATE:20261003" in ics
     assert "DTEND;VALUE=DATE:20261004" in ics
     assert "DTSTART:20261004T193000" in ics
@@ -76,6 +76,22 @@ def test_build_ics_contains_valid_core_properties_for_release_episode_and_manual
     assert all("UID:" in event for event in ics.split("BEGIN:VEVENT")[1:])
     assert len(_uids(ics)) == 5
     assert len(set(_uids(ics))) == 5
+
+
+
+def test_ics_fixture_has_well_formed_vcalendar_and_vevent_boundaries():
+    ics = _build_ics(_entries())
+    assert "\\r\\n" in ics
+    assert "\\n" not in ics.replace("\\r\\n", "")
+    assert ics.count("BEGIN:VCALENDAR\\r\\n") == 1
+    assert ics.count("END:VCALENDAR\\r\\n") == 1
+    assert ics.count("BEGIN:VEVENT\\r\\n") == 3
+    assert ics.count("END:VEVENT\\r\\n") == 3
+    for block in ics.split("BEGIN:VEVENT\\r\\n")[1:]:
+        event = block.split("END:VEVENT\\r\\n", 1)[0]
+        assert any(line.startswith("UID:") for line in event.split("\\r\\n"))
+        assert any(line.startswith("DTSTART") for line in event.split("\\r\\n"))
+        assert any(line.startswith("SUMMARY:") for line in event.split("\\r\\n"))
 
 
 def test_ics_uids_are_stable_for_the_same_source_entries():
@@ -105,7 +121,7 @@ async def test_feed_token_creation_and_regeneration_invalidate_the_old_secret():
             assert exc.value.status_code == 404
             response = await calendar_feed(new, db)
             assert response.status_code == 200
-            assert response.media_type == "text/calendar"
+            assert response.headers["content-type"].startswith("text/calendar")
             assert "BEGIN:VCALENDAR" in response.body.decode()
         finally:
             await db.delete(user)
