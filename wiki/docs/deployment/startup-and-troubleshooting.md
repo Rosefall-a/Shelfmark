@@ -62,7 +62,7 @@ When startup diagnostics are available, inspect:
 /_startup/details.txt
 \`\`\`
 
-These expose the current state, human-readable details and backend startup log.
+These expose the current state and human-readable startup details.
 
 ## Configuration failures
 
