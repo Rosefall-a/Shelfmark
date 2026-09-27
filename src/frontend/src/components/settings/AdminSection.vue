@@ -185,7 +185,12 @@ function openCreateForm() {
         /></label>
         <label class="field"
           ><span>Password</span
-          ><PasswordInput v-model="newPassword" autocomplete="new-password" :required="true" /></label>
+          ><PasswordInput
+            v-model="newPassword"
+            mode="new"
+            autocomplete="new-password"
+            :required="true"
+          /></label>
         <ToggleButton v-model="newIsAdmin" label="Grant admin access"
           >Grant admin access</ToggleButton
         >
