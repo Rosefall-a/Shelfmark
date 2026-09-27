@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,8 +41,6 @@ class SetupRequest(BaseModel):
     sections: list[str] = Field(default_factory=list)
     configuration: dict[str, Any] = Field(default_factory=dict)
 
-    # Kept for compatibility with older setup clients. New clients submit the
-    # registry-driven configuration object instead.
     oidc_name: str | None = None
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
@@ -55,11 +53,6 @@ class SetupRequest(BaseModel):
     oidc_allow_new_users: bool = True
     oidc_button_text: str = "Continue with SSO"
     oidc_default_login_method: str = "local"
-
-    @field_validator("password")
-    @classmethod
-    def validate_setup_password(cls, value: str) -> str:
-        return validate_password(value) if value else value
 
 
 async def _app_row(db: AsyncSession) -> AppIntegrationSettings:
@@ -149,11 +142,7 @@ async def _save_configuration(
     selected_sections: set[str],
     generated_redirect_uri: str,
 ) -> None:
-    """Persist only fields owned by the setup registry.
-
-    Environment-owned values are deliberately ignored here: the environment
-    remains authoritative even when a malicious/old client sends them.
-    """
+    """Persist only fields owned by the setup registry."""
     app = await _app_row(db)
     oidc = await _oidc_row(db)
     handler = EnvConfigHandler()
@@ -183,16 +172,8 @@ async def _save_configuration(
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
         setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else str(value))
 
-    oidc_env_complete = all(
-        handler.has(name)
-        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
-    )
+    oidc_env_complete = all(handler.has(name) for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"))
     oidc_selected = "oidc" in selected_sections
-
-    # OIDC is optional during first-run setup. Do not enable it merely because
-    # an OIDC row exists (the row is created while building the setup schema).
-    # Environment configuration is only considered OIDC configuration when all
-    # three required provider credentials are supplied.
     if not oidc_selected and not oidc_env_complete:
         oidc.enabled = False
         return
@@ -211,8 +192,6 @@ async def _save_configuration(
     }
     for name, attribute in oidc_fields.items():
         if handler.has(name):
-            # Environment overrides remain authoritative, but mirror them into
-            # the OIDC row so status/settings recognise a complete provider.
             value = handler.get(name)
         elif name in values:
             value = values[name]
@@ -238,22 +217,14 @@ async def _save_configuration(
     if missing:
         raise HTTPException(400, "OIDC requires an issuer URL, client ID, and client secret when enabled.")
 
-    # A provider is only enabled after all required credentials have been
-    # resolved. This prevents an empty setup OIDC row from being treated as
-    # enabled.
     oidc.enabled = True
-
-    # Register the initial/default provider in the same provider format used by
-    # the OIDC settings UI. This makes an OIDC configuration supplied during
-    # first-run setup visible to the normal OIDC status/login endpoints.
     try:
         providers = json.loads(oidc.providers_json or "[]")
     except (TypeError, ValueError):
         providers = []
     providers = [
         item for item in providers
-        if isinstance(item, dict)
-        and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
+        if isinstance(item, dict) and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
     ]
     providers.insert(0, {
         "name": values.get("OIDC_PROVIDER_NAME") or "Provider 1",
@@ -319,9 +290,6 @@ async def setup_admin(
 
     handler = EnvConfigHandler()
     values = dict(payload.configuration)
-
-    # The browser only submits editable fields. Deployment values therefore
-    # come directly from EnvConfigHandler and cannot be replaced by the UI.
     admin_values = handler.bootstrap_primary_user()
     username = (payload.username or values.get("PRIMARY_USER_USERNAME") or admin_values["username"]).strip()
     email = (payload.email or values.get("PRIMARY_USER_EMAIL") or admin_values["email"]).strip().lower()
@@ -330,13 +298,13 @@ async def setup_admin(
     if not username or not email or not password:
         raise HTTPException(status_code=400, detail="Username, email, and password are required.")
 
-    # OIDC is optional as a section. Selecting it means it is being configured
-    # and will enable OIDC after complete provider credentials are saved.
+    try:
+        validate_password(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     selected = set(payload.sections)
-    oidc_env_complete = all(
-        handler.has(name)
-        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
-    )
+    oidc_env_complete = all(handler.has(name) for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"))
     if oidc_env_complete:
         selected.add("oidc")
 
