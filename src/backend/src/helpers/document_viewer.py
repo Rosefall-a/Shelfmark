@@ -118,9 +118,7 @@ def _looks_like_text_document(path: Path) -> bool:
     if suffix in {".html", ".htm", ".svg", ".xhtml"}:
         return False
     mime_type = mimetypes.guess_type(path.name)[0]
-    return suffix in _TEXT_EXTENSIONS or mime_type in _TEXT_MIME_TYPES or (
-        mime_type is not None and mime_type.startswith("text/")
-    )
+    return suffix in _TEXT_EXTENSIONS or mime_type in _TEXT_MIME_TYPES
 
 
 def document_view_response(
