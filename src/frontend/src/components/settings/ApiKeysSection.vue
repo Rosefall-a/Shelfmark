@@ -110,7 +110,7 @@ onMounted(loadKeys);
         mode="replace"
         readonly
         autocomplete="off"
-        aria-label="Generated API key"
+        input-aria-label="Generated API key"
       />
       <button type="button" class="secondary" @click="createdKey = ''">
         Done
