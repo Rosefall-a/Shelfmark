@@ -86,6 +86,8 @@ class UserProfileUpdateRequest(BaseModel):
 async def get_password_policy() -> dict[str, int | bool]:
     """Return the effective local-password policy without exposing secrets."""
     return password_policy()
+
+
 @router.post("/login")
 async def login(
     payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
