@@ -1,6 +1,7 @@
 """Regression tests for the production container logging/startup presentation contract."""
 
 from pathlib import Path
+import importlib.util
 import re
 
 ROOT = Path(__file__).parents[2].parents[0]
@@ -88,14 +89,27 @@ def test_failure_diagnostics_identify_operator_log_locations() -> None:
 
 
 def test_log_redactor_removes_common_credentials() -> None:
-    redactor = read("startup/redact_logs.py")
+    path = DOCKER / "startup/redact_logs.py"
+    spec = importlib.util.spec_from_file_location("startup_redactor", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
 
-    assert "REDACTED" in redactor
-    assert "postgresql://user:password@" in redactor
-    assert "client_secret" in redactor
-    assert "webhook" in redactor
-    assert "private_key" in redactor
-    assert "authorization" in redactor
+    source = (
+        "postgresql://user:password@db:5432/app "
+        "password=secret client_secret=client-secret "
+        "webhook_secret=hook-secret private_key=private-key "
+        "Authorization: Bearer bearer-token"
+    )
+    redacted = module.redact(source)
+
+    assert "password@" not in redacted
+    assert "secret" not in redacted
+    assert "client-secret" not in redacted
+    assert "hook-secret" not in redacted
+    assert "private-key" not in redacted
+    assert "bearer-token" not in redacted
+    assert redacted.count("REDACTED") >= 6
 
 
 def test_backend_and_migration_diagnostics_are_redacted_before_docker_output() -> None:
