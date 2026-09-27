@@ -10,7 +10,9 @@ from src.helpers.document_viewer import document_view_response
 
 
 @pytest.mark.asyncio
-async def test_document_view_endpoint_uses_current_user_game_scope(monkeypatch, tmp_path: Path) -> None:
+async def test_document_view_endpoint_uses_current_user_game_scope(
+    monkeypatch, tmp_path: Path
+) -> None:
     game = SimpleNamespace(
         id="game-id",
         user_id="owner-id",
