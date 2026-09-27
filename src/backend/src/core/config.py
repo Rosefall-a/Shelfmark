@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     PRIMARY_USER_USERNAME: str = ""
     PRIMARY_USER_EMAIL: str = ""
     PRIMARY_USER_PASSWORD: str = ""
+    PASSWORD_MIN_LENGTH: int = 9
 
     AUTH_COOKIE_SECURE: bool = False
     DEBUG: bool = False
@@ -80,13 +81,7 @@ class Settings(BaseSettings):
             )
             return self
 
-        # DATABASE_URL is an alternative to the component form. If both are
-        # supplied, the explicit component set remains authoritative when it
-        # is complete; a partial component set must not make an otherwise
-        # valid DATABASE_URL deployment fail.
         if self.DATABASE_URL.strip():
-            # Compatibility for existing deployments. New deployments should use
-            # POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB instead.
             url = self.DATABASE_URL.strip()
             if url.startswith("postgres://"):
                 url = "postgresql+psycopg://" + url.removeprefix("postgres://")
