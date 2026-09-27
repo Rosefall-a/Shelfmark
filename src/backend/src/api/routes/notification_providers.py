@@ -47,6 +47,7 @@ async def update_notification_provider(provider_id:str,payload:ProviderUpdate,db
     elif payload.destination is not None:
         raise HTTPException(400,"This provider does not accept a user destination.")
     await db.commit()
+    providers=await get_notification_providers(db)
     return {"id":provider_id,"enabled":row.enabled,"available":providers[provider_id].available(),"configured":bool(row.destination_secret) if provider_id=="discord" else providers[provider_id].available()}
 
 @router.delete("/{provider_id}/destination",status_code=204)
