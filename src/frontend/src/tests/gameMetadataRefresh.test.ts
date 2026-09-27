@@ -5,11 +5,7 @@ import {
 } from "../services/games";
 import type { Game } from "../types/game";
 
-const game = {
-  id: "game-1",
-  title: "Example",
-  updatedAt: 123,
-} as Game;
+const game = { id: "game-1", title: "Example", updatedAt: 123 } as Game;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -47,7 +43,9 @@ describe("game metadata refresh service", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response("Game changed after the metadata preview.", { status: 409 }),
+        new Response("Game changed after the metadata preview.", {
+          status: 409,
+        }),
       ),
     );
     await expect(applyGameMetadataRefresh(game)).rejects.toThrow("409");
