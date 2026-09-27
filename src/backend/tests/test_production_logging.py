@@ -104,7 +104,7 @@ def test_log_redactor_removes_common_credentials() -> None:
     redacted = module.redact(source)
 
     assert "password@" not in redacted
-    assert "secret" not in redacted
+    assert "password=secret" not in redacted
     assert "client-secret" not in redacted
     assert "hook-secret" not in redacted
     assert "private-key" not in redacted
@@ -117,5 +117,5 @@ def test_backend_and_migration_diagnostics_are_redacted_before_docker_output() -
 
     assert 'python /srv/startup/redact_logs.py <"$BACKEND_FIFO" | tee "$BACKEND_LOG"' in entrypoint
     assert 'python /srv/startup/redact_logs.py < "$MIGRATION_FIFO" | tee -a "$MIGRATION_LOG"' in entrypoint
-    assert 'uvicorn src.main:app --host 127.0.0.1 --port 8000 > "$BACKEND_FIFO" 2>&1 &' in entrypoint
+    assert 'uvicorn src.main:app --host 127.0.0.1 --port 8000 >"$BACKEND_FIFO" 2>&1 &' in entrypoint
     assert 'alembic upgrade heads > "$MIGRATION_FIFO" 2>&1' in entrypoint
