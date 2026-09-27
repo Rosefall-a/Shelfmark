@@ -14,6 +14,7 @@ const isLoading = ref(true);
 const isCreating = ref(false);
 const error = ref("");
 const createdKey = ref("");
+const copied = ref(false);
 
 async function loadKeys() {
   isLoading.value = true;
@@ -38,6 +39,7 @@ async function handleCreate() {
   try {
     const result = await createApiKey(keyName);
     createdKey.value = result.api_key;
+    copied.value = false;
     name.value = "";
     await loadKeys();
   } catch (err) {
@@ -62,6 +64,16 @@ async function handleRevoke(key: ApiKeySummary) {
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to revoke API key.";
+  }
+}
+
+async function copyCreatedKey() {
+  if (!createdKey.value) return;
+  try {
+    await navigator.clipboard.writeText(createdKey.value);
+    copied.value = true;
+  } catch {
+    copied.value = false;
   }
 }
 
@@ -112,7 +124,10 @@ onMounted(loadKeys);
         autocomplete="off"
         input-aria-label="Generated API key"
       />
-      <button type="button" class="secondary" @click="createdKey = ''">
+      <button type="button" class="primary-copy" @click="copyCreatedKey">
+        {{ copied ? "Copied" : "Copy key" }}
+      </button>
+      <button type="button" class="secondary" @click="createdKey = ''; copied = false">
         Done
       </button>
     </div>
@@ -224,6 +239,11 @@ button {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.primary-copy {
+  margin-top: 12px;
+  margin-right: 8px;
 }
 
 .secondary {
