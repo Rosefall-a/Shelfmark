@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
-import MaskedInput from "./MaskedInput.vue";
+import PasswordInput from "../PasswordInput.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import { updateProfile } from "../../services/auth";
 import { fetchPsnStatus, connectPsn, disconnectPsn } from "../../services/psn";
@@ -793,7 +793,7 @@ async function toggleHltb(enabled: boolean) {
         >
           <label class="field">
             <span>API Key</span>
-            <MaskedInput
+            <PasswordInput
               v-model="steamgriddbApiKey"
               placeholder="Paste your SteamGridDB API key"
             />
@@ -880,7 +880,7 @@ async function toggleHltb(enabled: boolean) {
           </label>
           <label class="field">
             <span>Client Secret</span>
-            <MaskedInput
+            <PasswordInput
               v-model="igdbClientSecret"
               :placeholder="
                 keyPlaceholder(
@@ -973,7 +973,7 @@ async function toggleHltb(enabled: boolean) {
           </p>
           <label class="field">
             <span>API Key</span>
-            <MaskedInput
+            <PasswordInput
               v-model="tmdbApiKey"
               :placeholder="
                 keyPlaceholder(
@@ -1066,7 +1066,7 @@ async function toggleHltb(enabled: boolean) {
           </p>
           <label class="field">
             <span>API Key</span>
-            <MaskedInput
+            <PasswordInput
               v-model="omdbApiKey"
               :placeholder="
                 keyPlaceholder(
@@ -1159,7 +1159,7 @@ async function toggleHltb(enabled: boolean) {
           </p>
           <label class="field">
             <span>API Key</span>
-            <MaskedInput
+            <PasswordInput
               v-model="tvdbApiKey"
               :placeholder="
                 keyPlaceholder(
@@ -1271,7 +1271,7 @@ async function toggleHltb(enabled: boolean) {
             class="field"
           >
             <span>{{ field.label }}</span>
-            <MaskedInput
+            <PasswordInput
               v-if="field.type === 'password'"
               v-model="fieldValues[key][field.key]"
               :placeholder="passwordPlaceholder(key, field.key, field.label)"
@@ -1362,7 +1362,7 @@ async function toggleHltb(enabled: boolean) {
             class="field"
           >
             <span>{{ field.label }}</span>
-            <MaskedInput
+            <PasswordInput
               v-model="fieldValues.GOG[field.key]"
               :placeholder="passwordPlaceholder('GOG', field.key, field.label)"
             />
@@ -1514,7 +1514,7 @@ async function toggleHltb(enabled: boolean) {
             class="field"
           >
             <span>{{ field.label }}</span>
-            <MaskedInput
+            <PasswordInput
               v-if="field.type === 'password'"
               v-model="fieldValues.Steam[field.key]"
               :placeholder="
@@ -1677,7 +1677,7 @@ async function toggleHltb(enabled: boolean) {
             class="field"
           >
             <span>{{ field.label }}</span>
-            <MaskedInput
+            <PasswordInput
               v-if="field.type === 'password'"
               v-model="fieldValues.RetroAchievements[field.key]"
               :placeholder="
@@ -1829,7 +1829,7 @@ async function toggleHltb(enabled: boolean) {
             <template v-if="!psnStatus.connected">
               <label class="field">
                 <span>npsso token</span>
-                <MaskedInput
+                <PasswordInput
                   v-model="npssoToken"
                   placeholder="Paste your npsso token"
                 />
@@ -1916,7 +1916,7 @@ async function toggleHltb(enabled: boolean) {
             class="field"
           >
             <span>{{ field.label }}</span>
-            <MaskedInput
+            <PasswordInput
               v-if="field.type === 'password'"
               v-model="fieldValues.Xbox[field.key]"
               :placeholder="passwordPlaceholder('Xbox', field.key, field.label)"
