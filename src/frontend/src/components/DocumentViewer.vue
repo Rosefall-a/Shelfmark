@@ -51,7 +51,12 @@ onBeforeUnmount(cleanup);
 
 <template>
   <div v-if="open" class="document-viewer-overlay" @click.self="emit('close')">
-    <section class="document-viewer" role="dialog" aria-modal="true" :aria-label="filename">
+    <section
+      class="document-viewer"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="filename"
+    >
       <header class="document-viewer-header">
         <h2>{{ filename }}</h2>
         <button type="button" title="Close" @click="emit('close')">×</button>
@@ -80,7 +85,9 @@ onBeforeUnmount(cleanup);
         :title="filename"
       ></iframe>
 
-      <pre v-else-if="result?.type === 'text'" class="document-text">{{ result.content }}</pre>
+      <pre v-else-if="result?.type === 'text'" class="document-text">
+        {{ result.content }}
+      </pre>
 
       <div v-else class="document-viewer-state">
         This document cannot be displayed.
@@ -145,7 +152,9 @@ onBeforeUnmount(cleanup);
   padding: 24px;
   text-align: center;
 }
-.document-viewer-state.error { color: #fca5a5; }
+.document-viewer-state.error {
+  color: #fca5a5;
+}
 .document-pdf {
   flex: 1;
   width: 100%;
