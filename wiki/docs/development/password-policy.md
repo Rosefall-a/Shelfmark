@@ -24,6 +24,6 @@ Confirmation is a frontend-only UX check. The backend receives one password valu
 
 ## UI
 
-The effective policy is visible under **Settings → Password Policy**. Changing the policy is deployment configuration work: update the environment variables and restart the application.
+The effective policy is visible under **Settings → Password Policy**. Administrators can change the policy there when the variables are not supplied by the environment. Changes are stored as deployment-wide configuration and take effect immediately; environment-provided values remain authoritative.
 
 When changing a password rule, keep the frontend passwordValidationErrors() and backend validate_password() messages/rules synchronized, and add backend tests for the configured defaults and validation behavior.
