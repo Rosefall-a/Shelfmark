@@ -10,12 +10,22 @@ from src.core.auth import (
     validate_password,
     verify_password,
 )
+from src.core.config import settings
 
 
 def test_validate_password_accepts_password_meeting_policy() -> None:
     password = "Correct!9"
 
     assert validate_password(password) == password
+
+
+def test_validate_password_uses_configured_minimum_length(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "PASSWORD_MIN_LENGTH", 12)
+
+    with pytest.raises(ValueError, match="12 characters"):
+        validate_password("Correct!9")
+
+    assert validate_password("Correct!123") == "Correct!123"
 
 
 def test_validate_password_rejects_missing_requirements() -> None:
