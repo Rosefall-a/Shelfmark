@@ -4,6 +4,7 @@ import {
   attachGameAssetFromUrl,
   createGame,
   fetchGames,
+  fetchGame,
   searchGameMetadata,
   previewGameMetadataRefresh,
   applyGameMetadataRefresh,
