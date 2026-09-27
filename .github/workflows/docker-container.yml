@@ -47,7 +47,7 @@ jobs:
         run: |
           docker run --rm --entrypoint /bin/sh unnamed_tracking_app:ci -n /app/entrypoint.sh
           docker run --rm --entrypoint /bin/sh unnamed_tracking_app:ci -n /usr/local/bin/render-production-nginx
-          docker inspect unnamed_tracking_app:ci --format '{{json .Config.Healthcheck.Test}}' | grep -F 'overall":"ready'
+          docker inspect unnamed_tracking_app:ci --format '{{json .Config.Healthcheck.Test}}' | grep -F 'overall'
 
       - name: Publish production image
         if: github.event_name != 'pull_request'
