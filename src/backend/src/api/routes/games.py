@@ -1959,14 +1959,20 @@ async def refresh_game_metadata(
                 detail="Game changed after the metadata preview. Refresh the editor and try again.",
             )
         game = locked_game
-        # Recompute only the values that are safe against the current row. Locked
-        # fields may have changed between preview and apply, so never trust the old
-        # preview's lock list.
-        updates = {
-            field: value
-            for field, value in updates.items()
-            if field not in game.locked_fields and _metadata_value_is_present(value)
-        }
+        # Recompute from the freshly locked row. Locks and configured save_* flags
+        # may have changed while the preview was open, so do not trust preview data.
+        updates = {}
+        skipped_locked = []
+        for field, fresh in field_values.items():
+            if field != "title" and gated_flags.get(field) and not preferences.get(gated_flags[field], True):
+                continue
+            if not _metadata_value_is_present(fresh):
+                continue
+            if field in game.locked_fields:
+                skipped_locked.append(field)
+                continue
+            if getattr(game, field) != fresh:
+                updates[field] = fresh
         changed_fields = sorted(updates)
         key_art_exists = (game_dir / ASSET_FILENAMES["key_art"]).is_file()
         banner_exists = (game_dir / ASSET_FILENAMES["banner"]).is_file()
