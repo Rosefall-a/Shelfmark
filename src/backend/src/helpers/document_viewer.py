@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse, PlainTextResponse, Response
@@ -58,7 +58,14 @@ def safe_document_filename(filename: str) -> str:
     # Reject traversal instead of silently normalising it away. Backslashes
     # are rejected too so the check remains safe if storage is ever hosted on
     # a Windows filesystem.
-    if "/" in filename or "\\" in filename or Path(filename).name != filename:
+    decoded_filename = unquote(filename)
+    if (
+        "/" in filename
+        or "\\" in filename
+        or "/" in decoded_filename
+        or "\\" in decoded_filename
+        or Path(filename).name != filename
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Path traversal is not allowed.",
