@@ -3745,14 +3745,6 @@ function formatPlaytime(minutes: number) {
       </div>
     </section>
 
-    <DocumentViewer
-      v-if="documentViewerFile"
-      :game-id="game.id"
-      :filename="documentViewerFile.filename"
-      :open="true"
-      @close="closeDocument"
-    />
-
     <section v-else-if="activeTab === 'World Map'" class="world-map-panel">
       <h2>World Map</h2>
       <div class="panel-body">
@@ -4164,6 +4156,14 @@ function formatPlaytime(minutes: number) {
   <main v-else class="not-found">
     <p>Game not found.</p>
   </main>
+    <DocumentViewer
+      v-if="documentViewerFile"
+      :game-id="game.id"
+      :filename="documentViewerFile.filename"
+      :open="true"
+      @close="closeDocument"
+    />
+
 </template>
 
 <style scoped>
