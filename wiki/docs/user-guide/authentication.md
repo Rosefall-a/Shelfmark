@@ -8,6 +8,17 @@ Local accounts use the application's username/password login. A successful login
 
 Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
+## Password and secret fields
+
+Password and editable secret fields are masked by default. The eye control in the field can reveal the value temporarily and can be used with keyboard focus.
+
+- New-password fields start empty and are intended for values being entered now, such as local sign-in, account creation, and profile password changes.
+- Replaceable secrets also start empty when a saved value already exists. For example, an OIDC client secret is never populated into the browser; leave the field blank to keep the saved secret, or enter a replacement.
+- Generated API keys are shown only when they are created. The generated value is displayed in a dedicated one-time field with a Copy key button so it can be copied without selecting the secret manually. Existing keys are represented by their prefix rather than their full secret, and the generated value is not persisted in the browser after the one-time display is dismissed.
+- The application does not add a client-side encryption layer to password or token requests. These credentials are sent in authenticated request bodies; deployments should use HTTPS/TLS to protect them in transit.
+
+The application supplies its own visibility control and suppresses Edge's native password-reveal control so that password fields do not show two reveal buttons.
+
 ## API keys
 
 Users can create API keys for integrations that need to authenticate without a browser session.
@@ -34,3 +45,22 @@ Sessions are stored server-side and have an expiry. Authenticated requests can u
 
 For HTTPS deployments, configure \`AUTH_COOKIE_SECURE=true\` so the authentication cookie is restricted to secure connections.
 
+
+
+## Local password requirements
+
+New local passwords are checked in the browser as they are entered and again by the backend when submitted. The frontend displays each active requirement and identifies unmet requirements before the form can be submitted.
+
+The default policy is:
+
+- At least 9 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one symbol
+- A number is not required by default
+
+Deployments can customise these rules with the environment variables `PASSWORD_MIN_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_DIGIT`, and `PASSWORD_REQUIRE_SYMBOL`. The effective policy is shown in **Settings → Password Policy**.
+
+Password confirmation is required when creating a user and when changing the current user's password. Confirmation is checked in the frontend and is not sent as a second password to the backend.
+
+The backend remains the final security boundary: it enforces the same configured policy even if a client bypasses the frontend validation.

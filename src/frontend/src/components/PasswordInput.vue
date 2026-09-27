@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     modelValue: string;
     autocomplete?: string;
     required?: boolean;
     placeholder?: string;
     disabled?: boolean;
+    readonly?: boolean;
+    mode?: "new" | "replace";
+    inputAriaLabel?: string;
   }>(),
   {
-    autocomplete: "current-password",
+    autocomplete: "new-password",
     required: false,
     placeholder: "",
     disabled: false,
+    readonly: false,
+    mode: "new",
+    inputAriaLabel: "",
   },
 );
 
@@ -21,30 +27,36 @@ const emit = defineEmits<{
   "update:modelValue": [value: string];
 }>();
 
-const showPassword = ref(false);
+const showSecret = ref(false);
+const secretLabel = computed(() => (props.mode === "replace" ? "secret" : "password"));
+const showLabel = computed(() => `Show ${secretLabel.value}`);
+const hideLabel = computed(() => `Hide ${secretLabel.value}`);
 </script>
 
 <template>
   <div class="password-input">
     <input
+      class="password-input-field"
       :value="modelValue"
-      :type="showPassword ? 'text' : 'password'"
+      :type="showSecret ? 'text' : 'password'"
       :autocomplete="autocomplete"
       :required="required"
       :placeholder="placeholder"
       :disabled="disabled"
+      :readonly="readonly"
+      :aria-label="inputAriaLabel || undefined"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
     <button
       type="button"
       class="visibility-button"
-      :aria-label="showPassword ? 'Hide password' : 'Show password'"
-      :title="showPassword ? 'Hide password' : 'Show password'"
+      :aria-label="showSecret ? hideLabel : showLabel"
+      :title="showSecret ? hideLabel : showLabel"
       :disabled="disabled"
-      @click="showPassword = !showPassword"
+      @click="showSecret = !showSecret"
     >
       <svg
-        v-if="showPassword"
+        v-if="showSecret"
         viewBox="0 0 24 24"
         aria-hidden="true"
         focusable="false"
@@ -67,13 +79,36 @@ const showPassword = ref(false);
 <style scoped>
 .password-input {
   position: relative;
+  display: block;
   width: 100%;
+  min-width: 0;
 }
 
-.password-input input {
+.password-input-field {
+  display: block;
   width: 100%;
+  min-width: 0;
   box-sizing: border-box;
-  padding-right: 42px;
+  background: #111;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #fff;
+  padding: 10px 44px 10px 12px;
+  font: inherit;
+}
+
+.password-input-field:focus {
+  outline: none;
+  border-color: #d68a34;
+}
+
+.password-input-field:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.password-input-field:read-only {
+  cursor: text;
 }
 
 .visibility-button {
@@ -89,11 +124,11 @@ const showPassword = ref(false);
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #888;
+  color: #777;
   cursor: pointer;
 }
 
-.visibility-button:hover {
+.visibility-button:hover:not(:disabled) {
   color: #d68a34;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -116,5 +151,13 @@ const showPassword = ref(false);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+</style>
+
+<style>
+/* Edge supplies its own password reveal control; the component owns the only reveal button. */
+input.password-input-field::-ms-reveal,
+input.password-input-field::-ms-clear {
+  display: none;
 }
 </style>

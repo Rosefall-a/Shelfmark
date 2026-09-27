@@ -21,6 +21,7 @@ from src.core.auth import (
     get_current_user,
     hash_password,
     hash_token,
+    password_policy,
     revoke_session,
     validate_password,
     verify_password,
@@ -78,6 +79,13 @@ class UserProfileUpdateRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, value: str | None) -> str | None:
         return validate_password(value) if value is not None else None
+
+
+
+@router.get("/password-policy")
+async def get_password_policy() -> dict[str, int | bool]:
+    """Return the effective local-password policy without exposing secrets."""
+    return password_policy()
 
 
 @router.post("/login")

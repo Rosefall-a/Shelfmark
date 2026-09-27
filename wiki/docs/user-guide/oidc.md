@@ -67,7 +67,7 @@ If **Admin group** is configured, the application checks the configured groups c
 
 ## Environment-managed settings
 
-Deployments can supply supported OIDC values through environment configuration. Environment-managed values can be locked in the settings UI and cannot be overridden there.
+Deployments can supply supported OIDC values through environment configuration. Environment-managed values can be locked in the settings UI and cannot be overridden there. A saved client secret is never populated into the browser; when one is already configured, leave the client-secret field blank to keep it or enter a replacement.
 
 For ordinary application configuration, use **Settings → OIDC / SSO**.
 

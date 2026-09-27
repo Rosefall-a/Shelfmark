@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import PasswordInput from "../PasswordInput.vue";
 import {
   createApiKey,
   fetchApiKeys,
@@ -13,6 +14,7 @@ const isLoading = ref(true);
 const isCreating = ref(false);
 const error = ref("");
 const createdKey = ref("");
+const copied = ref(false);
 
 async function loadKeys() {
   isLoading.value = true;
@@ -37,6 +39,7 @@ async function handleCreate() {
   try {
     const result = await createApiKey(keyName);
     createdKey.value = result.api_key;
+    copied.value = false;
     name.value = "";
     await loadKeys();
   } catch (err) {
@@ -61,6 +64,16 @@ async function handleRevoke(key: ApiKeySummary) {
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to revoke API key.";
+  }
+}
+
+async function copyCreatedKey() {
+  if (!createdKey.value) return;
+  try {
+    await navigator.clipboard.writeText(createdKey.value);
+    copied.value = true;
+  } catch {
+    copied.value = false;
   }
 }
 
@@ -104,8 +117,17 @@ onMounted(loadKeys);
     <div v-if="createdKey" class="created-key">
       <strong>API key created</strong>
       <p>Copy this key now. It will not be shown again.</p>
-      <code>{{ createdKey }}</code>
-      <button type="button" class="secondary" @click="createdKey = ''">
+      <PasswordInput
+        v-model="createdKey"
+        mode="replace"
+        readonly
+        autocomplete="off"
+        input-aria-label="Generated API key"
+      />
+      <button type="button" class="primary-copy" @click="copyCreatedKey">
+        {{ copied ? "Copied" : "Copy key" }}
+      </button>
+      <button type="button" class="secondary" @click="createdKey = ''; copied = false">
         Done
       </button>
     </div>
@@ -219,6 +241,11 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.primary-copy {
+  margin-top: 12px;
+  margin-right: 8px;
+}
+
 .secondary {
   margin-top: 12px;
   background: rgba(255, 255, 255, 0.1);
@@ -237,6 +264,10 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.created-key :deep(.password-input-field) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .created-key strong {
