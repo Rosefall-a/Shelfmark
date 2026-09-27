@@ -25,7 +25,7 @@ def test_validate_password_uses_configured_minimum_length(monkeypatch: pytest.Mo
     with pytest.raises(ValueError, match="12 characters"):
         validate_password("Correct!9")
 
-    assert validate_password("Correct!123") == "Correct!123"
+    assert validate_password("Correct!1234") == "Correct!1234"
 
 
 def test_validate_password_rejects_missing_requirements() -> None:
