@@ -39,6 +39,14 @@ def test_partial_primary_user_configuration_is_unrecoverable():
     assert issue.recoverable is False
 
 
+def test_partial_oidc_environment_configuration_does_not_enable_validation():
+    handler = EnvConfigHandler({
+        "OIDC_ISSUER_URL": "https://login.example.test",
+        "OIDC_CLIENT_ID": "client",
+    })
+    assert not any(issue.name == "oidc" and issue.severity == "error" for issue in handler.validate())
+
+
 def test_oidc_missing_recommended_scope_is_warning():
     handler = EnvConfigHandler({
         "OIDC_ISSUER_URL": "https://login.example.test",

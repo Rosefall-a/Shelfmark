@@ -1,6 +1,9 @@
 services:
   app:
-    image: ghcr.io/rosefall-a/unnamed_tracking_app:feat-central-config-handler
+    #image: ghcr.io/rosefall-a/unnamed_tracking_app:feat-central-config-handler
+    build:
+      context: .
+      dockerfile: ./src/docker-container/Dockerfile
     restart: unless-stopped
     ports:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"

@@ -1,3 +1,7 @@
+# pylint: disable=duplicate-code
+# These modules intentionally keep domain/provider-specific logic separate; similar
+# structures here represent parallel APIs rather than accidental copy/paste.
+
 """API routes for managing TV shows and their seasons."""
 
 import asyncio
