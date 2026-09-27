@@ -51,7 +51,21 @@ docker logs -f <container>
 
 Docker exposes container stdout/stderr through docker logs. The production entrypoint writes lifecycle messages there and Nginx errors are directed to stderr. Detailed backend output is retained at /run/unnamed-tracking/backend.log; migration output is retained at /run/unnamed-tracking/migration.log.
 
-If detailed file contents are needed, use docker exec while the container is available or docker cp to retrieve them. Do not inspect Docker's internal logging-driver files directly.
+If detailed file contents are needed, use the retained files inside the running container:
+
+```text
+docker exec <container> cat /run/unnamed-tracking/backend.log
+docker exec <container> cat /run/unnamed-tracking/migration.log
+```
+
+They can also be copied out:
+
+```text
+docker cp <container>:/run/unnamed-tracking/backend.log ./backend.log
+docker cp <container>:/run/unnamed-tracking/migration.log ./migration.log
+```
+
+Do not inspect Docker's internal logging-driver files directly.
 
 ## Diagnostic endpoints
 
