@@ -25,8 +25,12 @@ SESSION_COOKIE: Final = "session"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
 
+_password_policy_override: dict[str, int | bool] | None = None
+
 
 def password_policy() -> dict[str, int | bool]:
+    if _password_policy_override is not None:
+        return dict(_password_policy_override)
     return {
         "min_length": settings.PASSWORD_MIN_LENGTH,
         "require_uppercase": settings.PASSWORD_REQUIRE_UPPERCASE,
@@ -34,6 +38,11 @@ def password_policy() -> dict[str, int | bool]:
         "require_digit": settings.PASSWORD_REQUIRE_DIGIT,
         "require_symbol": settings.PASSWORD_REQUIRE_SYMBOL,
     }
+
+
+def set_password_policy_override(policy: dict[str, int | bool] | None) -> None:
+    global _password_policy_override
+    _password_policy_override = dict(policy) if policy is not None else None
 
 
 def validate_password(password: str) -> str:
