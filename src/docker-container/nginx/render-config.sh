@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-
+  
 output="${1:-/etc/nginx/ready.conf}"
 enabled="${NGINX_TLS_ENABLED:-false}"
 redirect="${NGINX_TLS_REDIRECT_HTTP:-false}"
