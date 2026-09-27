@@ -85,6 +85,7 @@ import UploadDropzone from "../components/UploadDropzone.vue";
 import ViewUploadSidebar from "../components/ViewUploadSidebar.vue";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
 import MediaTile from "../components/MediaTile.vue";
+import DocumentViewer from "../components/DocumentViewer.vue";
 import {
   startTask,
   updateTask,
@@ -1459,6 +1460,7 @@ const filesLoaded = ref<Record<FlatFileKind, string | null>>({
 });
 const filesError = ref<string | null>(null);
 const uploadingFiles = ref(false);
+const documentViewerFile = ref<GameFile | null>(null);
 
 const FILE_REFS: Record<FlatFileKind, typeof docsFiles> = {
   doc: docsFiles,
@@ -1614,6 +1616,14 @@ async function onGameFilesSelected(files: File[], kind: FlatFileKind) {
     }
   };
   await attempt();
+}
+
+function openDocument(file: GameFile) {
+  documentViewerFile.value = file;
+}
+
+function closeDocument() {
+  documentViewerFile.value = null;
 }
 
 async function removeGameFile(kind: FlatFileKind, file: GameFile) {
@@ -3679,12 +3689,13 @@ function formatPlaytime(minutes: number) {
                   />
                   <path d="M14 2v6h6" />
                 </svg>
-                <a
-                  :href="file.url"
-                  class="file-name"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >{{ displayFileName(file.filename) }}</a
+                <button
+                  type="button"
+                  class="file-name file-name-button"
+                  @click="openDocument(file)"
+                >
+                  {{ displayFileName(file.filename) }}
+                </button>
                 >
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
                 <button
@@ -3734,6 +3745,14 @@ function formatPlaytime(minutes: number) {
         </div>
       </div>
     </section>
+
+    <DocumentViewer
+      v-if="documentViewerFile"
+      :game-id="game.id"
+      :filename="documentViewerFile.filename"
+      :open="true"
+      @close="closeDocument"
+    />
 
     <section v-else-if="activeTab === 'World Map'" class="world-map-panel">
       <h2>World Map</h2>
@@ -6062,6 +6081,19 @@ function formatPlaytime(minutes: number) {
   margin-top: 16px;
   background: #000;
 }
+.file-name-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.file-name-button:hover {
+  text-decoration: underline;
+}
+
 .file-size {
   color: #777;
   font-size: 0.78rem;
