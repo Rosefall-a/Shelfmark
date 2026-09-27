@@ -59,7 +59,7 @@ The default policy is:
 - At least one symbol
 - A number is not required by default
 
-Deployments can customise these rules with the environment variables `PASSWORD_MIN_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_DIGIT`, and `PASSWORD_REQUIRE_SYMBOL`. The effective policy is shown in **Settings → Password Policy**.
+Deployments can customise these rules with the environment variables `PASSWORD_MIN_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_DIGIT`, and `PASSWORD_REQUIRE_SYMBOL`. The effective policy is shown in **Settings → Password Policy**. Administrators can change it there when the corresponding values are not supplied by the environment; environment-provided values remain authoritative.
 
 Password confirmation is required when creating a user and when changing the current user's password. Confirmation is checked in the frontend and is not sent as a second password to the backend.
 
