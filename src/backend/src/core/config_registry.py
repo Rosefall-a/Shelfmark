@@ -477,6 +477,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         default=9,
         description="Minimum number of characters required for new local passwords.",
         visible=True,
+        storage="app_integration",
     ),
     ConfigSpec(
         "PASSWORD_REQUIRE_UPPERCASE",
@@ -485,6 +486,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         label="Require uppercase",
         input_type="boolean",
         default=True,
+        storage="app_integration",
     ),
     ConfigSpec(
         "PASSWORD_REQUIRE_LOWERCASE",
@@ -493,6 +495,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         label="Require lowercase",
         input_type="boolean",
         default=True,
+        storage="app_integration",
     ),
     ConfigSpec(
         "PASSWORD_REQUIRE_DIGIT",
@@ -501,6 +504,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         label="Require number",
         input_type="boolean",
         default=False,
+        storage="app_integration",
     ),
     ConfigSpec(
         "PASSWORD_REQUIRE_SYMBOL",
@@ -509,6 +513,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         label="Require symbol",
         input_type="boolean",
         default=True,
+        storage="app_integration",
     ),
     ConfigSpec(
         "VITE_USE_MOCK_DATA",
