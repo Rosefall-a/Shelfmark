@@ -10,6 +10,8 @@ STATUS_FILE="$STATUS_DIR/status.json"
 DETAILS_FILE="$STATUS_DIR/details.txt"
 BACKEND_LOG="$STATUS_DIR/backend.log"
 MIGRATION_LOG="$STATUS_DIR/migration.log"
+MIGRATION_RAW="$STATUS_DIR/migration.raw.log"
+BACKEND_FIFO="$STATUS_DIR/backend.pipe"
 NGINX_PID="/run/nginx.pid"
 
 log "Initialising status directory"
@@ -17,6 +19,8 @@ mkdir -p "$STATUS_DIR"
 : > "$DETAILS_FILE"
 : > "$BACKEND_LOG"
 : > "$MIGRATION_LOG"
+: > "$MIGRATION_RAW"
+rm -f "$BACKEND_FIFO"
 
 write_status() {
   phase="$1"; overall="$2"; database="$3"; migrations="$4"; backend="$5"; frontend="$6"; message="$7"
@@ -104,7 +108,13 @@ log "Running database migrations"
 write_status "MIGRATING_DATABASE" "starting" "ready" "starting" "unknown" "unknown" "Applying database migrations."
 
 attempt=1
-until alembic upgrade heads >>"$MIGRATION_LOG" 2>&1; do
+while :; do
+  : > "$MIGRATION_RAW"
+  if alembic upgrade heads >"$MIGRATION_RAW" 2>&1; then
+    python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG"
+    break
+  fi
+  python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG" >/dev/null
   log "Migration attempt $attempt failed"
   if [ "$attempt" -ge 30 ]; then
     printf 'Migration attempts exhausted. See /run/unnamed-tracking/migration.log for command output.\n' >> "$DETAILS_FILE"
@@ -120,13 +130,12 @@ write_status "DATABASE_READY" "starting" "ready" "ready" "unknown" "unknown" "Da
 log "Starting backend (FastAPI)"
 write_status "STARTING_BACKEND" "starting" "ready" "ready" "starting" "unknown" "Starting FastAPI."
 
-uvicorn src.main:app --host 127.0.0.1 --port 8000 >"$BACKEND_LOG" 2>&1 &
+mkfifo "$BACKEND_FIFO"
+python /srv/startup/redact_logs.py <"$BACKEND_FIFO" | tee "$BACKEND_LOG" &
+BACKEND_TAIL_PID="$!"
+uvicorn src.main:app --host 127.0.0.1 --port 8000 >"$BACKEND_FIFO" 2>&1 &
 BACKEND_PID="$!"
 log "Backend PID is $BACKEND_PID"
-
-# Keep Docker stdout useful while retaining the full backend log for direct retrieval.
-tail -F "$BACKEND_LOG" &
-BACKEND_TAIL_PID="$!"
 
 attempt=1
 while ! curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; do
@@ -169,7 +178,7 @@ done
 
 log "Frontend ready"
 write_status "READY" "ready" "ready" "ready" "ready" "Unnamed Tracking is ready."
-printf '%s\n' "Production application is ready. Detailed backend and migration logs are retained inside the container for operator retrieval." > "$DETAILS_FILE"
+printf '%s\n' "Production application is ready. Detailed backend and migration diagnostics are retained inside the container and are also available through Docker logs." > "$DETAILS_FILE"
 
 log "Entering backend crash monitor loop"
 while :; do
