@@ -10,7 +10,6 @@ STATUS_FILE="$STATUS_DIR/status.json"
 DETAILS_FILE="$STATUS_DIR/details.txt"
 BACKEND_LOG="$STATUS_DIR/backend.log"
 MIGRATION_LOG="$STATUS_DIR/migration.log"
-MIGRATION_RAW="$STATUS_DIR/migration.raw.log"
 BACKEND_FIFO="$STATUS_DIR/backend.pipe"
 NGINX_PID="/run/nginx.pid"
 
@@ -19,7 +18,6 @@ mkdir -p "$STATUS_DIR"
 : > "$DETAILS_FILE"
 : > "$BACKEND_LOG"
 : > "$MIGRATION_LOG"
-: > "$MIGRATION_RAW"
 rm -f "$BACKEND_FIFO"
 
 write_status() {
@@ -109,12 +107,9 @@ write_status "MIGRATING_DATABASE" "starting" "ready" "starting" "unknown" "unkno
 
 attempt=1
 while :; do
-  : > "$MIGRATION_RAW"
-  if alembic upgrade heads >"$MIGRATION_RAW" 2>&1; then
-    python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG"
+  if alembic upgrade heads 2>&1 | python /srv/startup/redact_logs.py | tee -a "$MIGRATION_LOG"; then
     break
   fi
-  python /srv/startup/redact_logs.py <"$MIGRATION_RAW" | tee -a "$MIGRATION_LOG"
   log "Migration attempt $attempt failed"
   if [ "$attempt" -ge 30 ]; then
     printf 'Migration attempts exhausted. See /run/unnamed-tracking/migration.log for command output.\n' >> "$DETAILS_FILE"
