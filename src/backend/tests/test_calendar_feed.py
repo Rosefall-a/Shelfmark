@@ -84,7 +84,7 @@ async def test_feed_preferences_match_calendar_semantics(monkeypatch):
     async def fake_entries(_db, _user_id, days, game_releases=False):
         captured["days"] = days
         captured["game_releases"] = game_releases
-        return [
+        entries = [
             {"media_type": "tv", "media_id": uuid4(), "title": "Confirmed", "next_episode_number": 1, "air_at": 1, "kind": "episode", "is_projected": False},
             {"media_type": "tv", "media_id": uuid4(), "title": "Estimated", "next_episode_number": 2, "air_at": 2, "kind": "episode", "is_projected": True},
         ]
@@ -104,7 +104,7 @@ async def test_feed_preferences_match_calendar_semantics(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_feed_keeps_estimated_entries_when_preference_is_enabled(monkeypatch):
-    from src.api.routes import calendar_feed as feed_module
+    import src.api.routes.calendar_feed as feed_module
 
     user = User(id=uuid4(), username="calendar-test", email="calendar@example.test", password_hash="x")
 
