@@ -50,3 +50,10 @@ async def test_smtp_delivery_failure_is_reported_without_raising():
         result = await provider.deliver(type("Destination", (), {"value": "to@example.test"})(), message)
     assert not result.success
     assert result.error == "SMTP delivery failed."
+
+
+def test_provider_contract_separates_lookup_from_delivery():
+    from src.features.notification_providers.base import NotificationProvider
+
+    assert "lookup_destination" in getattr(NotificationProvider, "__annotations__", {}) or hasattr(NotificationProvider, "lookup_destination")
+    assert "deliver" in getattr(NotificationProvider, "__annotations__", {}) or hasattr(NotificationProvider, "deliver")
