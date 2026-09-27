@@ -185,7 +185,7 @@ printf 'heads:\n%s\ncurrent:\n%s\n' "$heads" "$current" | tee "$ARTIFACT_DIR/ale
 echo "Checking a representative database-backed API request through Nginx."
 login_response="$(curl --fail --silent --show-error -c "$ARTIFACT_DIR/cookies.txt" \
   -H 'Content-Type: application/json' \
-  -d '{"username_or_email":"smoke","password":"smoke-password"}' \
+  -d '{"username_or_email":"smoke","password":"Smoke-password"}' \
   "$BASE_URL/api/auth/login")"
 printf '%s\n' "$login_response" >"$ARTIFACT_DIR/login.json"
 me_response="$(curl --fail --silent --show-error -b "$ARTIFACT_DIR/cookies.txt" "$BASE_URL/api/auth/me")"
@@ -213,7 +213,7 @@ docker run -d --name "$DB_FAILURE_CONTAINER" -p 18082:80 \
   -e SECRET_KEY=smoke-test-secret-key \
   -e PRIMARY_USER_USERNAME=smoke \
   -e PRIMARY_USER_EMAIL=smoke@example.invalid \
-  -e PRIMARY_USER_PASSWORD=smoke-password \
+  -e PRIMARY_USER_PASSWORD=Smoke-password \
   "$SMOKE_IMAGE" >/dev/null
 wait_for_phase "$DB_FAILURE_CONTAINER" WAITING_FOR_DATABASE 15 >/dev/null
 curl --fail --silent --show-error "http://127.0.0.1:18082/_startup/status.json?ts=$RANDOM" >"$ARTIFACT_DIR/db-unavailable-status.json"
@@ -236,7 +236,7 @@ docker run -d --name "$MIGRATION_FAILURE_CONTAINER" --network "${PROJECT_NAME}_d
   -e POSTGRES_DB=smoke_migration_failure \
   -e SECRET_KEY=smoke-test-secret-key \
   -e PRIMARY_USER_USERNAME=smoke -e PRIMARY_USER_EMAIL=smoke@example.invalid \
-  -e PRIMARY_USER_PASSWORD=smoke-password \
+  -e PRIMARY_USER_PASSWORD=Smoke-password \
   "$SMOKE_IMAGE" >/dev/null
 assert_failure_phase "$MIGRATION_FAILURE_CONTAINER" MIGRATION_FAILED
 docker rm -f "$MIGRATION_FAILURE_CONTAINER" >/dev/null
@@ -251,7 +251,7 @@ docker run -d --name "$BACKEND_FAILURE_CONTAINER" --network "${PROJECT_NAME}_def
   -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke-password -e POSTGRES_DB=smoke \
   -e SECRET_KEY=smoke-test-secret-key \
   -e PRIMARY_USER_USERNAME=smoke -e PRIMARY_USER_EMAIL=smoke@example.invalid \
-  -e PRIMARY_USER_PASSWORD=smoke-password \
+  -e PRIMARY_USER_PASSWORD=Smoke-password \
   -v "$fake_main:/app/src/main.py:ro" \
   "$SMOKE_IMAGE" >/dev/null
 assert_failure_phase "$BACKEND_FAILURE_CONTAINER" BACKEND_FAILED
