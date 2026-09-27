@@ -3696,7 +3696,6 @@ function formatPlaytime(minutes: number) {
                 >
                   {{ displayFileName(file.filename) }}
                 </button>
-                >
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
                 <button
                   type="button"
