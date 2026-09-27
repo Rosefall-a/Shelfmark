@@ -58,11 +58,17 @@ def _send(config:SMTPConfig,recipient:str,message:NotificationMessage)->None:
 class SMTPNotificationProvider:
     id="smtp"; name="Email (SMTP)"
     def available(self) -> bool:
-        return bool(self.config.enabled and self.config.host and self.config.from_email)
+        return bool(
+            self.config.enabled
+            and self.config.host
+            and self.config.from_email
+            and self.config.security in {"none", "starttls", "ssl"}
+            and 1 <= self.config.port <= 65535
+        )
     def __init__(self,config:SMTPConfig): self.config=config
     async def lookup_destination(self,db,user,setting):
         del db,setting
-        if not self.available(): return None
+        if not self.available() or not _valid_email((user.email or "").strip()): return None
         return ProviderDestination(user.email.strip(),user.email.strip())
     def enabled_for_user(self,setting): return setting is None or setting.enabled
     async def deliver(self,destination,message):
