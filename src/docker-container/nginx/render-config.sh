@@ -34,9 +34,30 @@ if [ "$enabled" = true ]; then
       /etc/nginx/ready.conf > "$output"
 else
   awk '
-    /listen 443 ssl;/ { tls=1 }
-    tls && /^    }/ { tls=0; next }
-    !tls { print }
+    function flush_server(    i) {
+      if (!tls) for (i = 1; i <= count; i++) print buffer[i]
+      delete buffer
+      count = 0
+      tls = 0
+    }
+    /^    server \{/ {
+      in_server = 1
+      depth = 1
+      count = 0
+      tls = 0
+      buffer[++count] = $0
+      next
+    }
+    in_server {
+      buffer[++count] = $0
+      if ($0 ~ /listen 443 ssl;/) tls = 1
+      if ($0 ~ /^    }$/) {
+        flush_server()
+        in_server = 0
+      }
+      next
+    }
+    { print }
   ' /etc/nginx/ready.conf > "$output"
 fi
 
