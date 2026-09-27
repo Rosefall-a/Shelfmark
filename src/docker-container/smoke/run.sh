@@ -98,7 +98,7 @@ wait_for_phase() {
   local status phase
   for _ in $(seq 1 "$attempts"); do
     status="$(read_status "$container" 2>/dev/null || true)"
-    phase="$(printf '%s' "$status" | sed -n 's/.*"phase":"\\([^"]*\\)".*/\\1/p')"
+    phase="$(printf '%s' "$status" | sed -n 's/.*"phase":"\([^"]*\)".*/\1/p')"
     if [[ "$phase" == "$expected" ]]; then
       printf '%s\n' "$status"
       return 0
