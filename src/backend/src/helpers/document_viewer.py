@@ -97,7 +97,7 @@ def _is_utf8_text(path: Path) -> str:
             detail="Could not read document.",
         ) from exc
 
-    if b"\x00" in data:
+    if any(byte < 32 and byte not in {9, 10, 13} for byte in data):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Binary files cannot be displayed as text.",
