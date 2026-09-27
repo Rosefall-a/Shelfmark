@@ -26,6 +26,7 @@ The application accepts either the individual PostgreSQL variables or the legacy
 | `SECRET_KEY` | ENV | Generated/persisted when omitted | Stable Fernet encryption and session-signing key. It is hidden from the setup UI. |
 | `AUTH_COOKIE_SECURE` | BOTH | `false` | Makes authentication cookies require HTTPS when enabled. |
 | `DEBUG` | BOTH | `false` | Enables backend debug mode. |
+| `PASSWORD_MIN_LENGTH` | ENV | `9` | Minimum number of characters required for local passwords. |
 | `STARTUP_MODE` | ENV | Empty/default | Selects startup defaults and whether the setup UI is shown. |
 | `MAX_UPLOAD_SIZE_MB` | BOTH | `15` | General upload limit in MB. |
 | `MAX_SAVE_ARCHIVE_SIZE_MB` | BOTH | `4096` | Game save archive limit in MB. |
