@@ -223,8 +223,16 @@ async function save() {
           <label><span>Issuer / discovery URL</span><input v-model="provider.issuer_url"
               placeholder="https://id.example.com" /></label>
           <label><span>Client ID</span><input v-model="provider.client_id" /></label>
-          <label><span>Client secret</span><PasswordInput v-model="provider.client_secret"
-              :placeholder="provider.client_secret_configured ? 'Leave blank to keep saved secret' : 'Required'" /></label>
+          <label>
+            <span>Client secret</span>
+            <PasswordInput
+              v-model="provider.client_secret"
+              :mode="provider.client_secret_configured ? 'replace' : 'new'"
+              :placeholder="provider.client_secret_configured ? 'Leave blank to keep saved secret' : 'Required'"
+              autocomplete="new-password"
+              :required="provider.enabled && !provider.client_secret_configured"
+            />
+          </label>
           <label><span>Scopes</span><input v-model="provider.scopes" /></label>
           <label><span>Groups claim</span><input v-model="provider.groups_claim" placeholder="groups" /></label>
           <label><span>Admin group</span><input v-model="provider.admin_group" placeholder="archive-admins" /></label>
