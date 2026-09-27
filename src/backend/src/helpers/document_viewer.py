@@ -57,7 +57,7 @@ def safe_document_filename(filename: str) -> str:
     # Reject traversal instead of silently normalising it away. Backslashes
     # are rejected too so the check remains safe if storage is ever hosted on
     # a Windows filesystem.
-    if "/" in filename or "\" in filename or Path(filename).name != filename:
+    if "/" in filename or "\\" in filename or Path(filename).name != filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Path traversal is not allowed.",
