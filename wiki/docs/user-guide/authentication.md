@@ -14,7 +14,7 @@ Password and editable secret fields are masked by default. The eye control in th
 
 - New-password fields start empty and are intended for values being entered now, such as local sign-in, account creation, and profile password changes.
 - Replaceable secrets also start empty when a saved value already exists. For example, an OIDC client secret is never populated into the browser; leave the field blank to keep the saved secret, or enter a replacement.
-- Generated API keys are shown only when they are created. Existing keys are represented by their prefix rather than their full secret, and the generated value is not persisted in the browser after the one-time display is dismissed.
+- Generated API keys are shown only when they are created. The generated value is displayed in a dedicated one-time field with a Copy key button so it can be copied without selecting the secret manually. Existing keys are represented by their prefix rather than their full secret, and the generated value is not persisted in the browser after the one-time display is dismissed.
 - The application does not add a client-side encryption layer to password or token requests. These credentials are sent in authenticated request bodies; deployments should use HTTPS/TLS to protect them in transit.
 
 The application supplies its own visibility control and suppresses Edge's native password-reveal control so that password fields do not show two reveal buttons.
