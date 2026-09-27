@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,11 +51,6 @@ class UserCreateRequest(BaseModel):
     password: str = Field(min_length=1)
     is_admin: bool = False
 
-    @field_validator("password")
-    @classmethod
-    def validate_new_password(cls, value: str) -> str:
-        return validate_password(value)
-
 
 class UserAdminUpdateRequest(BaseModel):
     is_admin: bool
@@ -68,16 +63,9 @@ class PsnConnectRequest(BaseModel):
 class UserProfileUpdateRequest(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=100)
     email: str | None = Field(default=None, min_length=3, max_length=320)
-    # only required when actually setting a new password — everything else
-    # here (username/email/steamgriddb key) doesn't need it
     current_password: str | None = Field(default=None, min_length=1)
     new_password: str | None = Field(default=None, min_length=1)
     steamgriddb_api_key: str | None = Field(default=None, max_length=64)
-
-    @field_validator("new_password")
-    @classmethod
-    def validate_new_password(cls, value: str | None) -> str | None:
-        return validate_password(value) if value is not None else None
 
 
 @router.post("/login")
@@ -145,6 +133,10 @@ async def update_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | bool | None]:
     if payload.new_password is not None:
+        try:
+            validate_password(payload.new_password)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         if not payload.current_password or not verify_password(
             payload.current_password, user.password_hash
         ):
@@ -191,8 +183,7 @@ async def connect_psn(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | int | None]:
-    """Validate a PSN npsso token against Sony's OAuth flow before persisting
-    it — never store a token that doesn't actually work."""
+    """Validate a PSN npsso token against Sony's OAuth flow before persisting it."""
     try:
         result = await asyncio.to_thread(PSNClient(payload.npsso_token).validate)
     except PSNError as exc:
@@ -226,9 +217,6 @@ async def disconnect_psn(
 
 @router.get("/me/psn/status")
 async def psn_status(user: User = Depends(get_current_user)) -> dict[str, bool | int | str | None]:
-    """Never echoes the token itself — connected/validated_at only. Does not
-    re-validate against Sony on every call; reconnect (POST /me/psn) to
-    re-check a token that may have expired."""
     return {
         "connected": user.psn_npsso_token is not None,
         "validated_at": user.psn_validated_at,
@@ -306,6 +294,11 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str | bool]:
     del admin
+    try:
+        validate_password(payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     username = payload.username.strip()
     email = payload.email.strip().lower()
     if not username or not email:
