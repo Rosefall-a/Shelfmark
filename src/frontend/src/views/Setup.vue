@@ -500,11 +500,7 @@ async function submit() {
                     autocomplete="new-password"
                     @update:model-value="setField(field, $event)"
                   />
-                  <PasswordRequirements
-                    v-if="field.name === 'PRIMARY_USER_PASSWORD' && passwordPolicy"
-                    :password="String(fieldValue(field) ?? '')"
-                    :policy="passwordPolicy"
-                  />
+
                   <input
                     v-else
                     :value="inputValue(field)"
@@ -513,6 +509,12 @@ async function submit() {
                     :required="fieldRequired(field) && !field.configured"
                     :disabled="field.locked || (field.generated && field.configured)"
                     @input="setField(field, ($event.target as HTMLInputElement).value)"
+                  />
+
+                  <PasswordRequirements
+                    v-if="field.name === 'PRIMARY_USER_PASSWORD' && passwordPolicy"
+                    :password="String(fieldValue(field) ?? '')"
+                    :policy="passwordPolicy"
                   />
 
                   <small v-if="field.description">{{ field.description }}</small>
