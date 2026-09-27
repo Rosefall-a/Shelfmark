@@ -1,6 +1,6 @@
 # Startup and Troubleshooting
 
-The production container separates startup diagnostics from the normal application frontend. Configuration or backend failures can still be displayed through Nginx.
+The production container keeps startup diagnostics available without turning the startup page into a raw log viewer. The page is intentionally concise: it reports lifecycle state and a short failure explanation, while detailed logs remain operator-facing diagnostics.
 
 ## Production startup sequence
 
@@ -34,6 +34,25 @@ Startup records explicit states including:
 
 Nginx can remain available when startup fails so the diagnostic page can explain what happened.
 
+## Startup page
+
+The static startup page reports application starting, database state, migration state, backend state, frontend state, application ready, and application failed. Normal startup does not render backend, migration, Nginx, or Docker log output. On failure the spinner is replaced by a failure indicator and a concise diagnostic message.
+
+Raw logs are intentionally not rendered by default: they are useful for operators but noisy for normal startup. The startup page does not add a reload button or other log-management controls.
+
+## Detailed diagnostics
+
+Use the container logging facilities first:
+
+```text
+docker logs <container>
+docker logs -f <container>
+```
+
+Docker exposes container stdout/stderr through docker logs. The production entrypoint writes lifecycle messages there and Nginx errors are directed to stderr. Detailed backend output is retained at /run/unnamed-tracking/backend.log; migration output is retained at /run/unnamed-tracking/migration.log.
+
+If detailed file contents are needed, use docker exec while the container is available or docker cp to retrieve them. Do not inspect Docker's internal logging-driver files directly.
+
 ## Diagnostic endpoints
 
 When startup diagnostics are available, inspect:
@@ -41,7 +60,6 @@ When startup diagnostics are available, inspect:
 \`\`\`text
 /_startup/status.json
 /_startup/details.txt
-/_startup/backend.log
 \`\`\`
 
 These expose the current state, human-readable details and backend startup log.
@@ -66,3 +84,7 @@ If Uvicorn cannot start, never becomes healthy, or crashes after startup, inspec
 
 The production image checks that the built frontend can be served before switching to the normal Nginx configuration. A frontend failure is reported as \`FRONTEND_FAILED\`.
 
+
+## Secrets
+
+The production entrypoint does not print passwords, tokens, API keys, SMTP credentials, private keys, webhook secrets, or session secrets. Detailed logs remain operator-only diagnostics because application components may produce their own log output.
