@@ -58,6 +58,7 @@ from src.features.trash.game_trash import move_game_to_trash, restore_game_from_
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
 from src.helpers.media import MediaKind, classify_media, list_media, media_subdir, save_media_bytes
+from src.helpers.document_viewer import document_view_response, safe_document_filename
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
     AssetKind,
@@ -894,7 +895,34 @@ async def list_game_file_trash(
             {
                 "filename": item.filename,
                 "deleted_at": item.deleted_at,
-                "purge_at": item.deleted_at + RETENTION_SECONDS,
+                "purge_at": item@router.get("/{game_id}/files/{kind}/{filename}/view", response_class=Response)
+async def view_game_document(
+    game_id: UUID,
+    kind: GameFileKind,
+    filename: str,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> Response:
+    """View a supported document without exposing arbitrary user files inline."""
+    if kind != "doc":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only documents can be viewed.",
+        )
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    name = safe_document_filename(filename)
+    path = (
+        _DATA_ROOT
+        / str(game.user_id)
+        / "games"
+        / (game.folder_location or "")
+        / _game_file_subdir(kind)
+        / name
+    )
+    return document_view_response(path, name)
+
+
+.deleted_at + RETENTION_SECONDS,
             }
         )
     return {"files": files}
