@@ -83,13 +83,13 @@ def test_ics_fixture_has_well_formed_vcalendar_and_vevent_boundaries():
     ics = _build_ics(_entries())
     assert "\\r\\n" in ics
     assert "\\n" not in ics.replace("\\r\\n", "")
-    assert ics.count("BEGIN:VCALENDAR\\r\\n") == 1
-    assert ics.count("END:VCALENDAR\\r\\n") == 1
-    assert ics.count("BEGIN:VEVENT\\r\\n") == 3
-    assert ics.count("END:VEVENT\\r\\n") == 3
-    for block in ics.split("BEGIN:VEVENT\\r\\n")[1:]:
-        event = block.split("END:VEVENT\\r\\n", 1)[0]
-        assert any(line.startswith("UID:") for line in event.split("\\r\\n"))
+    assert ics.count("BEGIN:VCALENDAR\r\n") == 1
+    assert ics.count("END:VCALENDAR\r\n") == 1
+    assert ics.count("BEGIN:VEVENT\r\n") == 3
+    assert ics.count("END:VEVENT\r\n") == 3
+    for block in ics.split("BEGIN:VEVENT\r\n")[1:]:
+        event = block.split("END:VEVENT\r\n", 1)[0]
+        assert any(line.startswith("UID:") for line in event.split("\r\n"))
         assert any(line.startswith("DTSTART") for line in event.split("\\r\\n"))
         assert any(line.startswith("SUMMARY:") for line in event.split("\\r\\n"))
 
