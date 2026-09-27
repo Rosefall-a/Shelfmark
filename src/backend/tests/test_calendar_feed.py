@@ -43,6 +43,87 @@ def _uids(ics: str) -> list[str]:
     return [line.removeprefix("UID:") for line in ics.splitlines() if line.startswith("UID:")]
 
 
+
+class _FakeResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self.rows
+
+
+class _FakeDb:
+    def __init__(self, user, events=None):
+        self.user = user
+        self.events = events or []
+
+    async def scalar(self, _statement):
+        return self.user
+
+    async def execute(self, _statement):
+        return _FakeResult(self.events)
+
+
+@pytest.mark.asyncio
+async def test_feed_preferences_match_calendar_semantics(monkeypatch):
+    from src.api.routes import calendar_feed as feed_module
+
+    user = User(id=uuid4(), username="calendar-test", email="calendar@example.test", password_hash="x")
+    captured = {}
+
+    async def fake_preferences(_db, _user_id):
+        return {
+            "calendar_game_releases": True,
+            "calendar_hide_games": True,
+            "calendar_show_estimated": False,
+        }
+
+    async def fake_entries(_db, _user_id, days, game_releases=False):
+        captured["days"] = days
+        captured["game_releases"] = game_releases
+        return [
+            {"media_type": "game", "media_id": uuid4(), "title": "Game", "next_episode_number": None, "air_at": 1, "kind": "release"},
+            {"media_type": "tv", "media_id": uuid4(), "title": "Confirmed", "next_episode_number": 1, "air_at": 1, "kind": "episode", "is_projected": False},
+            {"media_type": "tv", "media_id": uuid4(), "title": "Estimated", "next_episode_number": 2, "air_at": 2, "kind": "episode", "is_projected": True},
+        ]
+
+    monkeypatch.setattr(feed_module, "load_preferences", fake_preferences)
+    monkeypatch.setattr(feed_module, "build_calendar_entries", fake_entries)
+    response = await feed_module.calendar_feed("token", _FakeDb(user))
+    body = response.body.decode()
+    assert captured == {"days": 90, "game_releases": False}
+    assert "Confirmed" in body
+    assert "Estimated" not in body
+    assert "Game" in body
+
+
+@pytest.mark.asyncio
+async def test_feed_keeps_estimated_entries_when_preference_is_enabled(monkeypatch):
+    from src.api.routes import calendar_feed as feed_module
+
+    user = User(id=uuid4(), username="calendar-test", email="calendar@example.test", password_hash="x")
+
+    async def fake_preferences(_db, _user_id):
+        return {
+            "calendar_game_releases": False,
+            "calendar_hide_games": False,
+            "calendar_show_estimated": True,
+        }
+
+    async def fake_entries(_db, _user_id, days, game_releases=False):
+        return [
+            {"media_type": "tv", "media_id": uuid4(), "title": "Estimated", "next_episode_number": 2, "air_at": 2, "kind": "episode", "is_projected": True},
+        ]
+
+    monkeypatch.setattr(feed_module, "load_preferences", fake_preferences)
+    monkeypatch.setattr(feed_module, "build_calendar_entries", fake_entries)
+    response = await feed_module.calendar_feed("token", _FakeDb(user))
+    assert "Estimated" in response.body.decode()
+
+
 def test_ics_escape_cannot_inject_properties_and_escapes_ical_text():
     value = "Title, with; slash\\ and\nnew line\rbare return"
     escaped = _ics_escape(value)
