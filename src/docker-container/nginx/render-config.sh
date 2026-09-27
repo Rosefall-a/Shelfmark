@@ -18,6 +18,11 @@ case "$redirect" in
   *) printf '%s\n' "Invalid NGINX_TLS_REDIRECT_HTTP value; use true or false." >&2; exit 1 ;;
 esac
 
+if [ "$redirect" = true ] && [ "$enabled" != true ]; then
+  printf '%s\n' "NGINX_TLS_REDIRECT_HTTP requires NGINX_TLS_ENABLED=true." >&2
+  exit 1
+fi
+
 if [ "$enabled" = true ]; then
   if [ ! -f "$cert" ]; then printf '%s\n' "TLS is enabled but certificate file is missing: $cert" >&2; exit 1; fi
   if [ ! -f "$key" ]; then printf '%s\n' "TLS is enabled but private key file is missing: $key" >&2; exit 1; fi
