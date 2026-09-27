@@ -107,14 +107,14 @@ attempt=1
 until alembic upgrade heads >>"$MIGRATION_LOG" 2>&1; do
   log "Migration attempt $attempt failed"
   if [ "$attempt" -ge 30 ]; then
-    printf 'Migration attempts exhausted. See /_startup/migration.log for command output.\n' >> "$DETAILS_FILE"
+    printf 'Migration attempts exhausted. See /run/unnamed-tracking/migration.log for command output.\n' >> "$DETAILS_FILE"
     fail_startup "MIGRATION_FAILED" "Database migrations failed after 30 attempts. Detailed migration output is retained at /run/unnamed-tracking/migration.log." "ready" "failed" "unknown" "unknown"
   fi
   attempt=$((attempt + 1)); sleep 2
 done
 
 log "Migrations completed"
-printf '%s\n' "Database migrations completed successfully. Detailed migration output is available at /_startup/migration.log." >> "$DETAILS_FILE"
+printf '%s\n' "Database migrations completed successfully. Detailed migration output is retained at /run/unnamed-tracking/migration.log." >> "$DETAILS_FILE"
 write_status "DATABASE_READY" "starting" "ready" "ready" "unknown" "unknown" "Database migrations completed."
 
 log "Starting backend (FastAPI)"
@@ -133,13 +133,13 @@ while ! curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; do
   log "Backend not healthy (attempt $attempt)"
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     log "Backend crashed during startup"
-    printf '%s\n' "Backend process exited during startup. See /_startup/backend.log for detailed backend output." >> "$DETAILS_FILE"
+    printf '%s\n' "Backend process exited during startup. See /run/unnamed-tracking/backend.log for detailed backend output." >> "$DETAILS_FILE"
     fail_startup "BACKEND_FAILED" "The backend process exited during startup. Detailed backend output is retained at /run/unnamed-tracking/backend.log." "ready" "ready" "failed" "unknown"
   fi
   if [ "$attempt" -ge 60 ]; then
     log "Backend health timeout"
     printf '%s\n' "Backend health check timed out. See /_startup/backend.log for detailed backend output." >> "$DETAILS_FILE"
-    fail_startup "BACKEND_TIMEOUT" "The backend did not become healthy within 120 seconds. Detailed backend output is available at /_startup/backend.log." "ready" "ready" "failed" "unknown"
+    fail_startup "BACKEND_TIMEOUT" "The backend did not become healthy within 120 seconds. Detailed backend output is retained at /run/unnamed-tracking/backend.log." "ready" "ready" "failed" "unknown"
   fi
   attempt=$((attempt + 1)); sleep 2
 done
