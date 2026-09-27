@@ -37,7 +37,14 @@ async def process_pending_deliveries(db:AsyncSession, limit:int=50)->int:
         user=await db.get(User,notification.user_id)
         if user is None: delivery.status="failed"; continue
         prefs=await load_preferences(db,user.id)
-        if not any((prefs.get("notify_episode_aired") and notification.kind=="episode_aired",prefs.get("notify_season_started") and notification.kind=="season_started",prefs.get("notify_sequel_announced") and notification.kind=="sequel_announced",prefs.get("notify_movie_released") and notification.kind=="movie_released")):
+        preference_by_kind = {
+            "episode_aired": "notify_episode_aired",
+            "season_started": "notify_season_started",
+            "sequel_announced": "notify_sequel_announced",
+            "movie_released": "notify_movie_released",
+        }
+        preference = preference_by_kind.get(notification.kind)
+        if preference is None or not prefs.get(preference, False):
             delivery.status="skipped"; continue
         setting=await db.scalar(select(NotificationProviderSetting).where(NotificationProviderSetting.user_id==user.id,NotificationProviderSetting.provider_id==delivery.provider_id))
         if not provider.enabled_for_user(setting):
