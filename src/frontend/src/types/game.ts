@@ -93,6 +93,8 @@ export interface Game {
   publisher: string | null;
   series: string | null;
   dateAdded: string | null;
+  // Backend unix timestamp used to reject applying a stale metadata preview.
+  updatedAt?: number;
   // "where I left off", a short freeform note about what to do when you
   // pick this game back up. Separate from the full Notes tab (named,
   // multi-note documents) since this is meant to be the one thing shown

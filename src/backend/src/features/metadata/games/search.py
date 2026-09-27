@@ -120,6 +120,9 @@ def _merge_or_append(results: list[dict[str, Any]], candidate: dict[str, Any]) -
     provider (e.g. RetroAchievements finding the same title Steam did) —
     merge onto the existing entry (filling only blanks) instead of creating
     a visually duplicate second result."""
+    if not isinstance(candidate, dict) or not isinstance(candidate.get("title"), str) or not candidate["title"].strip():
+        # A malformed provider response must not abort an otherwise usable refresh.
+        return
     for existing in results:
         if _titles_match(existing["title"], candidate["title"]):
             for key, value in candidate.items():
