@@ -21,7 +21,10 @@ describe("document viewer service", () => {
         }),
       ),
     );
-    vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:pdf"), revokeObjectURL: vi.fn() });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:pdf"),
+      revokeObjectURL: vi.fn(),
+    });
 
     await expect(fetchDocumentView("game", "manual.pdf")).resolves.toEqual({
       type: "pdf",
@@ -56,7 +59,10 @@ describe("document viewer service", () => {
     [500, "server"],
     [503, "server"],
   ] as const)("maps HTTP %s to %s", async (status, kind) => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status })),
+    );
 
     await expect(fetchDocumentView("game", "manual.txt")).rejects.toMatchObject({
       kind,
