@@ -103,6 +103,7 @@ function openCreateForm() {
   newUsername.value = "";
   newEmail.value = "";
   newPassword.value = "";
+  confirmPassword.value = "";
   newIsAdmin.value = false;
   createError.value = null;
   showCreateForm.value = true;
