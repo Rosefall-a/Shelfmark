@@ -38,6 +38,8 @@ The subscription window is 90 days. The feed reuses `build_calendar_entries()` r
 
 ## Why there is no ICS importer
 
+A separate design issue, #243, tracks this work so an importer can be reviewed as its own architecture and security boundary.
+
 Importing an external feed would not fit cleanly into the existing `CalendarEvent` table: imported events need persistent source identity and ownership plus enough source metadata to reconcile changes without overwriting manual events. A practical design would likely introduce a per-user calendar-source table and source-scoped event rows keyed by `(source_id, UID, recurrence/component identity)`.
 
 Remote fetching also introduces SSRF risk. A future implementation would need URL parsing and redirect validation on every hop, blocking loopback/private/link-local/multicast ranges, cloud metadata addresses, internal Docker/service names, non-HTTP schemes, and unsafe DNS rebinding. It would also need bounded response size, connect/read timeouts, redirect limits, authentication policy, and a controlled HTTP client boundary. Those concerns are deliberately outside the outbound feed PR.

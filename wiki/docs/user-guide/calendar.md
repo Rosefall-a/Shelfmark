@@ -20,9 +20,9 @@ Do not paste a feed URL into public issue reports, screenshots, chat rooms, or s
 - optional upcoming game releases, controlled by **Game releases** and **Hide games** calendar preferences;
 - user-created manual calendar events.
 
-The feed covers the next **90 days**. Past events are not exported by the subscription feed.
+Provider-backed media entries use the same **90-day forward window** as the application calendar. The calendar query also keeps a one-day look-back for recently aired/released media. User-created manual events are exported independently of that media window, so a reminder can remain in a subscription even when it is outside the provider-backed 90-day range.
 
-Projected future episodes are estimates based on the stored airing cadence. They are included when **Show estimated** is enabled; disabling that preference removes projected episodes from the feed.
+Projected future episodes are estimates based on the stored airing cadence. They are included when **Show estimated** is enabled; disabling that preference removes only projected episodes from the feed. The provider-confirmed next episode remains included. This matches the application calendar's distinction between confirmed and dashed estimated entries.
 
 ## Dates and time zones
 
@@ -34,6 +34,6 @@ Manual all-day entries are exported as all-day `VALUE=DATE` events. Manual timed
 
 ## Importing another ICS feed
 
-External `.ics` importing is **not implemented by this feature**. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.
+External `.ics` importing is **not implemented by this feature**. A separate design issue, **#243**, tracks the future importer architecture. The current calendar model is designed around application-owned events and per-user manual entries, while an external importer would require a separate source/synchronization model.
 
 A safe server-side importer would need persistent source ownership, credentials, refresh scheduling, ETag/Last-Modified handling, UID/upsert rules, cancellation/deletion semantics, timezone conversion, malformed-feed behavior, request timeouts/size limits, and SSRF protection for user-supplied URLs. The application currently does not have a shared outbound-calendar-fetching security boundary for those requests, so remote ICS fetching is intentionally deferred rather than accepting arbitrary URLs.
