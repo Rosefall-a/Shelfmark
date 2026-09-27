@@ -10,6 +10,7 @@ const props = withDefaults(
     disabled?: boolean;
     readonly?: boolean;
     mode?: "new" | "replace";
+    inputAriaLabel?: string;
   }>(),
   {
     autocomplete: "new-password",
@@ -18,6 +19,7 @@ const props = withDefaults(
     disabled: false,
     readonly: false,
     mode: "new",
+    inputAriaLabel: "",
   },
 );
 
@@ -42,6 +44,7 @@ const hideLabel = computed(() => `Hide ${secretLabel.value}`);
       :placeholder="placeholder"
       :disabled="disabled"
       :readonly="readonly"
+      :aria-label="inputAriaLabel || undefined"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
     <button
