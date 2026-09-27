@@ -51,6 +51,12 @@ class AppIntegrationSettings(Base):
     xbox_client_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     xbox_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    password_min_length: Mapped[int | None] = mapped_column(nullable=True)
+    password_require_uppercase: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_lowercase: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_digit: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_symbol: Mapped[bool | None] = mapped_column(nullable=True)
+
     updated_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=time.time, onupdate=time.time
     )
