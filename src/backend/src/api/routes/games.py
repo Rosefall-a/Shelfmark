@@ -1929,9 +1929,11 @@ async def refresh_game_metadata(
     )
 
     if payload.dry_run:
+        # A preview records no game changes, but the existing provider-last-used
+        # telemetry may be updated as part of the provider lookup.
         await db.commit()
         return {
-            "status": "updated",
+            "status": "preview",
             "provider": match.get("provider"),
             "provider_errors": provider_errors,
             "changed_fields": changed_fields,
