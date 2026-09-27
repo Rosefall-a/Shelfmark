@@ -45,3 +45,22 @@ Sessions are stored server-side and have an expiry. Authenticated requests can u
 
 For HTTPS deployments, configure \`AUTH_COOKIE_SECURE=true\` so the authentication cookie is restricted to secure connections.
 
+
+
+## Local password requirements
+
+New local passwords are checked in the browser as they are entered and again by the backend when submitted. The frontend displays each active requirement and identifies unmet requirements before the form can be submitted.
+
+The default policy is:
+
+- At least 9 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one symbol
+- A number is not required by default
+
+Deployments can customise these rules with the environment variables `PASSWORD_MIN_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_DIGIT`, and `PASSWORD_REQUIRE_SYMBOL`. The effective policy is shown in **Settings → Password Policy**.
+
+Password confirmation is required when creating a user and when changing the current user's password. Confirmation is checked in the frontend and is not sent as a second password to the backend.
+
+The backend remains the final security boundary: it enforces the same configured policy even if a client bypasses the frontend validation.
