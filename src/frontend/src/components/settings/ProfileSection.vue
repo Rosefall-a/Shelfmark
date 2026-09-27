@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
+import PasswordInput from "../PasswordInput.vue";
 import { currentUser, checkAuth } from "../../state/auth";
 import {
   updateProfile,
@@ -21,6 +22,7 @@ const username = ref(currentUser.value?.username ?? "");
 const email = ref(currentUser.value?.email ?? "");
 const currentPassword = ref("");
 const newPassword = ref("");
+const confirmPassword = ref("");
 const saving = ref(false);
 const saveError = ref<string | null>(null);
 const saveSuccess = ref(false);
@@ -38,6 +40,10 @@ const uploading = ref(false);
 const uploadError = ref<string | null>(null);
 
 async function saveProfile() {
+  if (newPassword.value && newPassword.value !== confirmPassword.value) {
+    saveError.value = "The new passwords do not match.";
+    return;
+  }
   if (newPassword.value && !currentPassword.value) {
     saveError.value = "Enter your current password to set a new one.";
     return;
@@ -57,6 +63,7 @@ async function saveProfile() {
     await checkAuth();
     currentPassword.value = "";
     newPassword.value = "";
+    confirmPassword.value = "";
     saveSuccess.value = true;
   } catch (err) {
     saveError.value =
@@ -136,6 +143,11 @@ async function onAvatarFileChange(e: Event) {
       <label class="field">
         <span>New password (optional)</span>
         <PasswordInput v-model="newPassword" mode="new" autocomplete="new-password" />
+      </label>
+
+      <label v-if="newPassword" class="field">
+        <span>Confirm new password</span>
+        <PasswordInput v-model="confirmPassword" mode="new" autocomplete="new-password" :required="true" />
       </label>
 
       <label v-if="newPassword" class="field">
