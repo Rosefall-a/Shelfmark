@@ -925,7 +925,7 @@ async def view_game_document(
         / _game_file_subdir(kind)
         / name
     )
-    return document_view_response(path, name)
+    return document_view_response(path, name, allowed_root=path.parent)
 
 
 @router.get("/{game_id}/files/{kind}/{filename}", response_class=FileResponse)
