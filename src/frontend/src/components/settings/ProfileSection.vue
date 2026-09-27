@@ -135,12 +135,17 @@ async function onAvatarFileChange(e: Event) {
 
       <label class="field">
         <span>New password (optional)</span>
-        <PasswordInput v-model="newPassword" autocomplete="new-password" />
+        <PasswordInput v-model="newPassword" mode="new" autocomplete="new-password" />
       </label>
 
       <label v-if="newPassword" class="field">
         <span>Current password (required to set a new one)</span>
-        <PasswordInput v-model="currentPassword" autocomplete="current-password" :required="true" />
+        <PasswordInput
+          v-model="currentPassword"
+          mode="new"
+          autocomplete="current-password"
+          :required="true"
+        />
       </label>
 
       <div v-if="saveError" class="form-error">{{ saveError }}</div>
