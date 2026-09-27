@@ -12,7 +12,17 @@ from src.helpers.document_viewer import (
 
 
 def test_safe_document_filename_rejects_path_traversal() -> None:
-    for name in ("../secret.txt", r"..\secret.txt", "/tmp/secret.txt", "a/b.txt"):
+    for name in (
+        "../secret.txt",
+        r"..\secret.txt",
+        "/tmp/secret.txt",
+        r"C:\secret.txt",
+        r"\\server\share\secret.txt",
+        "a/b.txt",
+        "a//../secret.txt",
+        "./../secret.txt",
+        "..%2fsecret.txt",
+    ):
         with pytest.raises(HTTPException) as exc:
             safe_document_filename(name)
         assert exc.value.status_code == 400
@@ -20,6 +30,20 @@ def test_safe_document_filename_rejects_path_traversal() -> None:
 
 def test_document_original_filename_removes_dedupe_prefix() -> None:
     assert document_original_filename("abcdefgh_manual.pdf") == "manual.pdf"
+
+
+def test_empty_text_is_viewable(tmp_path: Path) -> None:
+    path = tmp_path / "abcdefgh_empty.txt"
+    path.write_bytes(b"")
+    response = document_view_response(path, path.name)
+    assert response.media_type == "text/plain"
+
+
+def test_text_at_exact_limit_is_viewable(tmp_path: Path) -> None:
+    path = tmp_path / "abcdefgh_limit.txt"
+    path.write_bytes(b"x" * MAX_TEXT_VIEW_BYTES)
+    response = document_view_response(path, path.name)
+    assert response.media_type == "text/plain"
 
 
 def test_pdf_response_requires_pdf_signature(tmp_path: Path) -> None:
@@ -87,3 +111,27 @@ def test_missing_document_is_404(tmp_path: Path) -> None:
     with pytest.raises(HTTPException) as exc:
         document_view_response(tmp_path / "missing.txt", "missing.txt")
     assert exc.value.status_code == 404
+
+
+def test_symlink_outside_allowed_root_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "docs"
+    root.mkdir()
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = root / "abcdefgh_secret.txt"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are unavailable on this platform")
+    with pytest.raises(HTTPException) as exc:
+        document_view_response(link, link.name, allowed_root=root)
+    assert exc.value.status_code == 404
+
+
+def test_text_content_disposition_is_encoded(tmp_path: Path) -> None:
+    path = tmp_path / "abcdefgh_notes.txt"
+    path.write_text("safe", encoding="utf-8")
+    response = document_view_response(path, path.name)
+    assert "filename*=" in response.headers["content-disposition"]
+    assert "\r" not in response.headers["content-disposition"]
+    assert "\n" not in response.headers["content-disposition"]
