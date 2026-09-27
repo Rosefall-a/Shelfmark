@@ -199,7 +199,7 @@ async function refreshMetadataFromEditor() {
 
   if (metadataFormDirty.value) {
     refreshMetadataError.value =
-      "Save or cancel your current metadata edits before repulling. This prevents the refresh from replacing unsaved changes."; 
+      "Save or cancel your current metadata edits before repulling. This prevents the refresh from replacing unsaved changes.";
     return;
   }
 
