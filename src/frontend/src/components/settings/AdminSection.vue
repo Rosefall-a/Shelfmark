@@ -10,10 +10,13 @@ import {
 import ToggleButton from "./ToggleButton.vue";
 import PasswordInput from "../PasswordInput.vue";
 import type { AdminUser } from "../../services/admin";
+import PasswordRequirements from "./PasswordRequirements.vue";
+import { fetchPasswordPolicy, passwordValidationErrors, type PasswordPolicy } from "../../services/passwordPolicy";
 
 const users = ref<AdminUser[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const passwordPolicy = ref<PasswordPolicy | null>(null);
 
 async function loadUsers() {
   loading.value = true;
@@ -26,7 +29,14 @@ async function loadUsers() {
     loading.value = false;
   }
 }
-onMounted(loadUsers);
+onMounted(async () => {
+  await Promise.all([
+    loadUsers(),
+    fetchPasswordPolicy().then((policy) => { passwordPolicy.value = policy; }).catch((err) => {
+      error.value = err instanceof Error ? err.message : "Failed to load password policy";
+    }),
+  ]);
+});
 
 const showCreateForm = ref(false);
 const newUsername = ref("");
@@ -38,7 +48,14 @@ const creating = ref(false);
 const createError = ref<string | null>(null);
 
 async function handleCreateUser() {
-  if (newPassword.value !== confirmPassword.value) {
+  const validationErrors = passwordPolicy.value
+    ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
+    : ["Password requirements could not be loaded."];
+  if (validationErrors.length) {
+    createError.value = validationErrors[0];
+    return;
+  }
+  if (!newPassword.value || newPassword.value !== confirmPassword.value) {
     createError.value = "The passwords do not match.";
     return;
   }
@@ -194,6 +211,15 @@ function openCreateForm() {
           ><span>Password</span
           ><PasswordInput
             v-model="newPassword"
+            mode="new"
+            autocomplete="new-password"
+            :required="true"
+          /></label>
+        <PasswordRequirements v-if="passwordPolicy" :password="newPassword" :policy="passwordPolicy" />
+        <label class="field"
+          ><span>Confirm password</span
+          ><PasswordInput
+            v-model="confirmPassword"
             mode="new"
             autocomplete="new-password"
             :required="true"
