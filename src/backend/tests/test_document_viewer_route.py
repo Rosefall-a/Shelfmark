@@ -1,9 +1,10 @@
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 from src.api.routes import games
 from src.helpers.document_viewer import document_view_response
@@ -61,3 +62,23 @@ def test_document_view_helper_rejects_missing_and_traversal(tmp_path: Path) -> N
     with pytest.raises(HTTPException) as traversal:
         document_view_response(tmp_path / "secret.txt", "../secret.txt")
     assert traversal.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_game_file_upload_accepts_singular_file_field(monkeypatch, tmp_path: Path) -> None:
+    game = SimpleNamespace(id="game-id", user_id="owner-id", folder_location="Library")
+    user = SimpleNamespace(id="owner-id")
+    monkeypatch.setattr(games, "_get_game_or_404", AsyncMock(return_value=game))
+    monkeypatch.setattr(games, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(
+        games, "save_media_bytes", lambda data, dest_dir, filename: dest_dir / filename
+    )
+
+    db = AsyncMock()
+    upload = UploadFile(file=BytesIO(b"manual"), filename="manual.txt")
+    result = await games.upload_game_files(
+        "game-id", "doc", file=upload, db=db, current_user=user
+    )
+
+    assert result["results"] == [{"filename": "manual.txt", "status": "saved", "size": 6}]
+    db.commit.assert_awaited_once()
