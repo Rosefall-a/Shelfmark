@@ -12,12 +12,12 @@ export type DocumentViewErrorKind =
   | "network";
 
 export class DocumentViewError extends Error {
-  constructor(
-    public readonly kind: DocumentViewErrorKind,
-    message: string,
-  ) {
+  readonly kind: DocumentViewErrorKind;
+
+  constructor(kind: DocumentViewErrorKind, message: string) {
     super(message);
     this.name = "DocumentViewError";
+    this.kind = kind;
   }
 }
 
