@@ -114,7 +114,7 @@ assert_status_field() {
   local field="$2"
   local expected="$3"
   local value
-  value="$(printf '%s' "$status" | sed -n "s/.*\"$field\":\"\\([^\"]*\\)\\".*/\\1/p")"
+  value="$(printf '%s' "$status" | sed -n 's/.*"'"'"'$field'"'"'":"\\([^"]*\\)".*/\\1/p')"
   if [[ "$value" != "$expected" ]]; then
     echo "Expected $field=$expected, got $value from: $status" >&2
     return 1
