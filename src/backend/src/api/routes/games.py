@@ -528,7 +528,8 @@ def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
 @router.post("/{game_id}/screenshots")
 async def upload_game_screenshots(
     game_id: UUID,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     profile_id: UUID | None = _NONE_FORM,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
@@ -549,7 +550,7 @@ async def upload_game_screenshots(
         await _get_profile_or_404(profile_id, game_id, db)
 
     results: list[dict] = []
-    for file in files:
+    for file in upload_files:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
@@ -803,6 +804,12 @@ async def upload_game_files(
     if not game.folder_location:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Game folder_location is missing."
+        )
+
+    upload_files = files or ([file] if file is not None else [])
+    if not upload_files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="At least one file is required."
         )
 
     # a modpack zip is routinely hundreds of MB to a few GB — far past a
