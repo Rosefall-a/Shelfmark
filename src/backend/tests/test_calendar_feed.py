@@ -164,8 +164,8 @@ def test_build_ics_contains_valid_core_properties_for_release_episode_and_manual
 
 def test_ics_fixture_has_well_formed_vcalendar_and_vevent_boundaries():
     ics = _build_ics(_entries())
-    assert "\\r\\n" in ics
-    assert "\\n" not in ics.replace("\\r\\n", "")
+    assert "\r\n" in ics
+    assert "\n" not in ics.replace("\r\n", "")
     assert ics.count("BEGIN:VCALENDAR\r\n") == 1
     assert ics.count("END:VCALENDAR\r\n") == 1
     assert ics.count("BEGIN:VEVENT\r\n") == 3
