@@ -10,11 +10,7 @@ STATUS_FILE="$STATUS_DIR/status.json"
 DETAILS_FILE="$STATUS_DIR/details.txt"
 BACKEND_LOG="$STATUS_DIR/backend.log"
 NGINX_PID="/run/nginx.pid"
-
-log "Initialising status directory"
-mkdir -p "$STATUS_DIR"
-: > "$DETAILS_FILE"
-: > "$BACKEND_LOG"
+BACKEND_PID=""
 
 write_status() {
   phase="$1"; overall="$2"; database="$3"; migrations="$4"; backend="$5"; frontend="$6"; message="$7"
@@ -36,44 +32,41 @@ fail_startup() {
 cleanup() {
   log "Cleanup triggered"
   set +e
-  if [ -n "${BACKEND_PID:-}" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+  if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
     log "Stopping backend PID $BACKEND_PID"
-    kill "$BACKEND_PID" 2>/dev/null
+    kill -TERM "$BACKEND_PID" 2>/dev/null
+    wait "$BACKEND_PID" 2>/dev/null || true
   fi
   if [ -f "$NGINX_PID" ]; then
     log "Stopping Nginx"
-    nginx -s quit 2>/dev/null
+    nginx -s quit 2>/dev/null || true
   fi
 }
-trap cleanup INT TERM EXIT
 
-log "Initializing Nginx with startup configuration"
+shutdown() {
+  log "Shutdown signal received"
+  exit 0
+}
+
+trap shutdown INT TERM
+trap cleanup EXIT
+
+log "Initialising status directory"
+mkdir -p "$STATUS_DIR"
+: > "$DETAILS_FILE"
+: > "$BACKEND_LOG"
+chmod 0644 "$STATUS_FILE" "$DETAILS_FILE" "$BACKEND_LOG" 2>/dev/null || true
+
+log "Initialising Nginx with startup configuration"
 write_status "INITIALIZING" "starting" "waiting" "waiting" "unknown" "unknown" "Starting production services."
 
-# 1. Overwrite the default config file with your startup rules
 cp /etc/nginx/startup.conf /etc/nginx/nginx.conf
-
-# 2. Start Nginx using the standard default path (no -c flag)
+if ! nginx -t; then
+  fail_startup "FRONTEND_FAILED" "The startup Nginx configuration failed validation." "unknown" "unknown" "unknown" "failed"
+fi
 nginx
 
-
 log "Resolving application configuration"
-#write_status "CONFIGURING" "starting" "unknown" "unknown" "unknown" "unknown" "Resolving environment and persistent configuration."
-#CONFIG_REPORT="$(python - <<'PY'
-#from src.core.env_handler import EnvConfigHandler
-
-#handler = EnvConfigHandler()
-#summary = handler.startup_summary()
-#for issue in summary["issues"]:
-#    print(f"{issue['severity'].upper()}: {issue['message']}")
-#if not summary["ready"]:
-#    raise SystemExit(1)
-#PY
-#)" || fail_startup "CONFIGURATION_FAILED" "Application configuration contains an unrecoverable error. See startup details for the exact fields." "unknown" "unknown" "unknown" "unknown"
-#if [ -n "$CONFIG_REPORT" ]; then
-#  printf "%s\n" "$CONFIG_REPORT" >> "$DETAILS_FILE"
-#fi
-
 if [ -n "${POSTGRES_USER:-}" ] || [ -n "${POSTGRES_PASSWORD:-}" ] || [ -n "${POSTGRES_DB:-}" ]; then
   if [ -z "${POSTGRES_USER:-}" ] || [ -z "${POSTGRES_PASSWORD:-}" ] || [ -z "${POSTGRES_DB:-}" ]; then
     fail_startup "CONFIGURATION_FAILED" "POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB must be supplied together." "unknown" "unknown" "unknown" "unknown"
@@ -128,7 +121,7 @@ write_status "DATABASE_READY" "starting" "ready" "ready" "unknown" "unknown" "Da
 log "Starting backend (FastAPI)"
 write_status "STARTING_BACKEND" "starting" "ready" "ready" "starting" "unknown" "Starting FastAPI."
 
-uvicorn src.main:app --host 127.0.0.1 --port 8000 >"$BACKEND_LOG" 2>&1 &
+uvicorn src.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1 >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID="$!"
 log "Backend PID is $BACKEND_PID"
 
@@ -151,17 +144,22 @@ done
 log "Backend healthy"
 write_status "STARTING_FRONTEND" "starting" "ready" "ready" "ready" "starting" "Activating the production frontend."
 
+log "Rendering production Nginx configuration"
+render_output="$({ /usr/local/bin/render-production-nginx /etc/nginx/ready.conf; } 2>&1)" || {
+  printf '%s\n' "$render_output" >> "$DETAILS_FILE"
+  fail_startup "FRONTEND_FAILED" "Production Nginx/TLS configuration is invalid. See startup details." "ready" "ready" "ready" "failed"
+}
+
 log "Testing ready.conf"
-if ! nginx -t -c /etc/nginx/ready.conf; then
+nginx_output="$(nginx -t -c /etc/nginx/ready.conf 2>&1)" || {
+  printf '%s\n' "$nginx_output" >> "$DETAILS_FILE"
   fail_startup "FRONTEND_FAILED" "The production Nginx configuration failed validation." "ready" "ready" "ready" "failed"
-fi
+}
 
 log "Overwriting active nginx.conf with ready.conf"
-# 2. Physically replace the main configuration file
 cp /etc/nginx/ready.conf /etc/nginx/nginx.conf
 
 log "Reloading Nginx to activate production frontend"
-# 3. Trigger a standard reload. Nginx reads the newly copied rules seamlessly.
 if ! nginx -s reload; then
   fail_startup "FRONTEND_FAILED" "Nginx could not activate the production frontend configuration." "ready" "ready" "ready" "failed"
 fi

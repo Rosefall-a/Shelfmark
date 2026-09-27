@@ -1,68 +1,76 @@
 # Startup and Troubleshooting
 
-The production container separates startup diagnostics from the normal application frontend. Configuration or backend failures can still be displayed through Nginx.
+The production container separates startup diagnostics from the normal application frontend. Nginx can continue serving the diagnostic layer when application startup fails.
 
-## Production startup sequence
+## Startup sequence
 
-The production image starts approximately in this order:
-
-1. Initialise startup status and diagnostic files.
-2. Start Nginx with the startup/failure configuration.
+1. Initialise status and diagnostic files.
+2. Start Nginx with the startup configuration.
 3. Validate database configuration.
 4. Wait for PostgreSQL.
 5. Run Alembic migrations.
-6. Start Uvicorn on the internal loopback address.
-7. Wait for the backend health endpoint.
-8. Validate resolved application configuration.
+6. Start Uvicorn on `127.0.0.1:8000`.
+7. Wait for `/health`.
+8. Render and validate the production Nginx configuration.
 9. Switch Nginx to the ready configuration and reload it.
-10. Verify the frontend.
-11. Continue monitoring the backend.
+10. Verify the compiled frontend.
+11. Monitor the backend process.
 
-The implementation is in \`src/docker-container/entrypoint.sh\`.
+## Health semantics
+
+The Docker healthcheck reads the file-backed startup status rather than treating the diagnostic Nginx page as readiness.
+
+`overall=starting` means the container is alive but the application is not ready. `overall=failed` means the operator should inspect the diagnostics. Only `overall=ready` is healthy.
+
+A backend crash after readiness changes the status to `BACKEND_CRASHED` and makes the healthcheck fail while keeping diagnostics available.
 
 ## Failure states
 
-Startup records explicit states including:
+Startup records:
 
-- \`CONFIGURATION_FAILED\`
-- \`DATABASE_FAILED\`
-- \`MIGRATION_FAILED\`
-- \`BACKEND_FAILED\`
-- \`BACKEND_TIMEOUT\`
-- \`FRONTEND_FAILED\`
-- \`BACKEND_CRASHED\`
+- `CONFIGURATION_FAILED`
+- `DATABASE_FAILED`
+- `MIGRATION_FAILED`
+- `BACKEND_FAILED`
+- `BACKEND_TIMEOUT`
+- `FRONTEND_FAILED`
+- `BACKEND_CRASHED`
 
-Nginx can remain available when startup fails so the diagnostic page can explain what happened.
+Inspect:
 
-## Diagnostic endpoints
-
-When startup diagnostics are available, inspect:
-
-\`\`\`text
+```text
 /_startup/status.json
 /_startup/details.txt
 /_startup/backend.log
-\`\`\`
+```
 
-These expose the current state, human-readable details and backend startup log.
+These are operational diagnostics, not durable log storage.
 
-## Configuration failures
+## TLS failures
 
-A \`CONFIGURATION_FAILED\` state means startup validation found an unrecoverable configuration problem. Check the startup details for the specific field or configuration group.
+TLS is enabled only when `NGINX_TLS_ENABLED=true`.
 
-Configuration values may come from environment variables, persisted configuration or registry defaults. See [Configuration](../setup/configuration.md).
+Check that:
 
-## Database and migration failures
+1. the certificate and private key are mounted at the configured paths;
+2. both files are readable by the Nginx master;
+3. the certificate chain is in the expected PEM order;
+4. the certificate and key match;
+5. port 443 is published by the deployment;
+6. `AUTH_COOKIE_SECURE=true` is set for an HTTPS public URL.
 
-If startup cannot connect to PostgreSQL, inspect the database connection settings and database container health.
+The renderer reports missing/unreadable files without printing private-key contents. Nginx validation catches malformed or mismatched certificate/key material.
 
-If migrations fail, startup reports \`MIGRATION_FAILED\` and the migration error is available through the diagnostics.
+If TLS configuration fails during startup, the diagnostic HTTP listener remains available because the HTTPS configuration is activated only during the ready handoff.
 
-## Backend failures
+## OIDC and proxy URLs
 
-If Uvicorn cannot start, never becomes healthy, or crashes after startup, inspect \`/_startup/backend.log\`. The status distinguishes startup failure, timeout and later crash.
+Nginx forwards `X-Forwarded-Proto` and Uvicorn trusts that header only from the local Nginx hop. This allows request-derived OIDC callback URLs to use `https` when clients connect through embedded TLS.
 
-## Frontend failures
+If another reverse proxy is placed in front of the container, ensure it preserves the external HTTPS scheme and that the deployment’s proxy trust boundary remains limited to the expected internal hop.
 
-The production image checks that the built frontend can be served before switching to the normal Nginx configuration. A frontend failure is reported as \`FRONTEND_FAILED\`.
+## Shutdown
 
+Docker stop sends SIGTERM to PID 1. PID 1 forwards shutdown to FastAPI, waits for it, and then asks Nginx to quit. If shutdown behavior is incorrect in a deployment, inspect the container logs for the entrypoint’s shutdown messages.
+
+End-to-end runtime shutdown and PostgreSQL/application smoke testing are tracked separately in #206.

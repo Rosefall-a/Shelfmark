@@ -4,6 +4,7 @@ services:
     restart: unless-stopped
     ports:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"
+      # Publish 443:443 when embedded TLS is enabled.
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-unnamed_tracking}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-unnamed_tracking}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
@@ -11,8 +12,14 @@ services:
       PRIMARY_USER_EMAIL: ${PRIMARY_USER_EMAIL:-admin@example.invalid}
       PRIMARY_USER_PASSWORD: ${PRIMARY_USER_PASSWORD:?Set PRIMARY_USER_PASSWORD in .env}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      NGINX_TLS_ENABLED: ${NGINX_TLS_ENABLED:-false}
+      NGINX_TLS_CERTIFICATE: ${NGINX_TLS_CERTIFICATE:-/etc/nginx/tls/tls.crt}
+      NGINX_TLS_PRIVATE_KEY: ${NGINX_TLS_PRIVATE_KEY:-/etc/nginx/tls/tls.key}
+      NGINX_TLS_REDIRECT_HTTP: ${NGINX_TLS_REDIRECT_HTTP:-false}
     volumes:
       - ./data:/data
+      # For TLS, mount externally managed certificates read-only:
+      # - ./tls:/etc/nginx/tls:ro
 
   db:
     image: postgres:18

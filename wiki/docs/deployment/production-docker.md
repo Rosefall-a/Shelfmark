@@ -1,90 +1,76 @@
 # Production Docker Image
 
-The production deployment is an additional packaging target under src/docker-container/. It does not replace the existing development frontend/backend images.
+The production deployment is an additional packaging target under `src/docker-container/`. It does not replace the existing development frontend/backend images.
 
-## Image
+## Architecture
 
-The Dockerfile is a multi-stage build: Node 22 builds the Vue frontend; a Python 3.12 runtime contains FastAPI and its dependencies; Nginx, the compiled frontend, startup assets, and the entrypoint are then added to the runtime image.
+The image is built in stages: Node 22 compiles the Vue frontend, while the runtime image contains Python 3.12, FastAPI, Nginx, the compiled frontend, and the independent startup/diagnostic layer.
 
-Node and the Vite development server are not required at runtime.
+The request path is:
 
-Published images use ghcr.io/rosefall-a/unnamed_tracking_app:<tag>. The workflow also publishes ghcr.io/rosefall-a/unnamed_tracking_app:sha-<commit-sha>.
+```text
+Client -> Nginx -> FastAPI
+             |
+             +-> compiled Vue frontend
+             +-> startup/diagnostic files
+```
 
-## Production Compose
+FastAPI listens on `127.0.0.1:8000`; it is not exposed directly by the container.
 
-Use src/docker-container/compose.yaml.
+## Startup and health semantics
 
-The application service maps host port 8080 to container port 80 by default, persists ./data to /data, requires SECRET_KEY and PRIMARY_USER_PASSWORD, and supplies PostgreSQL connection configuration. The default bootstrap username is admin and the default bootstrap email is admin@example.invalid.
+PID 1 starts the diagnostic Nginx configuration first, then waits for PostgreSQL, runs Alembic migrations, starts FastAPI, validates the production Nginx configuration, reloads Nginx, and verifies the frontend.
 
-PostgreSQL uses PostgreSQL 18 and a named pgdata volume.
+The status model distinguishes starting, database failure, migration failure, backend failure/timeout, frontend/Nginx failure, readiness, and post-start backend crash.
 
-UNNAMED_TRACKING_APP_VERSION selects the image tag and UNNAMED_TRACKING_APP_PORT selects the host port.
+The Docker healthcheck is healthy only when `/_startup/status.json` reports `overall=ready`. Therefore:
 
-### Required production values
+- Nginx alive + application starting = unhealthy
+- Nginx alive + database/migration/backend failure = unhealthy
+- application fully ready = healthy
+- backend crashes after readiness = unhealthy
 
-    POSTGRES_PASSWORD=change-this-database-password
-    SECRET_KEY=replace-with-a-stable-secret
-    PRIMARY_USER_PASSWORD=replace-with-the-initial-admin-password
-    AUTH_COOKIE_SECURE=false
+The diagnostic Nginx listener intentionally remains available during startup failures.
 
-For HTTPS access, use AUTH_COOKIE_SECURE=true.
+## Shutdown
 
-Keep SECRET_KEY stable for an existing installation. If it is omitted from the environment, preserve the persistent generated key under /data/config instead.
+PID 1 handles SIGTERM/SIGINT, sends SIGTERM to FastAPI, waits for it, then asks Nginx to quit. This is intended to give active requests a normal shutdown path without leaving orphaned child processes.
 
-## Startup lifecycle
+## Permissions and filesystem
 
-The entrypoint starts Nginx before the application stack is ready.
+Nginx workers run as `www-data`; the master retains the privileges required to bind ports 80/443 and control the process. Runtime status/log files are under `/run/unnamed-tracking`.
 
-1. Initialize status and diagnostic files.
-2. Start Nginx with the startup configuration.
-3. Validate database configuration.
-4. Wait for PostgreSQL with bounded retries.
-5. Run alembic upgrade heads with bounded retries.
-6. Start Uvicorn on 127.0.0.1:8000.
-7. Wait for /health.
-8. Validate the ready Nginx configuration.
-9. Replace the active configuration and reload Nginx.
-10. Verify that the compiled frontend is served.
-11. Monitor the backend process.
+The Compose example persists `./data:/data` and PostgreSQL state in a named volume. Runtime diagnostics are ephemeral. Use Docker logging or an external collector when durable logs are required.
 
-If startup fails, the entrypoint deliberately keeps Nginx alive so the diagnostic page remains available.
+## Nginx security
 
-## Startup diagnostics
+The production edge disables version disclosure, keeps bounded proxy timeouts, forwards the original request protocol, and emits `X-Content-Type-Options`, `Referrer-Policy`, and `X-Frame-Options`. HSTS is emitted only on HTTPS.
 
-The startup page is static HTML/CSS/JavaScript served directly by Nginx. It does not depend on Vue, FastAPI, or PostgreSQL.
+## Optional embedded TLS
 
-It displays the lifecycle phase, database status, migration status, backend status, frontend status, the current message, and expandable startup details.
+HTTP-only remains the default. TLS is deployment-only and certificate generation is intentionally out of scope.
 
-Diagnostic endpoints are /_startup/status.json, /_startup/details.txt, and /_startup/backend.log.
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NGINX_TLS_ENABLED` | `false` | Enable the embedded HTTPS listener. |
+| `NGINX_TLS_CERTIFICATE` | `/etc/nginx/tls/tls.crt` | Mounted PEM certificate/chain. |
+| `NGINX_TLS_PRIVATE_KEY` | `/etc/nginx/tls/tls.key` | Mounted PEM private key. |
+| `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS after readiness. |
 
-The startup JavaScript polls asynchronously and slows down after READY. When a failure is reported, the loading animation stops and the diagnostic details open.
+When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image.
 
-## Failure states
+`AUTH_COOKIE_SECURE=true` should be used when the public application URL is HTTPS. Nginx sends `X-Forwarded-Proto` and Uvicorn accepts that header only from the local proxy, preserving HTTPS for request-derived OIDC callback URLs.
 
-The current status model distinguishes CONFIGURATION_FAILED, DATABASE_FAILED, MIGRATION_FAILED, BACKEND_FAILED, BACKEND_TIMEOUT, FRONTEND_FAILED, and BACKEND_CRASHED.
+If TLS is enabled but the certificate/key is missing, unreadable, malformed, or mismatched, Nginx validation fails and startup reports a frontend/configuration failure. Because the startup configuration remains HTTP-only until the production handoff, the diagnostic page remains reachable during this failure.
 
-The diagnostic files remain available while Nginx is held in the failure state.
+## Logs and operations
 
-## Nginx hand-off
+Startup details and backend startup output are stored under the ephemeral runtime status directory. Nginx logs remain container-local unless exported by the runtime. Operators should use the container logging driver or a centralized collector for durable retention and rotation.
 
-Before readiness, Nginx serves the startup page.
+Persist application and PostgreSQL data independently from logs. Backups should be tested against the actual deployment’s persistent volumes.
 
-After the backend is healthy, the entrypoint validates ready.conf, copies it over the active nginx.conf, and runs nginx -s reload.
+For small deployments, start around 2 CPU cores and 2 GiB RAM and size upward based on observed application and PostgreSQL workload.
 
-The ready configuration proxies /api/ to FastAPI on 127.0.0.1:8000, serves the compiled Vue SPA from /srv/frontend, and retains the startup diagnostic endpoints.
+## CI scope
 
-## Persistence
-
-The production Compose deployment persists application data through ./data:/data and PostgreSQL data through the named pgdata volume.
-
-Do not remove these storage locations when recreating the production container.
-
-## CI and publishing
-
-.github/workflows/docker-container.yml builds the production image on pull requests and pushes images for non-pull-request events. For non-PR events it pushes both a ref-derived tag and a sha-<commit> tag to GHCR.
-
-The current workflow does not perform a full PostgreSQL/application runtime smoke test after building the image. Its failure diagnostics are Docker log commands if a workflow step fails.
-
-## TLS
-
-TLS, certificate generation, ACME/Let's Encrypt, and certificate management are outside the production image. Use an external HTTPS reverse proxy when TLS is required.
+The production-container workflow builds the image and validates Nginx/TLS configuration with deterministic self-signed test material. It does not run the full PostgreSQL/application runtime smoke suite; that remains #206 so normal image CI is not coupled to an environment-dependent integration stack.
