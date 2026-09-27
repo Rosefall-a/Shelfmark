@@ -39,7 +39,7 @@ from src.api.routes.deployment_settings import router as deployment_settings_rou
 from src.api.routes.setup import router as setup_router
 from src.api.routes.settings import get_or_create_app_integration_settings
 from src.api.routes.utils.misc import router as misc_router
-from src.core.auth import ensure_primary_user
+from src.core.auth import ensure_primary_user, set_password_policy_override
 from src.core.config import settings as app_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.database.session import SessionLocal
@@ -105,6 +105,14 @@ async def bootstrap_primary_user() -> None:
         ):
             await ensure_primary_user(db)
         app_integrations_row = await get_or_create_app_integration_settings(db)
+        if app_integrations_row.password_min_length is not None:
+            set_password_policy_override({
+                "min_length": app_integrations_row.password_min_length,
+                "require_uppercase": bool(app_integrations_row.password_require_uppercase),
+                "require_lowercase": bool(app_integrations_row.password_require_lowercase),
+                "require_digit": bool(app_integrations_row.password_require_digit),
+                "require_symbol": bool(app_integrations_row.password_require_symbol),
+            })
         apply_deployment_provider_credentials(app_integrations_row)
 
 
