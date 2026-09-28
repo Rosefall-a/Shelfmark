@@ -53,6 +53,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lists_default_sort: "custom",
   title_language: "english",
   stats_include_plan: true,
+  anilist_import_enabled: false,
+  anilist_import_username: "",
+  anilist_import_interval_minutes: 24 * 60,
+  anilist_import_update_existing: false,
+  anilist_import_last_run_at: null,
 };
 
 export async function fetchPreferences(): Promise<Preferences> {
