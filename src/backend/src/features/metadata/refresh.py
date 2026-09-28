@@ -14,20 +14,33 @@ miscalculation, never from a real episode disappearing."""
 from __future__ import annotations
 
 import asyncio
-import logging
-import time
+
 from datetime import date
+
+import logging
+
+import time
+
 from typing import Any
 
 from sqlalchemy import or_, select
 
 from src.core.app_integrations import get_or_create_app_integration_settings
+
 from src.core.crypto import decrypt_secret
+
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
+
 from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatus
+
 from src.database.session import SessionLocal
+
 from src.features.episode_progress import materialize_progress
+
 from src.features.metadata.anime.anilist import AniListClient, AniListError
+
+from src.features.metadata.anime.anizip import AniZipClient, AniZipError
+
 from src.features.metadata.anime.episode_sync import (
     backfill_from_tmdb,
     fetch_airing_status,
@@ -35,7 +48,7 @@ from src.features.metadata.anime.episode_sync import (
     needs_tmdb_backfill,
     pad_to_known_total,
 )
-from src.features.metadata.anime.anizip import AniZipClient, AniZipError
+
 from src.features.metadata.tv.episode_sync import (
     fetch_is_airing,
     fetch_next_episode,
