@@ -30,6 +30,7 @@ from src.database.models.game import Game
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.core.session_manager import create_session
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
@@ -374,14 +375,8 @@ async def setup_admin(
         await db.flush()
         await db.execute(update(Game).where(Game.user_id.is_(None)).values(user_id=user.id))
 
-        session_token = secrets.token_urlsafe(32)
-        db.add(
-            UserSession(
-                user_id=user.id,
-                token_hash=hash_token(session_token),
-                expires_at=int(time.time()) + SESSION_TTL_SECONDS,
-            )
-        )
+        session_context = await create_session(db, user, request)
+        session_token = session_context.token
         await db.commit()
         await db.refresh(user)
     except IntegrityError as exc:

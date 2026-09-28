@@ -31,6 +31,7 @@ The application accepts either the individual PostgreSQL variables or the legacy
 | `MAX_SAVE_ARCHIVE_SIZE_MB` | BOTH | `4096` | Game save archive limit in MB. |
 | `MAX_CLIP_SIZE_MB` | BOTH | `500` | Clip upload limit in MB. |
 | `MAX_WORLD_SAVE_SIZE_MB` | BOTH | `2000` | Game world-save limit in MB. |
+| `GEOIP_DATABASE_PATH` | ENV | `/data/GeoIP.mmdb` | Optional City MMDB used for approximate country/region/city/coordinate data. |\n| `GEOIP_COUNTRY_DATABASE_PATH` | ENV | `/data/GeoIP-Country.mmdb` | Optional Country MMDB used as a country fallback. |\n| `GEOIP_ASN_DATABASE_PATH` | ENV | `/data/GeoIP-ASN.mmdb` | Optional network-ownership MMDB used for autonomous-system number and organization. |
 
 ### Startup modes
 
@@ -149,3 +150,10 @@ The production Compose file builds `DATABASE_URL` from the PostgreSQL variables,
 Never commit real credentials to `example.env`, the wiki, or source control.
 
 For `SECRET_KEY`, omitting the variable is supported by the backend: a stable Fernet key is generated under `APP_DATA_DIR/config/fernet.key` with redundant copies and recovered on later starts. If you provide a deployment key, preserve it for the lifetime of the installation because existing encrypted values depend on it.
+
+
+## Session GeoIP database
+
+GEOIP_DATABASE_PATH points to the optional local MaxMind DB binary used by the session manager. The default is **/data/GeoIP.mmdb**, which is inside the production application's persistent **./data:/data** mount. The application does not require GeoIP for authentication.
+
+For the administrator upload flow, upload the extracted **.mmdb** binary itself. GeoLite2-City or a licensed GeoIP2-City database is appropriate for map data; Country and network-ownership databases can be added independently. Do not upload the ZIP archive, CSV files, or MaxMind credentials. See the [administrator session-management guide](../administration/session-management.md) for the complete upload and persistence procedure.

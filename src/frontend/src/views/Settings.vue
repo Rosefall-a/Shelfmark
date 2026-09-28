@@ -26,6 +26,8 @@ import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import SmtpSettingsSection from "../components/settings/SmtpSettingsSection.vue";
+import SessionSection from "../components/settings/SessionSection.vue";
+import AdminSessionSection from "../components/settings/AdminSessionSection.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -45,6 +47,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "api-keys", label: "API Keys" },
         { id: "calendar-notifications", label: "Calendar and Notifications" },
         { id: "notification-providers", label: "Notification Providers" },
+        { id: "sessions", label: "Sessions" },
       ],
     },
     {
@@ -75,6 +78,7 @@ const groups = computed<SettingsGroup[]>(() => {
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
     ...(currentUser.value?.is_admin ? [{ id: "smtp", label: "SMTP / Email" }] : []),
+    ...(currentUser.value?.is_admin ? [{ id: "admin-sessions", label: "Session Manager" }] : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
       ? [{ id: "tasks", label: "Tasks", comingSoon: true }]
@@ -171,6 +175,10 @@ watch(activeSection, async () => {
           />
           <SmtpSettingsSection
             v-else-if="activeSection === 'smtp' && currentUser?.is_admin"
+          />
+          <SessionSection v-else-if="activeSection === 'sessions'" />
+          <AdminSessionSection
+            v-else-if="activeSection === 'admin-sessions' && currentUser?.is_admin"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
           <template v-else-if="activeSection === 'export'">

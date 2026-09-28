@@ -114,6 +114,7 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
         "SMTP / email",
         "Optional SMTP configuration. Selecting this section enables email notifications once its provider credentials are saved.",
         50,
+        default=False,
     ),
 )
 
@@ -437,6 +438,30 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         default="",
         description="Optional profile: development, testing, or empty/default.",
         visible=False,
+    ),
+    ConfigSpec(
+        "GEOIP_DATABASE_PATH",
+        "general",
+        ConfigSource.ENV,
+        label="GeoIP database path",
+        default="/data/GeoIP.mmdb",
+        description="Optional local MaxMind-compatible GeoIP database; authentication does not require this file.",
+    ),
+    ConfigSpec(
+        "GEOIP_COUNTRY_DATABASE_PATH",
+        "general",
+        ConfigSource.ENV,
+        label="GeoIP country database path",
+        default="/data/GeoIP-Country.mmdb",
+        description="Optional MaxMind-compatible Country database used when the City database has no country record.",
+    ),
+    ConfigSpec(
+        "GEOIP_ASN_DATABASE_PATH",
+        "general",
+        ConfigSource.ENV,
+        label="GeoIP network database path",
+        default="/data/GeoIP-ASN.mmdb",
+        description="Optional MaxMind-compatible network ownership database used to show network number and organization.",
     ),
     ConfigSpec(
         "SMTP_ENABLED",
