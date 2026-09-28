@@ -10,14 +10,14 @@ from fastapi import Request
 from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.core.geoip import geoip
-from src.database.models.notification_delivery import NotificationDelivery
-from src.features.notification_providers.registry import PROVIDER_IDS
 
 from src.core.auth import SESSION_TTL_SECONDS, hash_token
+from src.core.geoip import geoip
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
+from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.user import User
+from src.features.notification_providers.registry import PROVIDER_IDS
 
 
 @dataclass(frozen=True)
