@@ -12,7 +12,7 @@ class ControlCommandTests(unittest.TestCase):
             ["up", "-d", "--wait", "--wait-timeout", "120", "--build", "--pull", "always"],
         )
         self.assertIn("--env-file", args)
-        self.assertIn("uta-debug-dev", args)
+        self.assertIn("dev", args)
 
     def test_image_mode_uses_tag_without_building(self):
         instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "tag", "tag": "v1"}
@@ -47,7 +47,7 @@ class ControlCommandTests(unittest.TestCase):
     def test_reset_is_scoped_and_removes_volumes(self):
         args = control.compose_args(control.DEFAULT_INSTANCES[0], "reset")
         self.assertEqual(args[-3:], ["down", "--volumes", "--remove-orphans"])
-        self.assertIn("uta-debug-dev", args)
+        self.assertIn("dev", args)
 
     def test_invalid_action_is_rejected(self):
         with self.assertRaises(ValueError):
