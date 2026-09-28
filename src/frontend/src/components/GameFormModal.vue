@@ -4,6 +4,7 @@ import {
   attachGameAssetFromUrl,
   createGame,
   fetchGames,
+  rankMetadataResults,
   searchGameMetadata,
   updateGame,
   uploadGameAsset,
@@ -17,6 +18,9 @@ import type {
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
 import { currentUser } from "../state/auth";
+import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
+import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
+import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
 
 const props = defineProps<{
   game?: Game | null;
@@ -27,6 +31,8 @@ const props = defineProps<{
 // GameDetail, CollectionDetail, HomeHub), so it works consistently
 // regardless of caller
 const availableParentGames = ref<Game[]>([]);
+// the ISO 4217 codes the API accepts (#11), so a typo can't fail the save
+const currencyCodes = ref<string[]>([]);
 onMounted(async () => {
   try {
     availableParentGames.value = (await fetchGames()).filter(
@@ -35,7 +41,43 @@ onMounted(async () => {
   } catch {
     // parent picker just stays empty, not worth failing the whole form
   }
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  try {
+    const response = await fetch("/api/currency-codes", {
+      credentials: "include",
+    });
+    if (response.ok) {
+      const body: { codes?: string[] } = await response.json();
+      currencyCodes.value = body.codes ?? [];
+    }
+  } catch {
+    // falls back to the free-text currency field
+  }
 });
+
+// suggestions only: any other system can still be typed in
+const PLATFORM_SUGGESTIONS = [
+  "PC",
+  "PlayStation 5",
+  "PlayStation 4",
+  "PlayStation 3",
+  "PS Vita",
+  "Xbox Series X|S",
+  "Xbox One",
+  "Xbox 360",
+  "Nintendo Switch",
+  "Nintendo Switch 2",
+  "Wii U",
+  "Wii",
+  "Nintendo 3DS",
+  "Nintendo DS",
+  "Steam Deck",
+  "Mac",
+  "Linux",
+  "Android",
+  "iOS",
+  ...RETRO_PLATFORM_OPTIONS,
+];
 
 const emit = defineEmits<{
   close: [];
@@ -66,7 +108,10 @@ const tabs = [
 const activeTab = ref<(typeof tabs)[number]>("General");
 
 const title = ref(props.game?.title ?? "");
-const sortTitle = ref("");
+// the saved custom sorting name, blank when the library sorts by the title
+const sortTitle = ref(props.game?.sortTitle ?? "");
+const platform = ref(props.game?.platform ?? "");
+const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
 const status = ref<GameStatus>(props.game?.status ?? "backlog");
 const developer = ref(props.game?.developer ?? "");
@@ -98,9 +143,11 @@ const achievementsProvider = ref<AchievementsProvider>(
   props.game?.achievementsProvider ?? null,
 );
 const releaseDate = ref(props.game?.releaseDate ?? "");
-const dateAdded = ref(
-  props.game?.dateAdded ?? new Date().toISOString().slice(0, 10),
-);
+// the local calendar day (what <input type="date"> shows), the stored value
+// is a full timestamp; only sent back if it was actually changed, so saving
+// the form doesn't reset the time a game was added to midnight
+const initialDateAdded = toLocalDateInput(props.game?.dateAdded ?? new Date());
+const dateAdded = ref(initialDateAdded);
 const description = ref(props.game?.description ?? "");
 const profilesEnabled = ref(props.game?.profilesEnabled ?? false);
 const osrsStatsEnabled = ref(props.game?.osrsStatsEnabled ?? false);
@@ -164,8 +211,9 @@ async function searchMetadata() {
   metadataMessage.value = null;
   providerWarnings.value = [];
   try {
-    const response = await searchGameMetadata(metadataQuery.value.trim());
-    metadataResults.value = response.results;
+    const query = metadataQuery.value.trim();
+    const response = await searchGameMetadata(query);
+    metadataResults.value = rankMetadataResults(response.results, query);
     steamgriddbConfigured.value = response.steamgriddb_configured;
     providerWarnings.value = response.provider_errors ?? [];
     if (!metadataResults.value.length)
@@ -264,8 +312,14 @@ async function submit() {
       : null,
     releaseDate: releaseDate.value || null,
     dateAdded: dateAdded.value || null,
+    createdAt:
+      dateAdded.value && dateAdded.value !== initialDateAdded
+        ? localDateInputToUnixSeconds(dateAdded.value)
+        : null,
     completionDate: completionDate.value || null,
     source: source.value.trim() || null,
+    platform: platform.value.trim() || null,
+    priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
     timeToBeatHours: timeToBeatHours.value.trim()
       ? Number(timeToBeatHours.value)
@@ -374,8 +428,10 @@ async function submit() {
               </div>
               <p v-if="!hasSteamgriddbKey" class="steamgriddb-hint">
                 Add your own SteamGridDB API key in
-                <router-link to="/settings" @click="emit('close')"
-                  >Settings</router-link
+                <router-link
+                  to="/settings?section=sources"
+                  @click="emit('close')"
+                  >Settings &rsaquo; Metadata/API</router-link
                 >
                 to also pull real cover and hero art automatically: without it,
                 only Steam's own (often lower-quality) images are used.
@@ -385,7 +441,7 @@ async function submit() {
                   v-model="metadataQuery"
                   type="search"
                   placeholder="Search by game title"
-                  @keyup.enter="searchMetadata"
+                  @keydown.enter.prevent="searchMetadata"
                 />
                 <button
                   type="button"
@@ -486,6 +542,42 @@ async function submit() {
                   type="text"
                   placeholder="Steam, GOG, physical..."
                 />
+              </label>
+            </div>
+
+            <div class="field-row">
+              <label class="field">
+                <span>Platform</span>
+                <input
+                  v-model="platform"
+                  type="text"
+                  list="game-platform-suggestions"
+                  placeholder="PC, PlayStation 5, Switch..."
+                />
+                <datalist id="game-platform-suggestions">
+                  <option
+                    v-for="option in PLATFORM_SUGGESTIONS"
+                    :key="option"
+                    :value="option"
+                  />
+                </datalist>
+              </label>
+              <label class="field">
+                <span>Priority</span>
+                <select v-model="priority">
+                  <option value="">None</option>
+                  <option
+                    v-for="option in PRIORITY_OPTIONS"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+                <small v-if="priority && isFinished(status)" class="field-hint"
+                  >Finished games are left out of priority sorting and the
+                  random picker.</small
+                >
               </label>
             </div>
 
@@ -665,15 +757,6 @@ async function submit() {
                 placeholder="Achievements, Cloud Saves"
               />
             </label>
-
-            <label class="field">
-              <span>Achievement Tracking</span>
-              <select v-model="achievementsProvider">
-                <option :value="null">None</option>
-                <option value="native">Native</option>
-                <option value="retroachievements">RetroAchievements</option>
-              </select>
-            </label>
           </div>
 
           <div v-else-if="activeTab === 'Media'" class="tab-panel">
@@ -807,7 +890,17 @@ async function submit() {
               </label>
               <label class="field">
                 <span>Currency</span>
+                <select v-if="currencyCodes.length" v-model="priceCurrency">
+                  <option
+                    v-for="code in currencyCodes"
+                    :key="code"
+                    :value="code"
+                  >
+                    {{ code }}
+                  </option>
+                </select>
                 <input
+                  v-else
                   v-model="priceCurrency"
                   type="text"
                   placeholder="USD"
@@ -1101,6 +1194,11 @@ async function submit() {
   color: #888;
   font-size: 0.8rem;
   margin: 0;
+}
+.field-hint {
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 .provider-warnings {
   list-style: none;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDisplayDate } from "../utils/dates";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -1179,7 +1180,7 @@ const lastUnlockedAt = computed(() => {
 });
 function formatStatsDate(iso: string | null): string {
   if (!iso) return "N/A";
-  return new Date(iso).toLocaleDateString(undefined, {
+  return formatDisplayDate(iso, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -2454,7 +2455,7 @@ function formatPlaytime(minutes: number) {
         <div v-if="game.releaseDate" class="detail-row">
           <span class="detail-label">Release Date</span>
           <span class="detail-value">{{
-            new Date(game.releaseDate).toLocaleDateString()
+            formatDisplayDate(game.releaseDate)
           }}</span>
         </div>
         <div class="detail-row">
@@ -2578,7 +2579,7 @@ function formatPlaytime(minutes: number) {
             }}</span>
             <span v-if="game.ownership.purchaseDate">
               Purchased
-              {{ new Date(game.ownership.purchaseDate).toLocaleDateString() }}
+              {{ formatDisplayDate(game.ownership.purchaseDate) }}
             </span>
             <span v-if="game.ownership.price !== null">
               {{ game.ownership.priceCurrency ?? "USD" }}
@@ -2800,7 +2801,13 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
+              {{
+                noteSaving
+                  ? "Saving…"
+                  : editingNoteName
+                    ? "Save changes"
+                    : "Create note"
+              }}
             </button>
           </div>
         </div>

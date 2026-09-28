@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDisplayDate } from "../utils/dates";
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
@@ -1890,9 +1891,7 @@ watch(viewMode, (mode) => {
             </span>
             <span class="list-release">
               {{
-                game.releaseDate
-                  ? new Date(game.releaseDate).toLocaleDateString()
-                  : "N/A"
+                game.releaseDate ? formatDisplayDate(game.releaseDate) : "N/A"
               }}
             </span>
             <div class="list-actions">
