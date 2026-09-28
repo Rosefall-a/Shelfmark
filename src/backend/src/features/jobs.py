@@ -11,8 +11,6 @@ the loop, goes through the same code and records the same last-run details.
 
 Adding a job is one entry here plus whatever it does; the Tasks screen lists
 whatever is registered."""
-"""Cleanup jobs and lightweight per-user scheduled imports."""
-
 from __future__ import annotations
 
 import asyncio
@@ -21,6 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.job_setting import JobSetting
@@ -108,7 +107,11 @@ def is_due(enabled: bool, last_run_at: int | None, interval_minutes: int, now: i
 async def get_setting(db: AsyncSession, spec: JobSpec) -> JobSetting:
     row = await db.get(JobSetting, spec.id)
     if row is None:
-        row = JobSetting(job_id=spec.id, enabled=spec.default_enabled, interval_minutes=spec.default_interval_minutes)
+        row = JobSetting(
+            job_id=spec.id,
+            enabled=spec.default_enabled,
+            interval_minutes=spec.default_interval_minutes,
+        )
         db.add(row)
         await db.flush()
     return row
@@ -155,7 +158,9 @@ async def _run_due_anilist_imports(now: int) -> None:
             continue
         try:
             async with SessionLocal() as db:
-                result = await import_anilist_library(db, user.id, username, bool(data.get("anilist_import_update_existing")))
+                result = await import_anilist_library(
+            db, user.id, username, bool(data.get("anilist_import_update_existing"))
+        )
                 pref = await db.get(UserPreferences, pref_row.id)
                 if pref is not None:
                     pref.data = {**pref.data, "anilist_import_last_run_at": now}
@@ -175,7 +180,9 @@ async def run_jobs_loop() -> None:
                 due = []
                 for spec in JOBS.values():
                     row = await get_setting(db, spec)
-                    if not spec.is_running() and is_due(row.enabled, row.last_run_at, row.interval_minutes, now):
+                    if not spec.is_running() and is_due(
+                        row.enabled, row.last_run_at, row.interval_minutes, now
+                    ):
                         due.append(spec)
                 await db.commit()
             for spec in due:
