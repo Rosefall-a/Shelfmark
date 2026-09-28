@@ -4,23 +4,27 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_USER: ${DEBUG_POSTGRES_USER:-unnamed_tracking}
-      POSTGRES_PASSWORD: ${DEBUG_POSTGRES_PASSWORD:-debug-password}
-      POSTGRES_DB: ${DEBUG_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
     volumes:
       - devcontainer_dev_pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DEBUG_POSTGRES_USER:-unnamed_tracking} -d ${DEBUG_POSTGRES_DB:-unnamed_tracking}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}"]
       interval: 5s
       timeout: 5s
       retries: 20
 
   backend:
     build:
-      context: /workspace/src/backend
+      context: ../backend
       dockerfile: dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://${DEBUG_POSTGRES_USER:-unnamed_tracking}:${DEBUG_POSTGRES_PASSWORD:-debug-password}@db:5432/${DEBUG_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
       PYTHONUNBUFFERED: 1
       STARTUP_MODE: dev
     volumes:
@@ -31,7 +35,7 @@ services:
 
   frontend:
     build:
-      context: /workspace/src/frontend
+      context: ../frontend
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:${DEVCONTAINER_DEV_PORT:-5173}:80"
