@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageTitle } from "../state/pageTitle";
 import MyNote from "../components/MyNote.vue";
 import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -39,6 +40,7 @@ const router = useRouter();
 const movieId = computed(() => route.params.id as string);
 
 const movie = ref<Movie | null>(null);
+usePageTitle(() => movie.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const showEditModal = ref(false);

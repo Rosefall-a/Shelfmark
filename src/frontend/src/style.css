@@ -428,3 +428,10 @@ html.high-contrast :focus-visible {
   outline: 3px solid #ffb454 !important;
   outline-offset: 2px !important;
 }
+
+/* Edge draws its own password-reveal eye (and a clear button) inside
+   password fields, on top of the app's own show-password control. */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}

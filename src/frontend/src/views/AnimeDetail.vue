@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageTitle } from "../state/pageTitle";
 import MyNote from "../components/MyNote.vue";
 import { ref, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -50,6 +51,7 @@ const router = useRouter();
 const showId = computed(() => route.params.id as string);
 
 const show = ref<Anime | null>(null);
+usePageTitle(() => show.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const showEditModal = ref(false);

@@ -6,10 +6,19 @@ import ShortcutsHelp from "./components/ShortcutsHelp.vue";
 import CommandPalette from "./components/CommandPalette.vue";
 import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
+import { mediaUnread } from "./state/notifications";
+import { formatDocumentTitle, pageTitleOverride } from "./state/pageTitle";
 import { loadSharedPreferences } from "./state/preferences";
-import { watch } from "vue";
+import { watch, watchEffect } from "vue";
 
 const route = useRoute();
+// "(2) Hades | Archive": the page (or what it shows) and unread notifications
+watchEffect(() => {
+  document.title = formatDocumentTitle(
+    pageTitleOverride() ?? route.meta.title,
+    currentUser.value ? mediaUnread.value : 0,
+  );
+});
 // preferences are per user, so load them once someone is signed in
 watch(
   () => currentUser.value?.id,

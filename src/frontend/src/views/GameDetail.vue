@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageTitle } from "../state/pageTitle";
 import { formatDisplayDate } from "../utils/dates";
 import { activePriority, priorityLabel } from "../utils/priority";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
@@ -121,6 +122,7 @@ function goBackToLibrary() {
 }
 
 const game = ref<Game | null>(null);
+usePageTitle(() => game.value?.title);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const showEditModal = ref(false);
