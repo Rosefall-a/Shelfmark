@@ -17,6 +17,8 @@ The current providers are:
 - smtp: resolves the existing User.email address and uses deployment-wide SMTP configuration.
 - discord: resolves the encrypted per-user webhook destination.
 
+Per-user provider routing is stored in the existing UserPreferences JSON data; no provider-routing migration is required. The delivery worker checks the normal notification-kind preference, provider enablement, and provider routing immediately before delivery.
+
 Delivery state is stored in NotificationDelivery. Its unique notification/provider key prevents duplicate delivery records. The worker retries transient provider failures and records terminal failures without failing notification generation. Delivery is at-least-once: if the process dies after an external provider accepts a message but before the database records `sent`, a retry can produce a duplicate external notification. PostgreSQL row locking prevents two live workers from processing the same delivery row concurrently, but it cannot provide exactly-once semantics across an external network call and the database transaction.
 
 ## Adding a provider
