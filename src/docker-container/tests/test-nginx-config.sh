@@ -17,7 +17,7 @@ cp "$base" "$rendered"
 nginx -t -c "$rendered"
 
 rendered="$work/https.conf"
-NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" "$base" "$rendered"
+NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytls.conf "$rendered"
 grep -q 'listen 443 ssl;' "$rendered"
 grep -q "ssl_certificate $work/tls/cert.pem;" "$rendered"
 grep -q "ssl_certificate_key $work/tls/key.pem;" "$rendered"
