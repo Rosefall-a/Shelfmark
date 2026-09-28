@@ -174,9 +174,9 @@ def run_command(args: list[str], timeout: int = 120, environment: dict[str, str]
         return 127, f"Unable to execute {args[0]}: {exc}"
     except subprocess.TimeoutExpired as exc:
         output = (exc.stdout or "") + (exc.stderr or "")
-        return 124, f"Command timed out after {timeout}s.\\n{output}".strip()
+        return 124, f"Command timed out after {timeout}s.\n{output}".strip()
     output = (completed.stdout + completed.stderr).strip()
-    return completed.returncode, f"$ {shlex.join(args)}\\nexit code: {completed.returncode}\\n{output}".strip()[-16000:]
+    return completed.returncode, f"$ {shlex.join(args)}\nexit code: {completed.returncode}\n{output}".strip()[-16000:]
 
 
 def probe(url: str) -> dict[str, Any]:
