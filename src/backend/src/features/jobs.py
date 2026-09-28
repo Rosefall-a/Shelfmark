@@ -67,32 +67,32 @@ def _summarize_airing(r: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-_airing_running = False
+_AIRING_RUNNING = False
 
 
 def _airing_is_running() -> bool:
-    return _airing_running
+    return _AIRING_RUNNING
 
 
 def _start_airing(mode: str) -> dict[str, Any]:
     """Runs one airing check in the background. Scheduled runs only ask about
     shows that are due; "Run now" (mode "all") asks about every airing show."""
-    global _airing_running
-    if not _airing_running:
-        _airing_running = True
+    global _AIRING_RUNNING
+    if not _AIRING_RUNNING:
+        _AIRING_RUNNING = True
         asyncio.get_running_loop().create_task(_run_airing(force=mode == "all"))
     return {"running": True}
 
 
 async def _run_airing(force: bool) -> None:
-    global _airing_running
+    global _AIRING_RUNNING
     try:
         result = await check_airing_episodes(force=force)
         await record_run("airing_check", result)
     except Exception:
         logger.exception("The airing check failed")
     finally:
-        _airing_running = False
+        _AIRING_RUNNING = False
 
 
 JOBS: dict[str, JobSpec] = {

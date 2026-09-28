@@ -9,4 +9,3 @@ class Base(DeclarativeBase):
     in SQLAlchemy's metadata.
     """
 
-    pass

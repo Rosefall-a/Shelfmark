@@ -298,7 +298,7 @@ async def get_provider_credentials(
         saved_fields = {
             payload_field: getattr(current_user, column)
             for payload_field, column, _ in field_map
-            if payload_field in _SAFE_TO_DISPLAY_FIELDS and getattr(current_user, column)
+            if payload_field in safe_to_display_fields and getattr(current_user, column)
         }
         if saved_fields:
             result[provider]["fields"] = saved_fields
