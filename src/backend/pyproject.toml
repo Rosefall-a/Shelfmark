@@ -17,6 +17,7 @@ pythonpath = ["."]
 py-version = "3.12"
 source-roots = ["src"]
 ignore = ["__pycache__", "migrations"]
+ignored-classes = ["sqlalchemy.orm.Mapped"]
 
 [tool.pylint.messages_control]
 disable = [
