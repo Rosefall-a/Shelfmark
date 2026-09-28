@@ -62,12 +62,22 @@ function openCluster(cluster: Cluster) {
 
 function locationText(session: UserSession): string {
   if (session.location.network_label) return session.location.network_label;
-  return [session.location.city, session.location.region, session.location.country].filter(Boolean).join(", ") || "Location unavailable";
+  return (
+    [session.location.city, session.location.region, session.location.country]
+      .filter(Boolean)
+      .join(", ") || "Location unavailable"
+  );
 }
 
 function networkText(session: UserSession): string {
   if (session.location.network_number === null) return "";
-  return "Network " + session.location.network_number + (session.location.network_organization ? " · " + session.location.network_organization : "");
+  return (
+    "Network " +
+    session.location.network_number +
+    (session.location.network_organization
+      ? " · " + session.location.network_organization
+      : "")
+  );
 }
 
 function label(cluster: Cluster): string {
@@ -96,7 +106,9 @@ function label(cluster: Cluster): string {
           plotted.
         </p>
       </div>
-      <span>{{ points.length }} mapped session{{ points.length === 1 ? "" : "s" }}</span>
+      <span>
+        {{ points.length }} mapped session{{ points.length === 1 ? "" : "s" }}
+      </span>
     </header>
 
     <div class="map">
@@ -121,33 +133,41 @@ function label(cluster: Cluster): string {
         <path d="M408 279l12-8 11 9-2 16-12 5-11-9z" />
         <path d="M365 299l13-7 11 10-5 14-13 3-10-8z" />
       </svg>
-      <div
-        v-for="cluster in clusters"
-        :key="`${cluster.x}-${cluster.y}-${cluster.points.map((p) => p.session.id).join(',')}`"
-        class="pin"
-        :class="{ cluster: cluster.points.length > 1 }"
-        :style="{
+      <div v-for="cluster in clusters"
+        :key="`${cluster.x}-${cluster.y}-${cluster.points.map((p) => p.session.id).join(',')}`" class="pin"
+        :class="{ cluster: cluster.points.length > 1 }" :style="{
           left: `${cluster.x}%`,
           top: `${cluster.y}%`,
           background: admin && cluster.points.length === 1
             ? userColor(cluster.points[0].session.user_id)
             : undefined,
-        }"
-        :title="label(cluster)"
-        @click="openCluster(cluster)"
-      >
+        }" :title="label(cluster)" @click="openCluster(cluster)">
         {{ cluster.points.length > 1 ? cluster.points.length : "" }}
       </div>
     </div>
 
     <div v-if="admin && points.length" class="legend">
-      <span>Each colour represents a user; nearby sessions are clustered. Click a pin or bubble for details.</span>
+      <span>
+        Each colour represents a user; nearby sessions are clustered. Click a
+        pin or bubble for details.
+      </span>
     </div>
     <div v-if="selected" class="pin-details">
-      <header><strong>{{ selected.length }} session{{ selected.length === 1 ? "" : "s" }} at this location</strong><button type="button" @click="selected = null">Close</button></header>
+      <header>
+        <strong>
+          {{ selected.length }} session{{ selected.length === 1 ? "" : "s" }}
+          at this location
+        </strong>
+        <button type="button" @click="selected = null">Close</button>
+      </header>
       <article v-for="session in selected" :key="session.id">
-        <strong>{{ session.username || (session.is_current ? "Current session" : "Session") }}</strong>
-        <span>{{ locationText(session) }}</span><span>{{ session.ip_address || "IP unavailable" }}</span><span>{{ networkText(session) }}</span><span>{{ session.user_agent || "Device unavailable" }}</span>
+        <strong>
+          {{ session.username || (session.is_current ? "Current session" : "Session") }}
+        </strong>
+        <span>{{ locationText(session) }}</span>
+        <span>{{ session.ip_address || "IP unavailable" }}</span>
+        <span>{{ networkText(session) }}</span>
+        <span>{{ session.user_agent || "Device unavailable" }}</span>
       </article>
     </div>
     <p v-if="!points.length" class="empty">
@@ -164,15 +184,30 @@ function label(cluster: Cluster): string {
   padding: 16px;
   background: #111;
 }
+
 .map-card header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 12px;
 }
-.map-card h3 { margin: 0 0 4px; }
-.map-card p, .legend { color: #888; font-size: 12px; margin: 0; }
-.map-card header > span { color: #aaa; white-space: nowrap; }
+
+.map-card h3 {
+  margin: 0 0 4px;
+}
+
+.map-card p,
+.legend {
+  color: #888;
+  font-size: 12px;
+  margin: 0;
+}
+
+.map-card header>span {
+  color: #aaa;
+  white-space: nowrap;
+}
+
 .map {
   position: relative;
   aspect-ratio: 2 / 1;
@@ -180,14 +215,24 @@ function label(cluster: Cluster): string {
   border-radius: 10px;
   background: #08121c;
 }
+
 .continents {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
-.continents rect { fill: #081b2b; }
-.continents path { fill: #213a46; stroke: #31525d; stroke-width: 2; }
+
+.continents rect {
+  fill: #081b2b;
+}
+
+.continents path {
+  fill: #213a46;
+  stroke: #31525d;
+  stroke-width: 2;
+}
+
 .pin {
   position: absolute;
   width: 13px;
@@ -199,6 +244,7 @@ function label(cluster: Cluster): string {
   border: 2px solid white;
   box-shadow: 0 2px 8px #000a;
 }
+
 .pin::after {
   content: "";
   position: absolute;
@@ -206,6 +252,7 @@ function label(cluster: Cluster): string {
   border-radius: 50%;
   background: white;
 }
+
 .pin.cluster {
   width: 30px;
   height: 30px;
@@ -218,12 +265,50 @@ function label(cluster: Cluster): string {
   font-weight: 700;
   background: #475569;
 }
-.pin.cluster::after { display: none; }
-.legend { margin-top: 8px; }
-.empty { margin: 12px 0 0; color: #888; }
-.pin-details { margin-top:12px; border:1px solid #333; border-radius:9px; padding:10px; background:#161616; }
-.pin-details header { margin:0 0 8px; align-items:center; }
-.pin-details article { display:grid; gap:2px; padding:8px 0; border-top:1px solid #292929; font-size:12px; }
-.pin-details article span { color:#aaa; }
-.pin-details button { background:#252525; color:#ddd; border:0; border-radius:6px; padding:5px 8px; }
+
+.pin.cluster::after {
+  display: none;
+}
+
+.legend {
+  margin-top: 8px;
+}
+
+.empty {
+  margin: 12px 0 0;
+  color: #888;
+}
+
+.pin-details {
+  margin-top: 12px;
+  border: 1px solid #333;
+  border-radius: 9px;
+  padding: 10px;
+  background: #161616;
+}
+
+.pin-details header {
+  margin: 0 0 8px;
+  align-items: center;
+}
+
+.pin-details article {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid #292929;
+  font-size: 12px;
+}
+
+.pin-details article span {
+  color: #aaa;
+}
+
+.pin-details button {
+  background: #252525;
+  color: #ddd;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
 </style>

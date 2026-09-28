@@ -20,7 +20,9 @@ def test_geoip_missing_database_is_unavailable(tmp_path) -> None:
 
 def test_geoip_private_addresses_are_classified(tmp_path) -> None:
     provider = GeoIpProvider(str(tmp_path / "missing.mmdb"))
-    assert provider.lookup("192.168.1.20").network_label == "RFC 1918 private address (192.168.0.0/16)"
+    assert (
+        provider.lookup("192.168.1.20").network_label == "RFC 1918 private address (192.168.0.0/16)"
+    )
     assert provider.lookup("100.64.1.20").network_label == "CGNAT / RFC 6598 shared address"
     assert provider.lookup("127.0.0.1").network_label == "Loopback address"
     assert provider.lookup("::1").network_label == "Loopback address"
@@ -80,7 +82,9 @@ def test_geoip_country_and_network_databases_can_be_used_together(tmp_path) -> N
     provider._loaded_path = city
     provider._country_reader = Reader({"country": {"names": {"en": "Australia"}}})
     provider._loaded_country_path = country
-    provider._asn_reader = Reader({"autonomous_system_number": 13335, "autonomous_system_organization": "Cloudflare"})
+    provider._asn_reader = Reader(
+        {"autonomous_system_number": 13335, "autonomous_system_organization": "Cloudflare"}
+    )
     provider._loaded_asn_path = network
 
     location = provider.lookup("8.8.8.8")

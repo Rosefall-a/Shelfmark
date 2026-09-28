@@ -1,4 +1,5 @@
 """Authenticated APIs for user and administrator browser-session management."""
+
 from __future__ import annotations
 
 import time
@@ -55,9 +56,7 @@ def view(
     }
 
 
-async def revoke_session(
-    db: AsyncSession, session_id: UUID, user_id: UUID | None = None
-) -> bool:
+async def revoke_session(db: AsyncSession, session_id: UUID, user_id: UUID | None = None) -> bool:
     """Mark a session revoked, optionally requiring ownership by a user."""
     statement = update(UserSession).where(
         UserSession.id == session_id, UserSession.revoked_at.is_(None)
@@ -163,7 +162,9 @@ async def revoke_all_sessions(
     """Revoke every active browser session on the server."""
     del admin
     result = await db.execute(
-        update(UserSession).where(UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time()))
+        update(UserSession)
+        .where(UserSession.revoked_at.is_(None))
+        .values(revoked_at=int(time.time()))
     )
     await db.commit()
     return {"revoked": result.rowcount}
@@ -205,7 +206,10 @@ async def geoip_status(admin: User = Depends(get_current_admin)) -> dict[str, ob
     del admin
     return {
         "city": {"configured": geoip._get_reader() is not None, "path": str(geoip.path)},
-        "country": {"configured": geoip._get_country_reader() is not None, "path": str(geoip.country_path)},
+        "country": {
+            "configured": geoip._get_country_reader() is not None,
+            "path": str(geoip.country_path),
+        },
         "network": {"configured": geoip._get_asn_reader() is not None, "path": str(geoip.asn_path)},
     }
 

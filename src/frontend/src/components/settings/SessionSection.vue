@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
   fetchMySessions,
   revokeAllMySessions,
@@ -8,10 +9,15 @@ import {
 } from "../../services/sessions";
 import SessionMap from "./SessionMap.vue";
 
+const router = useRouter();
 const sessions = ref<UserSession[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const busy = ref<string | null>(null);\nconst hasMapData = () => sessions.value.some((s) => s.location.latitude !== null && s.location.longitude !== null);
+const busy = ref<string | null>(null);
+const hasMapData = () =>
+  sessions.value.some(
+    (s) => s.location.latitude !== null && s.location.longitude !== null,
+  );
 
 const fmt = (v: number) => new Date(v * 1000).toLocaleString();
 
@@ -58,7 +64,7 @@ async function revokeAll() {
   busy.value = "all";
   try {
     await revokeAllMySessions();
-    await load();
+    await router.replace("/login");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to revoke sessions";
   } finally {
@@ -92,16 +98,19 @@ onMounted(load);
       <article v-for="s in sessions" :key="s.id" class="session">
         <header>
           <strong>{{ s.is_current ? "Current session" : s.state }}</strong>
-          <button
-            v-if="s.state === 'active' && !s.is_current"
-            class="danger"
-            :disabled="busy !== null"
-            @click="revoke(s.id)"
-          >
+          <button v-if="s.state === 'active' && !s.is_current" class="danger" :disabled="busy !== null"
+            @click="revoke(s.id)">
             {{ busy === s.id ? "Revoking…" : "Revoke" }}
           </button>
         </header>
-        <p>{{ locationText(s) }} · {{ s.ip_address || "IP unavailable" }}</p>\n        <p v-if="s.location.network_number !== null">Network {{ s.location.network_number }}{{ s.location.network_organization ? " · " + s.location.network_organization : "" }}</p>
+        <p>{{ locationText(s) }} · {{ s.ip_address || "IP unavailable" }}</p>
+        <p v-if="s.location.network_number !== null">
+          Network {{ s.location.network_number }}{{
+            s.location.network_organization
+              ? " · " + s.location.network_organization
+              : ""
+          }}
+        </p>
         <p>{{ s.user_agent || "Device unavailable" }}</p>
         <small>
           Created {{ fmt(s.created_at) }} · Last activity
@@ -116,13 +125,52 @@ onMounted(load);
 </template>
 
 <style scoped>
-.section-header { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
-.list { display:grid; gap:12px; }
-.session { border:1px solid #2a2a2a; border-radius:10px; padding:14px; background:#141414; }
-.session header { display:flex; justify-content:space-between; }
-.session p { color:#bbb; font-size:13px; }
-.session small { color:#777; }
-.danger { border:0; background:#333; color:#fca5a5; padding:7px 10px; border-radius:6px; }
-.anomaly { color:#fca5a5 !important; }
-.form-error { color:#fca5a5; }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.session {
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 14px;
+  background: #141414;
+}
+
+.session header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.session p {
+  color: #bbb;
+  font-size: 13px;
+}
+
+.session small {
+  color: #777;
+}
+
+.danger {
+  border: 0;
+  background: #333;
+  color: #fca5a5;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.anomaly {
+  color: #fca5a5 !important;
+}
+
+.form-error {
+  color: #fca5a5;
+}
 </style>

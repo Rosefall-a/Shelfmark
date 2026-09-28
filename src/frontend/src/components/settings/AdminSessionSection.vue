@@ -45,7 +45,13 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    sessions.value = await fetchAdminSessions({ q: q.value, user_id: selectedUser.value || undefined, state: stateFilter.value, country: countryFilter.value, anomaly: anomalyFilter.value || undefined });
+    sessions.value = await fetchAdminSessions({
+      q: q.value,
+      user_id: selectedUser.value || undefined,
+      state: stateFilter.value,
+      country: countryFilter.value,
+      anomaly: anomalyFilter.value || undefined,
+    });
     geo.value = await fetchGeoIpStatus();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load sessions";
@@ -135,11 +141,7 @@ onMounted(load);
           {{ name }}
         </option>
       </select>
-      <button
-        class="danger"
-        :disabled="!selectedUser || busy !== null"
-        @click="revokeUser"
-      >
+      <button class="danger" :disabled="!selectedUser || busy !== null" @click="revokeUser">
         {{ busy === "user" ? "Revoking…" : "Revoke all for user" }}
       </button>
     </div>
@@ -147,13 +149,27 @@ onMounted(load);
     <div class="geo">
       <div>
         <strong>GeoIP databases</strong>
-        <p>City adds coordinates, Country adds country fallback data, and Network adds network number/owner data. Each file is optional and persisted under the application data directory.</p>
-        <small>City: {{ geo?.city.configured ? "configured" : "not configured" }} · Country: {{ geo?.country.configured ? "configured" : "not configured" }} · Network: {{ geo?.network.configured ? "configured" : "not configured" }}</small>
+        <p>
+          City adds coordinates, Country adds country fallback data, and Network
+          adds network number/owner data. Each file is optional and persisted
+          under the application data directory.
+        </p>
+        <small>
+          City: {{ geo?.city.configured ? "configured" : "not configured" }} ·
+          Country: {{ geo?.country.configured ? "configured" : "not configured" }} ·
+          Network: {{ geo?.network.configured ? "configured" : "not configured" }}
+        </small>
       </div>
       <div class="uploads">
         <label>City <input type="file" accept=".mmdb" @change="upload('city', $event)" /></label>
-        <label>Country <input type="file" accept=".mmdb" @change="upload('country', $event)" /></label>
-        <label>Network <input type="file" accept=".mmdb" @change="upload('network', $event)" /></label>
+        <label>
+          Country
+          <input type="file" accept=".mmdb" @change="upload('country', $event)" />
+        </label>
+        <label>
+          Network
+          <input type="file" accept=".mmdb" @change="upload('network', $event)" />
+        </label>
       </div>
     </div>
 
@@ -161,11 +177,20 @@ onMounted(load);
 
     <div class="toolbar">
       <input v-model="q" placeholder="Search user, IP, device or location" @keyup.enter="load" />
-      <select v-model="stateFilter" @change="load"><option :value="undefined">All states</option><option value="active">Active</option><option value="expired">Expired</option><option value="revoked">Revoked</option></select>
+      <select v-model="stateFilter" @change="load">
+        <option :value="undefined">All states</option>
+        <option value="active">Active</option>
+        <option value="expired">Expired</option>
+        <option value="revoked">Revoked</option>
+      </select>
       <input v-model="countryFilter" placeholder="Country" @keyup.enter="load" />
-      <label class="check"><input v-model="anomalyFilter" type="checkbox" @change="load" /> Anomalies</label>
+      <label class="check">
+        <input v-model="anomalyFilter" type="checkbox" @change="load" /> Anomalies
+      </label>
       <button @click="load">Apply</button>
-      <button type="button" @click="compact = !compact">{{ compact ? "Normal table" : "Compact table" }}</button>
+      <button type="button" @click="compact = !compact">
+        {{ compact ? "Normal table" : "Compact table" }}
+      </button>
     </div>
 
     <p v-if="loading">Loading…</p>
@@ -174,8 +199,17 @@ onMounted(load);
       <table>
         <thead>
           <tr>
-            <th>User</th><th>State</th><th>Location</th><th>IP</th><th>Device</th><th>Network</th>
-            <th>Created</th><th>Last activity</th><th>Expires</th><th>Anomaly</th><th />
+            <th>User</th>
+            <th>State</th>
+            <th>Location</th>
+            <th>IP</th>
+            <th>Device</th>
+            <th>Network</th>
+            <th>Created</th>
+            <th>Last activity</th>
+            <th>Expires</th>
+            <th>Anomaly</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -185,18 +219,20 @@ onMounted(load);
             <td>{{ locationText(s) }}</td>
             <td>{{ s.ip_address || "Unavailable" }}</td>
             <td>{{ s.user_agent || "Unavailable" }}</td>
-            <td>{{ s.location.network_number ?? "—" }} {{ s.location.network_organization ? "· " + s.location.network_organization : "" }}</td>
+            <td>
+              {{ s.location.network_number ?? "—" }}
+              {{
+                s.location.network_organization
+                  ? "· " + s.location.network_organization
+                  : ""
+              }}
+            </td>
             <td>{{ fmt(s.created_at) }}</td>
             <td>{{ fmt(s.last_seen_at) }}</td>
             <td>{{ fmt(s.expires_at) }}</td>
             <td>{{ s.anomaly.reason || "—" }}</td>
             <td>
-              <button
-                v-if="s.state === 'active'"
-                class="danger"
-                :disabled="busy !== null"
-                @click="revoke(s.id)"
-              >
+              <button v-if="s.state === 'active'" class="danger" :disabled="busy !== null" @click="revoke(s.id)">
                 {{ busy === s.id ? "Revoking…" : "Revoke" }}
               </button>
             </td>
@@ -208,21 +244,109 @@ onMounted(load);
 </template>
 
 <style scoped>
-.actions,.toolbar,.geo { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
-.actions select,.toolbar input { flex:1; background:#111; color:#fff; border:1px solid #333; padding:8px; border-radius:7px; }
-.geo { justify-content:space-between; align-items:flex-start; color:#999; border:1px solid #2a2a2a; border-radius:10px; padding:12px; }
-.geo p { max-width:720px; margin:6px 0 0; font-size:12px; }
-.table-wrap { overflow:auto; }
-table { width:100%; border-collapse:collapse; font-size:12px; table-layout:auto; }
-th,td { text-align:left; padding:8px; border-bottom:1px solid #252525; white-space:nowrap; }
-th { color:#777; }
-.table-wrap.compact table { font-size:10px; }
-.table-wrap.compact th,.table-wrap.compact td { padding:4px 5px; }
-.table-wrap.compact td { max-width:150px; overflow:hidden; text-overflow:ellipsis; }
-.uploads { display:flex; gap:8px; flex-wrap:wrap; }
-.uploads label { display:grid; gap:4px; font-size:12px; color:#aaa; }
-.check { white-space:nowrap; color:#aaa; }
-.danger { border:0; background:#333; color:#fca5a5; padding:7px 10px; border-radius:6px; }
-.form-error { color:#fca5a5; }
-code { color:#ddd; }
+.actions,
+.toolbar,
+.geo {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.actions select,
+.toolbar input {
+  flex: 1;
+  background: #111;
+  color: #fff;
+  border: 1px solid #333;
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.geo {
+  justify-content: space-between;
+  align-items: flex-start;
+  color: #999;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.geo p {
+  max-width: 720px;
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  table-layout: auto;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #252525;
+  white-space: nowrap;
+}
+
+th {
+  color: #777;
+}
+
+.table-wrap.compact table {
+  font-size: 10px;
+}
+
+.table-wrap.compact th,
+.table-wrap.compact td {
+  padding: 4px 5px;
+}
+
+.table-wrap.compact td {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uploads {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.uploads label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.check {
+  white-space: nowrap;
+  color: #aaa;
+}
+
+.danger {
+  border: 0;
+  background: #333;
+  color: #fca5a5;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.form-error {
+  color: #fca5a5;
+}
+
+code {
+  color: #ddd;
+}
 </style>

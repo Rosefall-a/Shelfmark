@@ -1,4 +1,5 @@
 """Optional local GeoIP lookup support for session metadata."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -34,7 +35,9 @@ class GeoLocation:
 class GeoIpProvider:
     """Read a local MaxMind-compatible database without network access."""
 
-    def __init__(self, path: str | None = None, country_path: str | None = None, asn_path: str | None = None) -> None:
+    def __init__(
+        self, path: str | None = None, country_path: str | None = None, asn_path: str | None = None
+    ) -> None:
         self.path = Path(path or settings.GEOIP_DATABASE_PATH)
         self.country_path = Path(country_path or settings.GEOIP_COUNTRY_DATABASE_PATH)
         self.asn_path = Path(asn_path or settings.GEOIP_ASN_DATABASE_PATH)
@@ -51,6 +54,7 @@ class GeoIpProvider:
             return None
         try:
             import maxminddb
+
             return maxminddb.open_database(str(path))
         except Exception:
             logger.warning("GeoIP database is unavailable or invalid: %s", path, exc_info=True)
@@ -92,7 +96,9 @@ class GeoIpProvider:
         return names.get("en") if isinstance(names, dict) else None
 
     @staticmethod
-    def _classify_special_network(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[str, str] | None:
+    def _classify_special_network(
+        address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    ) -> tuple[str, str] | None:
         if address.is_loopback:
             return ("loopback", "Loopback address")
         if address.version == 4:
@@ -154,7 +160,15 @@ class GeoIpProvider:
                     network_number = raw_number if isinstance(raw_number, int) else None
                     raw_org = value.get("autonomous_system_organization")
                     network_organization = raw_org if isinstance(raw_org, str) else None
-            return GeoLocation(country, region, city, latitude, longitude, network_number=network_number, network_organization=network_organization)
+            return GeoLocation(
+                country,
+                region,
+                city,
+                latitude,
+                longitude,
+                network_number=network_number,
+                network_organization=network_organization,
+            )
         except Exception:
             logger.warning("GeoIP lookup failed", exc_info=True)
             return GeoLocation()

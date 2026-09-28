@@ -26,7 +26,10 @@ export interface UserSession {
   anomaly: { reason: string | null; previous_location: string | null };
 }
 
-async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const response = await fetch(path, { ...options, credentials: "include" });
   if (!response.ok) {
     throw new Error((await response.text()) || "Request failed: " + response.status);
@@ -50,13 +53,17 @@ export interface AdminSessionFilters {
   anomaly?: boolean;
 }
 
-export const fetchAdminSessions = (filters: AdminSessionFilters = {}) => {
+export const fetchAdminSessions = (
+  filters: AdminSessionFilters = {},
+) => {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") params.set(key, String(value));
   }
   const suffix = params.toString() ? "?" + params.toString() : "";
-  return requestJson<UserSession[]>("/api/sessions/admin" + suffix);
+  return requestJson<UserSession[]>(
+    "/api/sessions/admin" + suffix,
+  );
 };
 export const revokeAdminSession = (id: string) =>
   requestJson<{ status: string }>("/api/sessions/admin/" + encodeURIComponent(id), {
@@ -79,11 +86,17 @@ export interface GeoIpStatus {
 }
 export const fetchGeoIpStatus = () =>
   requestJson<GeoIpStatus>("/api/sessions/admin/geoip/status");
-export async function uploadGeoIp(file: File, kind: "city" | "country" | "network" = "city") {
+export async function uploadGeoIp(
+  file: File,
+  kind: "city" | "country" | "network" = "city",
+) {
   const body = new FormData();
   body.append("file", file);
-  return requestJson<{ configured: boolean; kind: string; path: string }>("/api/sessions/admin/geoip?kind=" + kind, {
-    method: "POST",
-    body,
-  });
+  return requestJson<{ configured: boolean; kind: string; path: string }>(
+    "/api/sessions/admin/geoip?kind=" + kind,
+    {
+      method: "POST",
+      body,
+    },
+  );
 }

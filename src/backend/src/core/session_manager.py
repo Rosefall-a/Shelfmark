@@ -1,4 +1,5 @@
 """Shared browser-session creation and anomaly handling."""
+
 from __future__ import annotations
 
 import secrets
@@ -50,9 +51,7 @@ def _set_anomaly(previous: UserSession | None, current: UserSession) -> None:
         current.anomaly_previous_location = old
 
 
-async def _queue_anomaly_notification(
-    db: AsyncSession, user: User, session: UserSession
-) -> None:
+async def _queue_anomaly_notification(db: AsyncSession, user: User, session: UserSession) -> None:
     if not session.anomaly_reason:
         return
     now = int(time.time())
@@ -117,8 +116,6 @@ async def create_session(db: AsyncSession, user: User, request: Request) -> Sess
         geo_longitude=location.longitude,
         geo_network_type=location.network_type,
         geo_network_label=location.network_label,
-        geo_network_number=location.network_number,
-        geo_network_organization=location.network_organization,
     )
     _set_anomaly(previous, session)
     db.add(session)

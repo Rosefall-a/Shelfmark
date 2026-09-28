@@ -22,7 +22,9 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=time.time)
-    last_seen_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=time.time, index=True)
+    last_seen_at: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=time.time, index=True
+    )
     ip_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     geo_country: Mapped[str | None] = mapped_column(String(128), nullable=True)

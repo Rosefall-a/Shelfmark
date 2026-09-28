@@ -68,21 +68,42 @@ describe("session service", () => {
         json: async () => [{ id: "1", ip_address: null }],
       }),
     );
-    const rows = await fetchAdminSessions({ q: "alice", state: "active", country: "Australia", anomaly: true });
-    expect(rows[0]).not.toHaveProperty("token");
-    expect(fetch).toHaveBeenCalledWith("/api/sessions/admin?q=alice&state=active&country=Australia&anomaly=true", {
-      credentials: "include",
+    const rows = await fetchAdminSessions({
+      q: "alice",
+      state: "active",
+      country: "Australia",
+      anomaly: true,
     });
+    expect(rows[0]).not.toHaveProperty("token");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sessions/admin?q=alice&state=active&country=Australia&anomaly=true",
+      {
+        credentials: "include",
+      },
+    );
   });
 });
 
 
 describe("GeoIP imports", () => {
   it("selects the requested database kind", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ configured: true, kind: "country", path: "/data/GeoIP-Country.mmdb" }) }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          configured: true,
+          kind: "country",
+          path: "/data/GeoIP-Country.mmdb",
+        }),
+      }),
+    );
     const { uploadGeoIp } = await import("../services/sessions");
     const file = new File(["mmdb"], "GeoIP-Country.mmdb");
     await uploadGeoIp(file, "country");
-    expect(fetch).toHaveBeenCalledWith("/api/sessions/admin/geoip?kind=country", expect.objectContaining({ method: "POST", body: expect.any(FormData) }));
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sessions/admin/geoip?kind=country",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+    );
   });
 });
