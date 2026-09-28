@@ -15,6 +15,7 @@ class ControlCommandTests(unittest.TestCase):
         instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "tag", "tag": "v1"}
         args = control.compose_args(instance, "start")
         self.assertEqual(args[-5:], ["up", "-d", "--no-build", "--pull", "always"])
+        self.assertIn("IMAGE_TAG", control.compose_env(instance))
 
     def test_instances_are_isolated_by_project_and_port(self):
         instances = [

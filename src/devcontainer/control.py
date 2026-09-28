@@ -93,7 +93,7 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
     port = int(instance.get("port", 0))
     if not 1 <= port <= 65535:
         raise ValueError("port must be between 1 and 65535")
-    build_mode = "tag" if "tag" in instance.get("build_mode", "source") else "source"
+    build_mode = instance.get("build_mode", "source")
     if build_mode not in {"source", "tag"}:
         raise ValueError("build_mode must be source or tag")
     tag = str(instance.get("tag", "main")).strip() or "main"
@@ -260,6 +260,7 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
         str(compose),
         *command,
     ]
+    return args
 
 
 def run_command(
