@@ -2,7 +2,9 @@ name: uta-debug-prod
 
 services:
   app:
-    image: ghcr.io/rosefall-a/unnamed_tracking_app:${UNNAMED_TRACKING_APP_VERSION:-latest}
+    build:
+      context: /workspace/src/docker-container
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DEVCONTAINER_PROD_PORT:-8180}:80"
@@ -29,7 +31,7 @@ services:
     volumes:
       - devcontainer_prod_pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking} -d ${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking} -d ${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}" ]
       interval: 5s
       timeout: 5s
       retries: 20
