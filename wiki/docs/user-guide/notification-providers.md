@@ -20,4 +20,8 @@ Provider delivery is asynchronous. Creating an in-app notification does not wait
 
 Current notification preferences still apply when delivery is processed. Disabling a notification type therefore prevents queued delivery of that type.
 
+### Per-provider routing
+
+In **Settings → Notification Providers**, each user can choose which notification types go to each provider independently. For example, episode alerts can be sent by email while movie-release alerts are sent to Discord. Routing is checked again immediately before delivery, so it also applies to notifications already queued.
+
 No provider secret is displayed in the UI or written to normal delivery failure messages.
