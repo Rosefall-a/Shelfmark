@@ -146,7 +146,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
       <h3 id="random-picker-title">Pick something to play</h3>
       <p class="picker-sub">
         Narrow it down, then let the dice decide.
-        <span class="match-count">{{ matchCount }} games match.</span>
+        <span class="match-count"
+          >{{ matchCount }}
+          {{ matchCount === 1 ? "game matches" : "games match" }}.</span
+        >
       </p>
 
       <fieldset class="picker-group">
