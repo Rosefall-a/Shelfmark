@@ -33,6 +33,12 @@ test -s /run/unnamed-tracking/tls/tls.key
 openssl x509 -in /run/unnamed-tracking/tls/tls.crt -noout -subject >/dev/null
 nginx -t -c "$work/generated.conf"
 
+cp /etc/nginx/ready.conf "$work/in-place.conf"
+NGINX_TLS_ENABLED=true "$render" "$work/in-place.conf"
+grep -q 'listen 443 ssl;' "$work/in-place.conf"
+grep -q 'ssl_certificate /run/unnamed-tracking/tls/tls.crt;' "$work/in-place.conf"
+nginx -t -c "$work/in-place.conf"
+
 if NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/missing.pem" \
   NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" "$work/missing-cert.conf"; then
   echo "missing certificate unexpectedly succeeded" >&2
