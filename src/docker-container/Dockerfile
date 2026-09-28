@@ -29,6 +29,8 @@ COPY --from=frontend-build /frontend/dist /srv/frontend
 COPY src/docker-container/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY src/docker-container/nginx/startup.conf /etc/nginx/startup.conf
 COPY src/docker-container/nginx/ready.conf /etc/nginx/ready.conf
+COPY src/docker-container/nginx/readytls.conf /etc/nginx/readytls.conf
+COPY src/docker-container/nginx/readytlsredirect.conf /etc/nginx/readytlsredirect.conf
 COPY src/docker-container/startup /srv/startup
 COPY src/docker-container/tests /opt/production-tests
 COPY src/docker-container/entrypoint.sh ./entrypoint.sh
