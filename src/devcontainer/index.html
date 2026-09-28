@@ -18,22 +18,20 @@
     </header>
     <section class="warning"><strong>Trusted local tooling.</strong> Docker socket access is powerful; keep this UI bound to localhost.</section>
     <section class="panel">
-      <div class="panel-heading"><h2>Shared environment</h2><span id="env-state">Loading…</span></div>
-      <p>One environment file is shared by every managed stack. Save it, then rebuild/restart a stack to apply changes.</p>
+      <div class="panel-heading"><h2>Environments</h2><span id="env-state">Ready</span></div>
+      <p>Paste a complete .env file here. The global file is used by every stack; each stack can also have its own override file.</p>
+      <div class="actions"><button id="edit-global-env">Edit global .env</button></div>
       <div class="image-build"><label>Final tag<input id="build-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required></label><button id="build-images">Build all 3 images from source</button></div>
-      <p>Builds local tags for the production, frontend, and backend GHCR repositories using one final tag. It does not push to GHCR.</p>
-      <div class="env-grid">
-        <label>Database user<input id="env-db-user" autocomplete="off"></label>
-        <label>Database password<input id="env-db-password" type="password" autocomplete="new-password"></label>
-        <label>Database name<input id="env-db-name" autocomplete="off"></label>
-        <label>Secret key<input id="env-secret" type="password" autocomplete="new-password"></label>
-        <label>Admin username<input id="env-admin-user" autocomplete="off"></label>
-        <label>Admin email<input id="env-admin-email" type="email" autocomplete="off"></label>
-        <label>Admin password<input id="env-admin-password" type="password" autocomplete="new-password"></label>
-        <label>Secure cookies<select id="env-secure"><option value="false">false</option><option value="true">true</option></select></label>
-      </div>
-      <div class="actions"><button id="save-env">Save environment</button></div>
+      <p>Builds the production, frontend and backend images locally with the same final tag. It does not push to GHCR.</p>
     </section>
+    <dialog id="env-modal">
+      <form method="dialog" class="env-dialog">
+        <div class="panel-heading"><h2 id="env-modal-title">.env</h2><button type="button" id="close-env">Close</button></div>
+        <p>Paste the file exactly as you would use it. Blank lines and comments are preserved.</p>
+        <textarea id="env-editor" spellcheck="false" autocomplete="off" aria-label=".env file"></textarea>
+        <div class="actions"><button type="button" id="save-env">Save .env</button><button type="button" id="cancel-env">Cancel</button></div>
+      </form>
+    </dialog>
     <section class="panel">
       <div class="panel-heading"><h2>Compose instances</h2><span>Each instance has its own project, port and volumes.</span></div>
       <p>Run several development stacks at once, plus one or more production-like stacks. Project names and application ports must be unique.</p>

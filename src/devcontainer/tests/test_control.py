@@ -12,7 +12,7 @@ class ControlCommandTests(unittest.TestCase):
         self.assertIn("uta-debug-dev", args)
 
     def test_image_mode_uses_tag_without_building(self):
-        instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "image", "image": "ghcr.io/example/app:v1"}
+        instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "tag", "tag": "v1"}
         args = control.compose_args(instance, "start")
         self.assertEqual(args[-5:], ["up", "-d", "--no-build", "--pull", "always"])
 
@@ -48,3 +48,11 @@ class ControlCommandTests(unittest.TestCase):
         run.return_value.stderr = ""
         control.run_command(["docker", "info"])
         self.assertNotIn("shell", run.call_args.kwargs)
+
+    def test_environment_files_are_separate(self):
+        self.assertNotEqual(control.environment_path("dev-main"), control.environment_path("prod-main"))
+        self.assertTrue(str(control.environment_path("dev-main")).endswith("dev-main.env"))
+
+    def test_tag_validation(self):
+        with self.assertRaises(ValueError):
+            control.validate_instance({**control.DEFAULT_INSTANCES[0], "tag": "bad tag"})

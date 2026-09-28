@@ -11,9 +11,11 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib import parse as urllib_parse
 
 ROOT = Path(os.environ.get("DEVCONTAINER_WORKSPACE", "/workspace"))
 CONFIG_PATH = ROOT / "src" / "devcontainer" / ".env"
+ENVIRONMENTS_PATH = ROOT / "src" / "devcontainer" / "environments"
 INSTANCES_PATH = ROOT / "src" / "devcontainer" / ".instances.json"
 CONTROL_PORT = int(os.environ.get("DEVCONTAINER_CONTROL_PORT", "9000"))
 DOCS_PORT = int(os.environ.get("DEVCONTAINER_DOCS_PORT", "999"))
@@ -122,13 +124,54 @@ def validate_instances(instances: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+DEFAULT_ENVIRONMENT = """# Shared developer environment configuration.
+DEV_POSTGRES_USER=unnamed_tracking
+DEV_POSTGRES_PASSWORD=debug-password
+DEV_POSTGRES_DB=unnamed_tracking
+DEV_SECRET_KEY=devcontainer-not-for-production
+DEV_PRIMARY_USER_USERNAME=admin
+DEV_PRIMARY_USER_EMAIL=admin@example.invalid
+DEV_PRIMARY_USER_PASSWORD=debug-admin-password
+DEV_AUTH_COOKIE_SECURE=false
+"""
+
+
+def ensure_environment_files() -> None:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ENVIRONMENTS_PATH.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_PATH.is_file():
+        CONFIG_PATH.write_text(DEFAULT_ENVIRONMENT)
+
+
+def environment_path(instance_id: str) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", instance_id):
+        raise ValueError("invalid instance id")
+    return ENVIRONMENTS_PATH / f"{instance_id}.env"
+
+
+def load_environment_text(instance_id: str | None = None) -> str:
+    ensure_environment_files()
+    path = CONFIG_PATH if instance_id is None else environment_path(instance_id)
+    return path.read_text() if path.is_file() else ""
+
+
+def save_environment_text(text: str, instance_id: str | None = None) -> str:
+    if not isinstance(text, str):
+        raise ValueError("environment text must be a string")
+    ensure_environment_files()
+    path = CONFIG_PATH if instance_id is None else environment_path(instance_id)
+    path.write_text(text if text.endswith("\n") else text + "\n")
+    return path.read_text()
+
+
 def load_config() -> dict[str, Any]:
+    text = load_environment_text()
     values: dict[str, str] = {}
-    if CONFIG_PATH.is_file():
-        for line in CONFIG_PATH.read_text().splitlines():
-            if "=" in line and not line.lstrip().startswith("#"):
-                key, value = line.split("=", 1)
-                values[key] = value
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, value = stripped.split("=", 1)
+            values[key] = value
     defaults = {
         "db_user": "unnamed_tracking",
         "db_password": "debug-password",
@@ -142,9 +185,7 @@ def load_config() -> dict[str, Any]:
     result: dict[str, Any] = {}
     for field, env_key in CONFIG_FIELDS.items():
         value = values.get(env_key, os.environ.get(env_key, defaults[field]))
-        result[field] = (
-            value.lower() == "true" if field == "auth_cookie_secure" else value
-        )
+        result[field] = value.lower() == "true" if field == "auth_cookie_secure" else value
     return result
 
 
@@ -153,18 +194,12 @@ def save_config(values: dict[str, Any]) -> dict[str, Any]:
     for field in CONFIG_FIELDS:
         if field in values:
             current[field] = values[field]
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Shared developer environment configuration."]
     for field, env_key in CONFIG_FIELDS.items():
-        value = (
-            str(current[field]).lower()
-            if isinstance(current[field], bool)
-            else str(current[field])
-        )
+        value = str(current[field]).lower() if isinstance(current[field], bool) else str(current[field])
         lines.append(f"{env_key}={value}")
-    CONFIG_PATH.write_text("\n".join(lines) + "\n")
+    save_environment_text("\n".join(lines), None)
     return current
-
 
 def instance_by_id(instance_id: str) -> dict[str, Any]:
     for instance in load_instances():
@@ -209,11 +244,16 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
             if instance["build_mode"] == "source"
             else ["--no-build", "--pull", "always"]
         )
-    return [
+    args = [
         "docker",
         "compose",
         "--env-file",
         str(CONFIG_PATH),
+    ]
+    instance_env = environment_path(instance["id"])
+    if instance_env.is_file():
+        args += ["--env-file", str(instance_env)]
+    args += [
         "--project-name",
         instance["project"],
         "-f",
@@ -305,8 +345,6 @@ def docs_process() -> subprocess.Popen[str]:
     return subprocess.Popen(
         ["mkdocs", "serve", "-a", f"0.0.0.0:{DOCS_PORT}"],
         cwd=ROOT / "wiki",
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
         text=True,
     )
 
@@ -357,9 +395,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        if self.path == "/api/environment":
-            self._json(load_config())
-        elif self.path == "/api/instances":
+        parsed = urllib_parse.urlparse(self.path)
+        if parsed.path == "/api/environment":
+            params = urllib_parse.parse_qs(parsed.query)
+            instance_id = params.get("instance_id", [None])[0]
+            self._json({"scope": "instance" if instance_id else "global", "text": load_environment_text(instance_id)})
+        elif parsed.path == "/api/instances":
             self._json(load_instances())
         elif self.path == "/api/status":
             self._json([status(item) for item in load_instances()])
@@ -420,7 +461,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self._body()
             if self.path == "/api/environment":
-                self._json(save_config(body))
+                instance_id = body.get("instance_id")
+                text = save_environment_text(str(body.get("text", "")), instance_id)
+                self._json({"scope": "instance" if instance_id else "global", "text": text})
                 return
             if self.path == "/api/instances":
                 instance = validate_instance(body)
@@ -440,16 +483,25 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             instance_id = str(self._body().get("id"))
-            instances = [item for item in load_instances() if item["id"] != instance_id]
+            existing = load_instances()
+            instances = [item for item in existing if item["id"] != instance_id]
+            if len(instances) == len(existing):
+                raise ValueError("unknown instance")
+            env_path = environment_path(instance_id)
+            if env_path.is_file():
+                env_path.unlink()
             self._json(save_instances(validate_instances(instances)))
         except (ValueError, json.JSONDecodeError) as exc:
             self._json({"error": str(exc)}, 400)
 
     def log_message(self, format: str, *args: object) -> None:
-        return
+        super().log_message(format, *args)
 
 
 def main() -> None:
+    ensure_environment_files()
+    print(f"Developer control UI listening on 0.0.0.0:{CONTROL_PORT}", flush=True)
+    print(f"MkDocs listening on 0.0.0.0:{DOCS_PORT}", flush=True)
     docs = docs_process()
     try:
         server = ThreadingHTTPServer(("0.0.0.0", CONTROL_PORT), Handler)

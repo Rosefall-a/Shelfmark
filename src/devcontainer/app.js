@@ -19,39 +19,41 @@ function setBusy(button, state, label) {
 
 function value(id) { return document.querySelector(id).value; }
 
-function loadEnvironment(env) {
-  document.querySelector("#env-db-user").value = env.db_user || "";
-  document.querySelector("#env-db-password").value = env.db_password || "";
-  document.querySelector("#env-db-name").value = env.db_name || "";
-  document.querySelector("#env-secret").value = env.secret_key || "";
-  document.querySelector("#env-admin-user").value = env.admin_username || "";
-  document.querySelector("#env-admin-email").value = env.admin_email || "";
-  document.querySelector("#env-admin-password").value = env.admin_password || "";
-  document.querySelector("#env-secure").value = String(env.auth_cookie_secure);
-  document.querySelector("#env-state").textContent = "Loaded";
+let environmentScope = null;
+let currentInstance = null;
+
+function loadEnvironment(result) {
+  document.querySelector("#env-editor").value = result.text || "";
+  document.querySelector("#env-state").textContent = result.scope === "instance" ? "Instance loaded" : "Global loaded";
+}
+
+async function openEnvironment(instanceId = null) {
+  currentInstance = instanceId;
+  environmentScope = instanceId ? "instance" : "global";
+  const result = await api("/api/environment" + (instanceId ? "?instance_id=" + encodeURIComponent(instanceId) : ""));
+  loadEnvironment(result);
+  document.querySelector("#env-modal-title").textContent = instanceId ? "Instance .env" : "Global .env";
+  document.querySelector("#env-modal").showModal();
 }
 
 async function saveEnvironment() {
   const b = document.querySelector("#save-env");
-  setBusy(b, true, "Save environment");
+  setBusy(b, true, "Save .env");
   document.querySelector("#env-state").textContent = "Saving…";
   try {
     const result = await api("/api/environment", {
       method: "PUT",
-      body: JSON.stringify({
-        db_user: value("#env-db-user"), db_password: value("#env-db-password"),
-        db_name: value("#env-db-name"), secret_key: value("#env-secret"),
-        admin_username: value("#env-admin-user"), admin_email: value("#env-admin-email"),
-        admin_password: value("#env-admin-password"), auth_cookie_secure: value("#env-secure") === "true"
-      })
+      body: JSON.stringify({instance_id: currentInstance, text: value("#env-editor")})
     });
     loadEnvironment(result);
-    document.querySelector("#last-action").textContent = "Environment saved. Rebuild/restart a stack to apply it.";
+    document.querySelector("#last-action").textContent =
+      (currentInstance ? "Instance" : "Global") + " .env saved. Rebuild/restart the affected stack to apply it.";
+    document.querySelector("#env-modal").close();
   } catch (error) {
     document.querySelector("#env-state").textContent = "Save failed";
     document.querySelector("#output").textContent = error.message;
   } finally {
-    setBusy(b, false, "Save environment");
+    setBusy(b, false, "Save .env");
   }
 }
 
@@ -157,6 +159,7 @@ function render(instances) {
   for (const instance of instances) {
     const section = document.createElement("section");
     section.className = "stack";
+    section.dataset.instanceId = instance.id;
     const title = document.createElement("h2");
     title.textContent = instance.name;
     const summary = document.createElement("div");
@@ -176,11 +179,18 @@ function render(instances) {
     edit.textContent = "Edit";
     edit.addEventListener("click", () => editInstance(instance));
     actions.appendChild(edit);
+    const env = document.createElement("button");
+    env.textContent = ".env";
+    env.addEventListener("click", () => openEnvironment(instance.id));
+    actions.appendChild(env);
     const remove = document.createElement("button");
     remove.textContent = "Remove";
     remove.addEventListener("click", () => deleteInstance(instance.id));
     actions.appendChild(remove);
-    section.append(title, summary, actions);
+    const live = document.createElement("div");
+    live.className = "live-status";
+    live.textContent = "Checking…";
+    section.append(title, summary, live, actions);
     root.appendChild(section);
   }
 }
@@ -194,13 +204,40 @@ async function refresh() {
 }
 
 document.querySelector("#save-env").addEventListener("click", saveEnvironment);
+document.querySelector("#edit-global-env").addEventListener("click", () => openEnvironment());
+document.querySelector("#close-env").addEventListener("click", () => document.querySelector("#env-modal").close());
+document.querySelector("#cancel-env").addEventListener("click", () => document.querySelector("#env-modal").close());
 document.querySelector("#build-images").addEventListener("click", buildImages);
 document.querySelector("#instance-form").addEventListener("submit", saveInstance);
 document.querySelector("#cancel-instance").addEventListener("click", clearInstanceForm);
-document.querySelector("#instance-env").addEventListener("change", toggleImageFields);
+async function loadPage() {
+  try {
+    const instances = await api("/api/instances");
+    render(instances);
+    await refreshStatus();
+  } catch (error) {
+    document.querySelector("#last-action").textContent = "Unable to load developer environment.";
+    document.querySelector("#output").textContent = error.message;
+  }
+}
 
-Promise.all([api("/api/environment"), api("/api/instances")]).then(([env, instances]) => {
-  loadEnvironment(env);
-  render(instances);
-}).catch(error => { document.querySelector("#output").textContent = error.message; });
-setInterval(refresh, 5000);
+async function refreshStatus() {
+  try {
+    const statuses = await api("/api/status");
+    for (const status of statuses) {
+      const card = document.querySelector("[data-instance-id='" + CSS.escape(status.id) + "']");
+      if (!card) continue;
+      const statusNode = card.querySelector(".live-status");
+      if (statusNode) {
+        statusNode.textContent = status.endpoint.state === "healthy"
+          ? "Healthy"
+          : "Unavailable: " + (status.endpoint.error || status.endpoint.status || "not responding");
+      }
+    }
+  } catch (error) {
+    document.querySelector("#output").textContent = "Status check failed: " + error.message;
+  }
+}
+
+loadPage();
+setInterval(refreshStatus, 5000);
