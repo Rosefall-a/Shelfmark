@@ -1,15 +1,35 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { UserSession } from "../../services/sessions";
 
 const props = withDefaults(
   defineProps<{ sessions: UserSession[]; admin?: boolean }>(),
   { admin: false },
 );
-const selected = ref<UserSession[] | null>(null);
 
-type Point = { session: UserSession; x: number; y: number };
-type Cluster = { points: Point[]; x: number; y: number };
+type Point = {
+  session: UserSession;
+  x: number;
+  y: number;
+};
+
+type Cluster = {
+  points: Point[];
+  x: number;
+  y: number;
+};
+
+const mapElement = ref<HTMLElement | null>(null);
+const selected = ref<UserSession[] | null>(null);
+const zoom = ref(2);
+const center = ref({ lat: 20, lon: 0 });
+const dragging = ref(false);
+const dragStart = ref({ x: 0, y: 0, lat: 0, lon: 0 });
+
+const TILE_SIZE = 256;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 const points = computed<Point[]>(() =>
   props.sessions
@@ -19,20 +39,59 @@ const points = computed<Point[]>(() =>
         session.location.latitude !== null &&
         session.location.longitude !== null,
     )
-    .map((session) => ({
-      session,
-      x: ((session.location.longitude! + 180) / 360) * 100,
-      y: ((90 - session.location.latitude!) / 180) * 100,
-    })),
+    .map((session) => {
+      const projected = project(
+        session.location.latitude!,
+        session.location.longitude!,
+        zoom.value,
+      );
+      return { session, x: projected.x, y: projected.y };
+    }),
 );
+
+const tiles = computed(() => {
+  const viewport = mapElement.value;
+  if (!viewport) return [];
+  const width = viewport.clientWidth;
+  const height = viewport.clientHeight;
+  const scale = 2 ** zoom.value;
+  const world = TILE_SIZE * scale;
+  const projected = project(center.value.lat, center.value.lon, zoom.value);
+  const minX = Math.floor((projected.x - width / 2) / TILE_SIZE) - 1;
+  const maxX = Math.floor((projected.x + width / 2) / TILE_SIZE) + 1;
+  const minY = Math.max(
+    0,
+    Math.floor((projected.y - height / 2) / TILE_SIZE) - 1,
+  );
+  const maxY = Math.min(
+    scale - 1,
+    Math.floor((projected.y + height / 2) / TILE_SIZE) + 1,
+  );
+  const result: Array<{ key: string; x: number; y: number; url: string }> = [];
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const wrappedX = ((x % scale) + scale) % scale;
+      result.push({
+        key: `${zoom.value}-${wrappedX}-${y}`,
+        x: wrappedX,
+        y,
+        url: TILE_URL.replace("{z}", String(zoom.value))
+          .replace("{x}", String(wrappedX))
+          .replace("{y}", String(y)),
+      });
+    }
+  }
+  return result;
+});
 
 const clusters = computed<Cluster[]>(() => {
   const result: Cluster[] = [];
+  const threshold = Math.max(18, 48 - zoom.value * 3);
   for (const point of points.value) {
     const existing = result.find(
       (cluster) =>
-        Math.abs(cluster.x - point.x) < 3 &&
-        Math.abs(cluster.y - point.y) < 3,
+        Math.abs(cluster.x - point.x) < threshold &&
+        Math.abs(cluster.y - point.y) < threshold,
     );
     if (existing) {
       existing.points.push(point);
@@ -49,11 +108,62 @@ const clusters = computed<Cluster[]>(() => {
   return result;
 });
 
+function project(lat: number, lon: number, level: number) {
+  const scale = TILE_SIZE * 2 ** level;
+  const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const radians = (safeLat * Math.PI) / 180;
+  return {
+    x: ((lon + 180) / 360) * scale,
+    y:
+      ((1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2) *
+      scale,
+  };
+}
+
+function unproject(x: number, y: number, level: number) {
+  const scale = TILE_SIZE * 2 ** level;
+  const lon = (x / scale) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * y) / scale;
+  const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
+  return { lat, lon };
+}
+
+function markerStyle(point: Point) {
+  const projectedCenter = project(
+    center.value.lat,
+    center.value.lon,
+    zoom.value,
+  );
+  let x = point.x - projectedCenter.x + (mapElement.value?.clientWidth ?? 0) / 2;
+  const world = TILE_SIZE * 2 ** zoom.value;
+  if (x < -world / 2) x += world;
+  if (x > world / 2) x -= world;
+  return {
+    left: `${x}px`,
+    top: `${point.y - projectedCenter.y + (mapElement.value?.clientHeight ?? 0) / 2}px`,
+  };
+}
+
+function clusterStyle(cluster: Cluster) {
+  const projectedCenter = project(
+    center.value.lat,
+    center.value.lon,
+    zoom.value,
+  );
+  let x = cluster.x - projectedCenter.x + (mapElement.value?.clientWidth ?? 0) / 2;
+  const world = TILE_SIZE * 2 ** zoom.value;
+  if (x < -world / 2) x += world;
+  if (x > world / 2) x -= world;
+  return {
+    left: `${x}px`,
+    top: `${cluster.y - projectedCenter.y + (mapElement.value?.clientHeight ?? 0) / 2}px`,
+  };
+}
+
 function userColor(userId: string): string {
   let hash = 0;
   for (const char of userId) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 75% 60%)`;
+  return `hsl(${Math.abs(hash) % 360} 75% 60%)`;
 }
 
 function openCluster(cluster: Cluster) {
@@ -94,64 +204,172 @@ function label(cluster: Cluster): string {
   }
   return `${cluster.points.length} sessions`;
 }
+
+function clampLat(lat: number) {
+  return Math.max(-85, Math.min(85, lat));
+}
+
+function wrapLon(lon: number) {
+  return ((lon + 180) % 360 + 360) % 360 - 180;
+}
+
+function setZoom(nextZoom: number, focusX?: number, focusY?: number) {
+  const oldZoom = zoom.value;
+  const target = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom));
+  if (target === oldZoom) return;
+  const element = mapElement.value;
+  if (!element) {
+    zoom.value = target;
+    return;
+  }
+  const rect = element.getBoundingClientRect();
+  const focus = {
+    x: focusX ?? rect.width / 2,
+    y: focusY ?? rect.height / 2,
+  };
+  const before = unproject(
+    project(center.value.lat, center.value.lon, oldZoom).x +
+      focus.x -
+      rect.width / 2,
+    project(center.value.lat, center.value.lon, oldZoom).y +
+      focus.y -
+      rect.height / 2,
+    oldZoom,
+  );
+  zoom.value = target;
+  const projected = project(before.lat, before.lon, target);
+  const focusCenter = project(
+    center.value.lat,
+    center.value.lon,
+    target,
+  );
+  const next = unproject(
+    projected.x - focus.x + rect.width / 2,
+    projected.y - focus.y + rect.height / 2,
+    target,
+  );
+  center.value = { lat: clampLat(next.lat), lon: wrapLon(next.lon) };
+}
+
+function onWheel(event: WheelEvent) {
+  event.preventDefault();
+  setZoom(zoom.value + (event.deltaY < 0 ? 1 : -1), event.offsetX, event.offsetY);
+}
+
+function onPointerDown(event: PointerEvent) {
+  const element = mapElement.value;
+  if (!element) return;
+  element.setPointerCapture(event.pointerId);
+  dragging.value = true;
+  dragStart.value = {
+    x: event.clientX,
+    y: event.clientY,
+    lat: center.value.lat,
+    lon: center.value.lon,
+  };
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!dragging.value) return;
+  const scale = TILE_SIZE * 2 ** zoom.value;
+  const dx = event.clientX - dragStart.value.x;
+  const dy = event.clientY - dragStart.value.y;
+  const projected = project(dragStart.value.lat, dragStart.value.lon, zoom.value);
+  const next = unproject(projected.x - dx, projected.y - dy, zoom.value);
+  center.value = { lat: clampLat(next.lat), lon: wrapLon(next.lon) };
+  void scale;
+}
+
+function stopDragging() {
+  dragging.value = false;
+}
+
+function resetView() {
+  center.value = { lat: 20, lon: 0 };
+  zoom.value = 2;
+}
+
+function handleResize() {
+  tiles.value;
+}
+
+onMounted(() => window.addEventListener("resize", handleResize));
+onBeforeUnmount(() => window.removeEventListener("resize", handleResize));
 </script>
 
 <template>
-  <section class="map-card" aria-label="Session world map">
+  <section class="map-card" aria-label="Session GIS map">
     <header>
       <div>
         <h3>Session locations</h3>
         <p>
-          Approximate GeoIP positions only. Private/local addresses are not
-          plotted.
+          Interactive GIS basemap using OpenStreetMap. GeoIP positions are
+          approximate and private/local addresses are not plotted.
         </p>
       </div>
-      <span>
-        {{ points.length }} mapped session{{ points.length === 1 ? "" : "s" }}
-      </span>
+      <div class="map-controls">
+        <button type="button" @click="setZoom(zoom + 1)">+</button>
+        <button type="button" @click="setZoom(zoom - 1)">−</button>
+        <button type="button" @click="resetView">Reset</button>
+        <span>{{ points.length }} mapped</span>
+      </div>
     </header>
 
-    <div class="map">
-      <svg class="continents" viewBox="0 0 1000 500" aria-hidden="true">
-        <rect width="1000" height="500" rx="18" />
-        <path d="M48 109l18-27 35-13 31 7 20 22 38 5 31 18 27 30-9 22-27 10-18 28-30 1-21-19-32-5-10-27-28-18z" />
-        <path d="M68 85l28-10 25 7 14 17-31 5-23-7z" />
-        <path d="M105 153l34 2 25 20-13 23-27-4-21-17z" />
-        <path d="M202 226l25 12 20 29 17 16 2 31-17 41-14 48-19 29-16-5-7-33 9-39-8-36 7-38z" />
-        <path d="M279 62l23-16 25 4 20 16-4 21-24 9-28-10-17-13z" />
-        <path d="M424 91l31-23 39-5 35 16 29 26-3 21-27 15-17 29-36 8-31-14-29 3-19-18 10-25z" />
-        <path d="M454 91l15-14 20 3 9 14-17 10-19-3z" />
-        <path d="M479 172l28-10 31 9 13 23-8 23 14 23-8 37-20 33-9 43-25 34-19-10-2-36 12-30-7-30 11-31-12-31z" />
-        <path d="M506 215l24 4 13 25-12 20-21-7-10-21z" />
-        <path d="M571 198l40-16 42 5 35 18 34 4 38 28-5 25-31 12-19 26-38-2-20-17-34 4-22-21-31-11 7-28z" />
-        <path d="M606 186l24-7 20 8-3 16-25 4-18-9z" />
-        <path d="M695 91l36-20 41 7 28 19 24 9 18 22-8 20-30 2-18 18-34-8-25-20-28-5-14-19z" />
-        <path d="M720 92l31-7 22 12-7 16-27 3-20-10z" />
-        <path d="M790 218l30-8 32 13 23 24 28 15 8 27-25 18-35-8-22-20-29-10-11-27z" />
-        <path d="M873 352l22-7 18 12 7 22-17 15-24-6-12-18z" />
-        <path d="M746 367l18-5 13 14-5 20-17 7-15-13z" />
-        <path d="M408 279l12-8 11 9-2 16-12 5-11-9z" />
-        <path d="M365 299l13-7 11 10-5 14-13 3-10-8z" />
-      </svg>
-      <div v-for="cluster in clusters"
-        :key="`${cluster.x}-${cluster.y}-${cluster.points.map((p) => p.session.id).join(',')}`" class="pin"
-        :class="{ cluster: cluster.points.length > 1 }" :style="{
-          left: `${cluster.x}%`,
-          top: `${cluster.y}%`,
-          background: admin && cluster.points.length === 1
-            ? userColor(cluster.points[0].session.user_id)
-            : undefined,
-        }" :title="label(cluster)" @click="openCluster(cluster)">
+    <div
+      ref="mapElement"
+      class="map"
+      :class="{ dragging }"
+      @wheel="onWheel"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="stopDragging"
+      @pointercancel="stopDragging"
+    >
+      <img
+        v-for="tile in tiles"
+        :key="tile.key"
+        class="tile"
+        :src="tile.url"
+        :style="{
+          left: `${tile.x * TILE_SIZE - project(center.lat, center.lon, zoom).x + mapElement!.clientWidth / 2}px`,
+          top: `${tile.y * TILE_SIZE - project(center.lat, center.lon, zoom).y + mapElement!.clientHeight / 2}px`,
+        }"
+        alt=""
+        draggable="false"
+      />
+
+      <button
+        v-for="cluster in clusters"
+        :key="cluster.points.map((p) => p.session.id).join(',')"
+        type="button"
+        class="pin"
+        :class="{ cluster: cluster.points.length > 1 }"
+        :style="{
+          ...clusterStyle(cluster),
+          background:
+            admin && cluster.points.length === 1
+              ? userColor(cluster.points[0].session.user_id)
+              : undefined,
+        }"
+        :title="label(cluster)"
+        @pointerdown.stop
+        @click.stop="openCluster(cluster)"
+      >
         {{ cluster.points.length > 1 ? cluster.points.length : "" }}
+      </button>
+
+      <div class="attribution">
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+          © OpenStreetMap contributors
+        </a>
       </div>
     </div>
 
     <div v-if="admin && points.length" class="legend">
-      <span>
-        Each colour represents a user; nearby sessions are clustered. Click a
-        pin or bubble for details.
-      </span>
+      Each colour represents a user; nearby sessions are clustered. Click a pin
+      or bubble for details.
     </div>
+
     <div v-if="selected" class="pin-details">
       <header>
         <strong>
@@ -170,6 +388,7 @@ function label(cluster: Cluster): string {
         <span>{{ session.user_agent || "Device unavailable" }}</span>
       </article>
     </div>
+
     <p v-if="!points.length" class="empty">
       No active sessions have usable GeoIP coordinates.
     </p>
@@ -203,60 +422,75 @@ function label(cluster: Cluster): string {
   margin: 0;
 }
 
-.map-card header>span {
-  color: #aaa;
+.map-controls {
+  display: flex;
+  gap: 5px;
+  align-items: center;
   white-space: nowrap;
+}
+
+.map-controls button {
+  border: 1px solid #444;
+  background: #202020;
+  color: #ddd;
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+
+.map-controls span {
+  color: #aaa;
+  margin-left: 4px;
 }
 
 .map {
   position: relative;
-  aspect-ratio: 2 / 1;
+  height: min(62vh, 620px);
+  min-height: 320px;
   overflow: hidden;
   border-radius: 10px;
-  background: #08121c;
+  background: #d8dee3;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
-.continents {
+.map.dragging {
+  cursor: grabbing;
+}
+
+.tile {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.continents rect {
-  fill: #081b2b;
-}
-
-.continents path {
-  fill: #213a46;
-  stroke: #31525d;
-  stroke-width: 2;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+  max-width: none;
 }
 
 .pin {
   position: absolute;
-  width: 13px;
-  height: 13px;
-  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -100%) rotate(-45deg);
   border-radius: 50% 50% 50% 0;
-  rotate: -45deg;
-  background: #ef4444;
   border: 2px solid white;
   box-shadow: 0 2px 8px #000a;
+  background: #ef4444;
+  padding: 0;
 }
 
 .pin::after {
   content: "";
   position: absolute;
-  inset: 3px;
+  inset: 4px;
   border-radius: 50%;
   background: white;
 }
 
 .pin.cluster {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
   rotate: 0deg;
   display: grid;
   place-items: center;
@@ -264,10 +498,25 @@ function label(cluster: Cluster): string {
   font-size: 11px;
   font-weight: 700;
   background: #475569;
+  border-radius: 50%;
 }
 
 .pin.cluster::after {
   display: none;
+}
+
+.attribution {
+  position: absolute;
+  z-index: 6;
+  right: 4px;
+  bottom: 3px;
+  padding: 2px 5px;
+  background: rgb(255 255 255 / 85%);
+  font-size: 10px;
+}
+
+.attribution a {
+  color: #333;
 }
 
 .legend {
