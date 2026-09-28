@@ -43,7 +43,7 @@ def compose_args(environment: str, action: str) -> list[str]:
         raise ValueError("unknown action")
     stack = STACKS[environment]
     commands = {
-        "start": ["up", "-d"] if environment == "prod" else ["up", "-d", "--build"],
+        "start": ["up", "-d", "--build"],
         "stop": ["down", "--remove-orphans"],
         "reset": ["down", "--volumes", "--remove-orphans"],
         "logs": ["logs", "--tail", "120"],
