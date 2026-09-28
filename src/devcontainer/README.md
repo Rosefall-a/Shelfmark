@@ -17,9 +17,16 @@ For example: dev-a on 5173, dev-b on 5174, dev-c on 5175, and prod-a on 8180.
 
 ## Build and image modes
 
-Each instance can either build from the checkout or use an image/tag. Production-like local builds use src/docker-container/Dockerfile with the repository root as the build context, so the real production backend/frontend/Nginx image is exercised.
+Each instance accepts one final tag, defaulting to `main`, and chooses either:
+- **Build from source** — build the current checkout.
+- **Use GHCR tag** — pull the exact tag from the fixed repositories.
 
-Image mode skips building and pulls the configured tag. Production-like instances accept tags such as ghcr.io/rosefall-a/unnamed_tracking_app:latest. Development instances accept separate backend and frontend image tags.
+The three repositories are always:
+- `ghcr.io/rosefall-a/unnamed_tracking_app:<tag>`
+- `ghcr.io/rosefall-a/unnamed_tracking_app-frontend:<tag>`
+- `ghcr.io/rosefall-a/unnamed_tracking_app-backend:<tag>`
+
+**Build all 3 images from source** builds and tags all three locally with the selected final tag. It does not push to GHCR.
 
 ## Shared environment
 
