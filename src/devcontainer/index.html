@@ -20,6 +20,8 @@
     <section class="panel">
       <div class="panel-heading"><h2>Shared environment</h2><span id="env-state">Loading…</span></div>
       <p>One environment file is shared by every managed stack. Save it, then rebuild/restart a stack to apply changes.</p>
+      <div class="image-build"><label>Final tag<input id="build-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required></label><button id="build-images">Build all 3 images from source</button></div>
+      <p>Builds local tags for the production, frontend, and backend GHCR repositories using one final tag. It does not push to GHCR.</p>
       <div class="env-grid">
         <label>Database user<input id="env-db-user" autocomplete="off"></label>
         <label>Database password<input id="env-db-password" type="password" autocomplete="new-password"></label>
@@ -41,10 +43,8 @@
         <label>Type<select id="instance-env"><option value="dev">Development</option><option value="prod">Production-like</option></select></label>
         <label>Project<input id="instance-project" pattern="[a-z0-9][a-z0-9_-]*" required></label>
         <label>Port<input id="instance-port" type="number" min="1" max="65535" required></label>
-        <label>Mode<select id="instance-mode"><option value="local">Build from checkout</option><option value="image">Use image/tag</option></select></label>
-        <label id="image-field">Application image/tag<input id="instance-image" placeholder="ghcr.io/rosefall-a/unnamed_tracking_app:tag"></label>
-        <label id="backend-image-field">Backend image/tag<input id="instance-backend-image" placeholder="registry/image:tag"></label>
-        <label id="frontend-image-field">Frontend image/tag<input id="instance-frontend-image" placeholder="registry/image:tag"></label>
+        <label>Images<select id="instance-mode"><option value="source">Build from source</option><option value="tag">Use GHCR tag</option></select></label>
+        <label>Final tag<input id="instance-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required></label>
         <div class="actions"><button type="submit" id="save-instance">Add instance</button><button type="button" id="cancel-instance">Clear</button></div>
       </form>
     </section>
