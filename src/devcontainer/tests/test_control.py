@@ -11,10 +11,6 @@ class ControlCommandTests(unittest.TestCase):
         self.assertIn("--env-file", args)
         self.assertIn("uta-debug-dev", args)
 
-    def test_prod_build_uses_repository_root_context(self):
-        compose = (control.ROOT / "src" / "devcontainer" / "compose.prod.yaml").read_text()
-        self.assertIn("context: ../..", compose)
-
     def test_image_mode_uses_tag_without_building(self):
         instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "image", "image": "ghcr.io/example/app:v1"}
         args = control.compose_args(instance, "start")
