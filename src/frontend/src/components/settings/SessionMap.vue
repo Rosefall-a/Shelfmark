@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import type { UserSession } from "../../services/sessions";
 
 const props = withDefaults(
@@ -271,13 +271,11 @@ function onPointerDown(event: PointerEvent) {
 
 function onPointerMove(event: PointerEvent) {
   if (!dragging.value) return;
-  const scale = TILE_SIZE * 2 ** zoom.value;
   const dx = event.clientX - dragStart.value.x;
   const dy = event.clientY - dragStart.value.y;
   const projected = project(dragStart.value.lat, dragStart.value.lon, zoom.value);
   const next = unproject(projected.x - dx, projected.y - dy, zoom.value);
   center.value = { lat: clampLat(next.lat), lon: wrapLon(next.lon) };
-  void scale;
 }
 
 function stopDragging() {
@@ -289,12 +287,6 @@ function resetView() {
   zoom.value = 2;
 }
 
-function handleResize() {
-  tiles.value;
-}
-
-onMounted(() => window.addEventListener("resize", handleResize));
-onBeforeUnmount(() => window.removeEventListener("resize", handleResize));
 </script>
 
 <template>
