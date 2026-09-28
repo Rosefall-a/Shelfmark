@@ -1,5 +1,5 @@
 export interface DocumentViewResult {
-  type: "pdf" | "text";
+  type: "pdf" | "text" | "html";
   url: string;
   content?: string;
 }
@@ -70,7 +70,12 @@ export async function fetchDocumentView(
   }
 
   if (contentType === "text/plain") {
-    return { type: "text", url: "", content: await response.text() };
+    const content = await response.text();
+    return {
+      type: response.headers.get("X-Document-Format") === "html" ? "html" : "text",
+      url: "",
+      content,
+    };
   }
 
   throw new DocumentViewError(

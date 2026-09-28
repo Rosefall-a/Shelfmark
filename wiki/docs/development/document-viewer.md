@@ -14,7 +14,7 @@ The viewer is intentionally layered on the existing game-document storage rather
 
 PDFs are recognized by their %PDF- file signature and served as application/pdf with an inline content disposition so the browser can use its native viewer.
 
-Text viewing uses a conservative extension/MIME allowlist. HTML, SVG, XHTML, and similar active document formats are excluded. Text is decoded as UTF-8 and returned as text/plain.
+Text viewing uses a conservative extension/MIME allowlist. SVG remains excluded. HTML/XHTML are transported as text and sanitized before rendering; scripts, embeds, forms, media, external-resource tags, and inline styles are stripped. Text is decoded as UTF-8 and returned as text/plain.
 
 The browser-supplied upload MIME type is not trusted by the viewer.
 

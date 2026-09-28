@@ -6,7 +6,8 @@ Game documents can be opened directly from a game's **Docs** tab.
 
 The viewer currently supports:
 - **PDF** — opened using the browser's built-in PDF viewer.
-- **UTF-8 text** — common plain-text formats such as .txt, .log, .csv, .json, .md, .ini, .cfg, .conf, .toml, .yaml/.yml, .xml, and .properties.
+- **HTML/XHTML** — sanitized before rendering.
+- **UTF-8 text — common plain-text formats such as .txt, .log, .csv, .json, .md, .ini, .cfg, .conf, .toml, .yaml/.yml, .xml, and .properties.
 
 Other document types remain downloadable through the existing file storage but are not rendered by the viewer.
 

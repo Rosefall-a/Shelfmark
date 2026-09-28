@@ -28,6 +28,7 @@ import {
   deleteGameScreenshot,
   updateMediaItem,
   uploadGameFiles,
+  renameGameFile,
   listGameFiles,
   deleteGameFile,
   fetchGameMediaTrash,
@@ -1365,6 +1366,18 @@ async function onMediaFilesSelected(files: File[]) {
   await attempt();
 }
 
+async function renameMediaItem(item: MediaItem) {
+  if (!game.value) return;
+  const currentName = displayFileName(item.filename);
+  const name = await prompt({ title: "Rename file", message: "File name", defaultValue: currentName, confirmLabel: "Rename" });
+  if (!name || !name.trim() || name.trim() === currentName) return;
+  try {
+    const updated = await updateMediaItem(game.value.id, item.id, { filename: name.trim() });
+    const index = mediaItems.value.findIndex((m) => m.id === item.id);
+    if (index !== -1) mediaItems.value[index] = updated;
+  } catch (err) { mediaError.value = err instanceof Error ? err.message : "Failed to rename"; }
+}
+
 async function removeMedia(item: MediaItem) {
   if (!game.value) return;
   try {
@@ -1624,6 +1637,19 @@ function openDocument(file: GameFile) {
 
 function closeDocument() {
   documentViewerFile.value = null;
+}
+
+async function renameGameFileItem(kind: FlatFileKind, file: GameFile) {
+  if (!game.value) return;
+  const currentName = displayFileName(file.filename);
+  const name = await prompt({ title: "Rename file", message: "File name", defaultValue: currentName, confirmLabel: "Rename" });
+  if (!name || !name.trim() || name.trim() === currentName) return;
+  try {
+    const updated = await renameGameFile(game.value.id, kind, file.filename, name.trim());
+    const files = filesRefFor(kind).value;
+    const index = files.findIndex((entry) => entry.filename === file.filename);
+    if (index !== -1) files[index] = updated;
+  } catch (err) { filesError.value = err instanceof Error ? err.message : "Failed to rename"; }
 }
 
 async function removeGameFile(kind: FlatFileKind, file: GameFile) {
@@ -3125,6 +3151,7 @@ function formatPlaytime(minutes: number) {
                 @preview="onPreviewMedia($event.url)"
                 @delete="removeMedia"
                 @save="saveMediaItem"
+                @rename="renameMediaItem"
               />
             </div>
           </div>
@@ -3697,6 +3724,7 @@ function formatPlaytime(minutes: number) {
                   {{ displayFileName(file.filename) }}
                 </button>
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <button type="button" class="tile-remove-inline" title="Rename" @click="renameGameFileItem('doc', file)">✎</button>
                 <button
                   type="button"
                   class="tile-remove-inline"

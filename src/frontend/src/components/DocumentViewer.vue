@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from "vue";
+import DOMPurify from "dompurify";
 import {
   DocumentViewError,
   fetchDocumentView,
@@ -15,6 +16,7 @@ const emit = defineEmits<{ (e: "close"): void }>();
 
 const loading = ref(false);
 const error = ref<DocumentViewError | null>(null);
+const sanitizedHtml = ref("");
 const result = ref<Awaited<ReturnType<typeof fetchDocumentView>> | null>(null);
 
 function cleanup() {
@@ -26,10 +28,18 @@ function cleanup() {
 async function load() {
   cleanup();
   error.value = null;
+  sanitizedHtml.value = "";
   if (!props.open) return;
   loading.value = true;
   try {
     result.value = await fetchDocumentView(props.gameId, props.filename);
+    if (result.value.type === "html") {
+      sanitizedHtml.value = DOMPurify.sanitize(result.value.content ?? "", {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ["audio", "base", "embed", "form", "iframe", "img", "input", "link", "meta", "object", "script", "source", "style", "textarea", "track", "video"],
+        FORBID_ATTR: ["style"],
+      });
+    }
   } catch (err) {
     error.value =
       err instanceof DocumentViewError
@@ -88,6 +98,8 @@ onBeforeUnmount(cleanup);
       <pre v-else-if="result?.type === 'text'" class="document-text">
         {{ result.content }}
       </pre>
+
+      <article v-else-if="result?.type === 'html'" class="document-html" v-html="sanitizedHtml"></article>
 
       <div v-else class="document-viewer-state">
         This document cannot be displayed.
@@ -161,7 +173,8 @@ onBeforeUnmount(cleanup);
   border: 0;
   background: #fff;
 }
-.document-text {
+.document-text,
+.document-html {
   flex: 1;
   margin: 0;
   padding: 18px;

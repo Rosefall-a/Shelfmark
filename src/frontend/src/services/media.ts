@@ -20,6 +20,7 @@ export interface MediaItem {
 }
 
 export interface MediaItemUpdate {
+  filename?: string;
   tags?: string[];
   note?: string | null;
   linked_achievement_id?: string | null;
@@ -360,6 +361,17 @@ export interface GameFile {
   filename: string;
   size: number;
   url: string;
+}
+
+export async function renameGameFile(gameId: string, kind: GameFileKind, filename: string, name: string): Promise<GameFile> {
+  const response = await fetch(`/api/game/${gameId}/files/${kind}/${encodeURIComponent(filename)}/rename`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw new Error(`Failed to rename file: ${response.status} ${response.statusText} ${await response.text()}`);
+  return await response.json();
 }
 
 export async function uploadGameFiles(

@@ -32,6 +32,11 @@ describe("document viewer service", () => {
     });
   });
 
+  it("loads HTML as a renderer result", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<h1>Hello</h1>", { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8", "X-Document-Format": "html" } })));
+    await expect(fetchDocumentView("game", "page.html")).resolves.toEqual({ type: "html", url: "", content: "<h1>Hello</h1>" });
+  });
+
   it("loads text as plain text", async () => {
     vi.stubGlobal(
       "fetch",
