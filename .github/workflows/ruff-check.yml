@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "src/backend/**"
+      - ".github/workflows/ruff-check.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
