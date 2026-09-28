@@ -3,18 +3,22 @@ name: uta-debug-prod
 services:
   app:
     build:
-      context: /workspace/src/docker-container
+      context: ../docker-container
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DEVCONTAINER_PROD_PORT:-8180}:80"
     environment:
-      DATABASE_URL: postgresql+psycopg://${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking}:${DEBUG_PROD_POSTGRES_PASSWORD:-debug-password}@db:5432/${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}
-      SECRET_KEY: ${DEBUG_PROD_SECRET_KEY:-devcontainer-not-for-production}
-      PRIMARY_USER_USERNAME: ${PRIMARY_USER_USERNAME:-admin}
-      PRIMARY_USER_EMAIL: ${PRIMARY_USER_EMAIL:-admin@example.invalid}
-      PRIMARY_USER_PASSWORD: ${DEBUG_PROD_PRIMARY_USER_PASSWORD:-debug-admin-password}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      SECRET_KEY: ${DEV_SECRET_KEY:-devcontainer-not-for-production}
+      PRIMARY_USER_USERNAME: ${DEV_PRIMARY_USER_USERNAME:-admin}
+      PRIMARY_USER_EMAIL: ${DEV_PRIMARY_USER_EMAIL:-admin@example.invalid}
+      PRIMARY_USER_PASSWORD: ${DEV_PRIMARY_USER_PASSWORD:-debug-admin-password}
+      AUTH_COOKIE_SECURE: ${DEV_AUTH_COOKIE_SECURE:-false}
     volumes:
       - devcontainer_prod_data:/data
     depends_on:
@@ -25,13 +29,13 @@ services:
     image: postgres:18
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking}
-      POSTGRES_PASSWORD: ${DEBUG_PROD_POSTGRES_PASSWORD:-debug-password}
-      POSTGRES_DB: ${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
     volumes:
       - devcontainer_prod_pgdata:/var/lib/postgresql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking} -d ${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}"]
       interval: 5s
       timeout: 5s
       retries: 20
