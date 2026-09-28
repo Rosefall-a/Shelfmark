@@ -168,14 +168,14 @@ class RenameArchiveRequest(BaseModel):
 
 
 @router.get("/{game_id}/archives/{kind}")
-async def list_archives(    """List active archives of the requested kind for a game."""
-
+async def list_archives(
     game_id: UUID,
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
-) -> list[dict]:
-    await _get_game_or_404(game_id, db, current_user.id)
+ ) -> list[dict]:
+    """List active archives of the requested kind for a game."""
+    await _get_game_or_404(game_id, db, current_user.id
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
@@ -302,15 +302,15 @@ async def add_archive_version(
 
 
 @router.patch("/{game_id}/archives/{archive_id}")
-async def rename_archive(    """Rename an existing archive."""
-
+async def rename_archive(
     game_id: UUID,
     archive_id: UUID,
     payload: RenameArchiveRequest,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
-    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
+    """Rename an existing archive."""
+    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id
     if not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required.")
     archive.name = payload.name.strip()
@@ -342,13 +342,13 @@ async def delete_archive(
 
 
 @router.post("/{game_id}/archives/{archive_id}/restore")
-async def restore_archive(    """Restore a deleted archive and all of its versions."""
-
+async def restore_archive(
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Restore a deleted archive and all of its versions."""
     archive = await _get_archive_or_404(
         game_id, archive_id, db, current_user.id, include_deleted=True
     )
@@ -373,14 +373,14 @@ async def restore_archive(    """Restore a deleted archive and all of its versio
 
 
 @router.delete("/{game_id}/archives/{archive_id}/versions/{version_id}")
-async def delete_archive_version(    """Soft-delete one version of an archive."""
-
+async def delete_archive_version(
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Soft-delete one version of an archive."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id)
     version = next(
@@ -408,14 +408,14 @@ async def delete_archive_version(    """Soft-delete one version of an archive.""
 
 
 @router.post("/{game_id}/archives/{archive_id}/versions/{version_id}/restore")
-async def restore_archive_version(    """Restore one deleted archive version."""
-
+async def restore_archive_version(
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Restore one deleted archive version."""
     archive = await _get_archive_or_404(
         game_id, archive_id, db, current_user.id, include_deleted=True
     )
@@ -442,15 +442,15 @@ async def restore_archive_version(    """Restore one deleted archive version."""
 @router.get(
     "/{game_id}/archives/{archive_id}/versions/{version_id}/download", response_class=FileResponse
 )
-async def download_archive_version(    """Download an archived save version."""
-
+async def download_archive_version(
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
-    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
+    """Download an archived save version."""
+    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id
     game = await _get_game_or_404(game_id, db, current_user.id)
     version = next(
         (v for v in archive.versions if v.id == version_id and v.deleted_at is None), None
@@ -545,26 +545,26 @@ async def render_world_map_route(
 
 
 @router.get("/{game_id}/world-map/{archive_id}/status")
-async def get_world_map_status(    """Return the current render status for a world map."""
-
+async def get_world_map_status(
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Return the current render status for a world map."""
     await _get_archive_or_404(game_id, archive_id, db, current_user.id, kind="world_save")
     return bluemap.get_status(game_id, archive_id)
 
 
 @router.get("/{game_id}/world-map/{archive_id}/thumbnail", response_class=FileResponse)
-async def get_world_map_thumbnail(    """Return the rendered world-map thumbnail."""
-
+async def get_world_map_thumbnail(
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
-    game = await _get_game_or_404(game_id, db, current_user.id)
+    """Return the rendered world-map thumbnail."""
+    game = await _get_game_or_404(game_id, db, current_user.id
     path = bluemap.thumbnail_path(
         _DATA_ROOT / str(current_user.id) / "games" / (game.folder_location or ""), archive_id
     )
