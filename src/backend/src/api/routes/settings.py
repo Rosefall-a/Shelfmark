@@ -289,7 +289,7 @@ async def get_provider_credentials(
     are present."""
     # non-secret identifiers (never passwords/keys/tokens) are safe to echo
     # back so a field the user already saved shows filled, not blank
-    _SAFE_TO_DISPLAY_FIELDS = {"steam_id", "username", "ssid", "client_id"}
+    safe_to_display_fields = {"steam_id", "username", "ssid", "client_id"}
 
     result: dict[str, dict] = {}
     for provider, field_map in PROVIDER_FIELD_MAP.items():
