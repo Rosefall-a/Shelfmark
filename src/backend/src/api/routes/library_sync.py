@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """API routes for pulling a user's owned-games library + achievements from
 Steam, PlayStation, and RetroAchievements straight into their library — a
 different mechanism from `games.py`'s `/metadata/search`, which enriches one
