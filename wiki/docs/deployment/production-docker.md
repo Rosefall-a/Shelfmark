@@ -48,7 +48,7 @@ The production edge disables version disclosure, keeps bounded proxy timeouts, f
 
 ## Optional embedded TLS
 
-HTTP-only remains the default. TLS is deployment-only. If TLS is enabled without certificate/key paths, the container generates a self-signed localhost certificate/key pair under `/run/unnamed-tracking/tls`; explicit mounted certificate/key files remain supported for production.
+HTTP-only remains the default. TLS is deployment-only. When TLS is enabled, the container selects `readytls.conf` or `readytlsredirect.conf` before replacing `/etc/nginx/nginx.conf`. If `NGINX_TLS_CERTIFICATE` and `NGINX_TLS_PRIVATE_KEY` are empty, a complete `/etc/nginx/tls/tls.crt` and `/etc/nginx/tls/tls.key` pair is used automatically when present; otherwise a self-signed localhost certificate/key pair is generated under `/run/unnamed-tracking/tls`. Explicit certificate/key paths remain supported for production. TLS is disabled by default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
