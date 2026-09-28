@@ -1,15 +1,10 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,too-few-public-methods,unsubscriptable-object
 from datetime import date
-
 from decimal import Decimal
-
 from enum import Enum
-
-import time
-
 from typing import TYPE_CHECKING
-
 from uuid import UUID, uuid4
+import time
 
 from sqlalchemy import (
     BigInteger,
@@ -25,9 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
-
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base
