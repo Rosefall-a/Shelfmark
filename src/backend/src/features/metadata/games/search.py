@@ -265,7 +265,7 @@ def _add_steamgriddb_art(result: dict[str, Any], client: SteamGridDBClient) -> N
                 for image_type, (_, _, dimensions) in image_fields.items()
             }.items()
         }
-    for image_type, (list_field, default_field, dimensions) in image_fields.items():
+    for image_type, (list_field, default_field, _dimensions) in image_fields.items():
         images = image_results[image_type]
         # highest community score first, so the default pick (urls[0]) is
         # the best-rated option rather than whatever order the API sent
