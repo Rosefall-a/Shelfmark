@@ -132,7 +132,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/":
             html = (Path(__file__).with_name("index.html").read_text()).replace(
-                "</head>", f"<meta name="devcontainer-token" content="{TOKEN}"></head>"
+                "</head>", f"<meta name='devcontainer-token' content='{TOKEN}'></head>"
             )
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
