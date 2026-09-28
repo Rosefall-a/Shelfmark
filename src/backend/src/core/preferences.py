@@ -53,37 +53,61 @@ _SET_CHOICES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _validate_anilist_username(value: Any) -> str:
+    if not isinstance(value, str) or len(value.strip()) > 100:
+        raise ValueError(
+            "anilist_import_username must be a string of at most 100 characters"
+        )
+    return value.strip()
+
+
+def _validate_anilist_interval(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
+        raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
+    return value
+
+
+def _validate_anilist_last_run(value: Any) -> int | None:
+    if value is not None and (
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+    ):
+        raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
+    return value
+
+
+_ANILIST_VALIDATORS = {
+    "anilist_import_username": _validate_anilist_username,
+    "anilist_import_interval_minutes": _validate_anilist_interval,
+    "anilist_import_last_run_at": _validate_anilist_last_run,
+}
+
+
 def validate_preference(key: str, value: Any) -> Any:
+    """Validate and normalize one preference value."""
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
-    default = DEFAULTS[key]
+
     if key in _SET_CHOICES:
         allowed = _SET_CHOICES[key]
-        if not isinstance(value, list) or any(v not in allowed for v in value):
+        if not isinstance(value, list) or any(item not in allowed for item in value):
             raise ValueError(f"{key} must be a list drawn from {list(allowed)}")
-        return [v for v in allowed if v in value]
+        return [item for item in allowed if item in value]
+
     if key in _CHOICES:
-        if value not in _CHOICES[key]:
-            raise ValueError(f"{key} must be one of {list(_CHOICES[key])}")
+        choices = _CHOICES[key]
+        if value not in choices:
+            raise ValueError(f"{key} must be one of {list(choices)}")
         return value
-    if key == "anilist_import_username":
-        if not isinstance(value, str) or len(value.strip()) > 100:
-            raise ValueError("anilist_import_username must be a string of at most 100 characters")
-        return value.strip()
-    if key == "anilist_import_interval_minutes":
-        if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
-            raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
-        return value
-    if key == "anilist_import_last_run_at":
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool) or value < 0
-        ):
-            raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
-        return value
-    if isinstance(default, bool):
+
+    validator = _ANILIST_VALIDATORS.get(key)
+    if validator is not None:
+        return validator(value)
+
+    if isinstance(DEFAULTS[key], bool):
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be true or false")
         return value
+
     return value
 
 
