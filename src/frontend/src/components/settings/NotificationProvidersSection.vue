@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { fetchNotificationProviders, revokeNotificationProviderDestination, updateNotificationProvider, type NotificationProviderSetting } from "../../services/notificationProviders";
+import { fetchPreferences, queuePreferences, type NotificationKind, type Preferences } from "../../services/preferences";
 
 const rows=reactive<NotificationProviderSetting[]>([]);
 const values=reactive<Record<string,string>>({});
-const loading=ref(true),saving=ref<string|null>(null),error=ref<string|null>(null),saved=ref<string|null>(null);
+const prefs=ref<Preferences|null>(null);
+const loading=ref(true),saving=ref<string|null>(null),routeSaving=ref(false),error=ref<string|null>(null),saved=ref<string|null>(null),routeSaved=ref(false);
+const notificationKinds:{key:NotificationKind;label:string}[]=[{key:"episode_aired",label:"Episode aired"},{key:"season_started",label:"Season started"},{key:"sequel_announced",label:"New season listed"},{key:"movie_released",label:"Movie released"}];
 
-async function load(){try{rows.splice(0,rows.length,...await fetchNotificationProviders());}catch(e){error.value=e instanceof Error?e.message:"Failed to load notification providers.";}finally{loading.value=false;}}
+async function load(){try{const [providers,preferences]=await Promise.all([fetchNotificationProviders(),fetchPreferences()]);rows.splice(0,rows.length,...providers);prefs.value=preferences;}catch(e){error.value=e instanceof Error?e.message:"Failed to load notification providers.";}finally{loading.value=false;}}
 async function save(row:NotificationProviderSetting){
   saving.value=row.id; error.value=null; saved.value=null;
   try{
@@ -19,6 +22,17 @@ async function save(row:NotificationProviderSetting){
 async function revoke(row:NotificationProviderSetting){
   saving.value=row.id; error.value=null;
   try{await revokeNotificationProviderDestination(row.id); row.configured=false; row.enabled=false;}catch(e){error.value=e instanceof Error?e.message:"Failed to revoke Discord webhook."}finally{saving.value=null;}
+}
+function routeEnabled(id:string,k:NotificationKind){return prefs.value?.notification_provider_routes[id]?.includes(k)??false}
+async function toggleRoute(id:string,k:NotificationKind,on:boolean){
+  if(!prefs.value)return;
+  const routes={...prefs.value.notification_provider_routes}, current=routes[id]??[];
+  routes[id]=on?[...current.filter(v=>v!==k),k]:current.filter(v=>v!==k);
+  const previous=prefs.value; prefs.value={...prefs.value,notification_provider_routes:routes};
+  routeSaving.value=true; error.value=null; routeSaved.value=false;
+  try{const result=await queuePreferences({notification_provider_routes:routes});if(result.latest)prefs.value=result.prefs;routeSaved.value=true;setTimeout(()=>routeSaved.value=false,1500);}
+  catch(e){prefs.value=previous;error.value=e instanceof Error?e.message:"Failed to save notification routing.";}
+  finally{routeSaving.value=false;}
 }
 onMounted(load);
 </script>
@@ -39,11 +53,18 @@ onMounted(load);
   </template>
   <button v-if="row.id==='smtp'" :disabled="saving===row.id" @click="save(row)">{{ saving===row.id ? "Saving…" : "Save preference" }}</button>
   <p v-if="saved===row.id" class="success">Saved.</p>
+  <div v-if="prefs" class="routes"><strong>Notification types sent to {{ row.name }}</strong>
+    <label v-for="kind in notificationKinds" :key="kind.key" class="route">
+      <input type="checkbox" :checked="routeEnabled(row.id,kind.key)" :disabled="routeSaving || !row.available || (row.id==='discord' && !row.configured)" @change="toggleRoute(row.id,kind.key,($event.target as HTMLInputElement).checked)">
+      <span>{{ kind.label }}</span>
+    </label>
+    <span v-if="routeSaved" class="saved-note">Saved</span>
+  </div>
 </div>
 <p v-if="error" class="error">{{ error }}</p>
 </template>
 </section>
 </template>
 <style scoped>
-.settings-section h2{margin:0 0 8px;padding-left:12px;border-left:3px solid #d68a34;font-size:1rem;color:#fff}.hint{color:#999;font-size:.82rem;line-height:1.5}.provider{border-top:1px solid #2a2a2a;padding:18px 0}.provider-head{display:flex;justify-content:space-between;gap:16px}.switch{display:flex;gap:8px;align-items:center;color:#ccc;font-size:13px;white-space:nowrap}.destination{color:#bbb;font-size:13px}.provider input[type=url]{width:100%;box-sizing:border-box;background:#111;border:1px solid #3a3a3a;border-radius:8px;color:#fff;padding:10px}.actions{display:flex;gap:8px;margin-top:10px}button{background:#d68a34;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}button:disabled{opacity:.5}.danger{background:#442020;color:#fca5a5}.error{color:#fca5a5}.success{color:#86efac}
+.settings-section h2{margin:0 0 8px;padding-left:12px;border-left:3px solid #d68a34;font-size:1rem;color:#fff}.hint{color:#999;font-size:.82rem;line-height:1.5}.provider{border-top:1px solid #2a2a2a;padding:18px 0}.provider-head{display:flex;justify-content:space-between;gap:16px}.switch{display:flex;gap:8px;align-items:center;color:#ccc;font-size:13px;white-space:nowrap}.destination{color:#bbb;font-size:13px}.provider input[type=url]{width:100%;box-sizing:border-box;background:#111;border:1px solid #3a3a3a;border-radius:8px;color:#fff;padding:10px}.actions{display:flex;gap:8px;margin-top:10px}button{background:#d68a34;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}button:disabled{opacity:.5}.danger{background:#442020;color:#fca5a5}.error{color:#fca5a5}.success,.saved-note{color:#86efac}.routes{margin-top:14px;padding:12px;border:1px solid #333;border-radius:8px;background:#111;display:flex;flex-direction:column;gap:8px}.route{display:flex;gap:8px;align-items:center;color:#bbb;font-size:13px}
 </style>
