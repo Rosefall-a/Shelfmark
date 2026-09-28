@@ -238,11 +238,6 @@ function setZoom(nextZoom: number, focusX?: number, focusY?: number) {
   );
   zoom.value = target;
   const projected = project(before.lat, before.lon, target);
-  const focusCenter = project(
-    center.value.lat,
-    center.value.lon,
-    target,
-  );
   const next = unproject(
     projected.x - focus.x + rect.width / 2,
     projected.y - focus.y + rect.height / 2,
