@@ -32,7 +32,7 @@ class ControlCommandTests(unittest.TestCase):
         self.assertEqual(len(control.validate_instances(instances)), 3)
 
     def test_next_project_name_adds_number(self):
-        self.assertEqual(control.next_project_name("dev", control.DEFAULT_INSTANCES), "dev")
+        self.assertEqual(control.next_project_name("dev", control.DEFAULT_INSTANCES), "dev-2")
         existing = [{**control.DEFAULT_INSTANCES[0], "project": "dev", "name": "dev"}]
         self.assertEqual(control.next_project_name("dev", existing), "dev-2")
 
