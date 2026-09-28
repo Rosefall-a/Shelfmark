@@ -13,7 +13,10 @@ id/secret today (see MetadataSourcesSection's Xbox card), it can't complete
 that flow yet.
 """
 
-# Pylint attributes imported model-field similarity to this route module.\n# The parallel model definitions are intentional.\n# pylint: disable=broad-exception-caught,too-many-locals,too-many-branches,chained-comparison,missing-function-docstring,too-many-statements,unused-variable,duplicate-code
+# Pylint attributes imported model-field similarity to this route module.
+# # The parallel model definitions are intentional.
+# # pylint: disable=broad-exception-caught,too-many-locals,too-many-branches,chained-comparison,missing-function-docstring,too-many-statements,unused-variable,duplicate-code
+
 from __future__ import annotations
 
 import asyncio

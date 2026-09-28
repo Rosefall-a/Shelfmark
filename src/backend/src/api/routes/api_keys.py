@@ -1,4 +1,6 @@
 # pylint: disable=duplicate-code
+"""this is something about api keys"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -18,6 +20,8 @@ async def list_user_api_keys(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, str | int | list[str] | None]]:
+    """List all API keys for the current user, without revealing the raw or hashed credentials. (apparently)"""
+
     keys = await db.scalars(
         select(UserApiKey)
         .where(UserApiKey.user_id == user.id)
