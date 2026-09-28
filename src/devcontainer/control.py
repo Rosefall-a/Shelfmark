@@ -24,18 +24,18 @@ TOKEN = secrets.token_urlsafe(24)
 DEFAULT_INSTANCES = [
     {
         "id": "dev-main",
-        "name": "Development",
+        "name": "dev",
         "environment": "dev",
-        "project": "uta-debug-dev",
+        "project": "dev",
         "port": 5173,
         "build_mode": "source",
         "tag": "main",
     },
     {
         "id": "prod-main",
-        "name": "Production-like",
+        "name": "prod",
         "environment": "prod",
-        "project": "uta-debug-prod",
+        "project": "prod",
         "port": 8180,
         "build_mode": "source",
         "tag": "main",
@@ -85,7 +85,7 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
     environment = instance.get("environment")
     if environment not in {"dev", "prod"}:
         raise ValueError("environment must be dev or prod")
-    project = str(instance.get("project", "")).strip()
+    project = str(instance.get("project", "")).strip() or "instance"
     if not PROJECT_RE.fullmatch(project):
         raise ValueError(
             "project must use lowercase letters, numbers, dashes, or underscores"
@@ -109,6 +109,23 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
     result["name"] = str(result.get("name") or project)
     result["id"] = str(result.get("id") or project)
     return result
+
+
+def next_project_name(
+    environment: str, instances: list[dict[str, Any]], current_id: str | None = None
+) -> str:
+    base = environment
+    used = {
+        str(item.get("project"))
+        for item in instances
+        if str(item.get("id")) != str(current_id)
+    }
+    if base not in used:
+        return base
+    number = 2
+    while f"{base}-{number}" in used:
+        number += 1
+    return f"{base}-{number}"
 
 
 def validate_instances(instances: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -240,7 +257,7 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
     }[action]
     if action in {"start", "rebuild"}:
         command += (
-            ["--build"]
+            ["--build", "--pull", "always"]
             if instance["build_mode"] == "source"
             else ["--no-build", "--pull", "always"]
         )
@@ -446,6 +463,8 @@ class Handler(BaseHTTPRequestHandler):
                 instance = validate_instance(body)
                 if any(item["id"] == instance["id"] for item in instances):
                     raise ValueError("instance id already exists")
+                instance["project"] = next_project_name(instance["environment"], instances)
+                instance["name"] = instance["project"]
                 instances.append(instance)
                 self._json(save_instances(validate_instances(instances)))
                 return
@@ -467,10 +486,22 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"scope": "instance" if instance_id else "global", "text": text})
                 return
             if self.path == "/api/instances":
+                existing = load_instances()
+                current = next(
+                    (item for item in existing if item["id"] == str(body.get("id"))), None
+                )
+                if current is None:
+                    raise ValueError("unknown instance")
                 instance = validate_instance(body)
-                instances = [
-                    item for item in load_instances() if item["id"] != instance["id"]
-                ]
+                if instance["environment"] == current["environment"]:
+                    project = current["project"]
+                else:
+                    project = next_project_name(
+                        instance["environment"], existing, instance["id"]
+                    )
+                instance["project"] = project
+                instance["name"] = project
+                instances = [item for item in existing if item["id"] != instance["id"]]
                 instances.append(instance)
                 self._json(save_instances(validate_instances(instances)))
                 return
