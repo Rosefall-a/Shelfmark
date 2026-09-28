@@ -34,6 +34,7 @@ from src.api.routes import (
     users,
 )
 from src.api.routes import set as set_routes
+from src.api.routes.health import router as health_router
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
 from src.api.routes.setup import router as setup_router
@@ -93,6 +94,7 @@ app.include_router(calendar_feed.public_router)
 app.include_router(set_routes.router)
 app.include_router(cards.router)
 app.include_router(misc_router)
+app.include_router(health_router)
 
 
 @app.on_event("startup")
