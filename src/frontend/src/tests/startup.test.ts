@@ -39,6 +39,7 @@ describe("startup state", () => {
   it("rejects external and protocol-relative return paths", () => {
     expect(safeReturnPath("https://malicious.example/")).toBeNull();
     expect(safeReturnPath("//malicious.example/")).toBeNull();
+    expect(safeReturnPath("/bad external value")).toBeNull();
     expect(safeReturnPath("javascript:alert(1)")).toBeNull();
   });
 
