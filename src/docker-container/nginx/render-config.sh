@@ -1,13 +1,13 @@
 #!/bin/sh
 set -eu
 
-output="${1:-/etc/nginx/ready.conf}"
+source="${1:-/etc/nginx/ready.conf}"
+output="${2:-/etc/nginx/ready.conf}"
 enabled="${NGINX_TLS_ENABLED:-false}"
 redirect="${NGINX_TLS_REDIRECT_HTTP:-false}"
 cert="${NGINX_TLS_CERTIFICATE:-}"
 key="${NGINX_TLS_PRIVATE_KEY:-}"
 generated_dir="/run/unnamed-tracking/tls"
-source="/etc/nginx/ready.conf"
 tmp_output="${output}.tmp.$$"
 
 cleanup() {
