@@ -8,9 +8,7 @@ whatever the Settings page grows next. One row per user, created lazily;
 from uuid import UUID, uuid4
 
 from sqlalchemy import ForeignKey
-
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
