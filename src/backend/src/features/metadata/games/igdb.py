@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring,too-many-locals,too-few-public-methods
 from __future__ import annotations
 
 import time

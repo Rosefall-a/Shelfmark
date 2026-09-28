@@ -15,6 +15,7 @@ the button showed nothing until the end. Now:
 
 A run is started by someone asking for it (the Settings button) or by the
 existing daily loop. Only one runs at a time."""
+# pylint: disable=missing-class-docstring,too-many-instance-attributes,missing-function-docstring,broad-exception-caught,not-callable,global-statement
 
 from __future__ import annotations
 

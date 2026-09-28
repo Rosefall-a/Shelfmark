@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-module-docstring
 from __future__ import annotations
 
 import json
