@@ -11,16 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.user_preferences import UserPreferences
 
 DEFAULTS: dict[str, Any] = {
-    # calendar
     "calendar_game_releases": True,
     "calendar_game_history": True,
-    "calendar_default_view": "month",  # "month" | "week" | "agenda"
-    "calendar_week_start": 0,  # 0 = Sunday, 1 = Monday
-    "calendar_hide_games": False,  # hides every Games layer even if the data exists
-    "calendar_show_estimated": True,  # projected later episodes (dashed)
-    # which airing shows appear: by where they sit in the library
+    "calendar_default_view": "month",
+    "calendar_week_start": 0,
+    "calendar_hide_games": False,
+    "calendar_show_estimated": True,
     "calendar_airing_statuses": ["watching", "plan", "hold"],
-    # notifications
     "notify_episode_aired": True,
     "notify_season_started": True,
     "notify_sequel_announced": True,
@@ -33,13 +30,16 @@ DEFAULTS: dict[str, Any] = {
     # (Completed and Dropped titles never get episode alerts.)
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
-    "notification_retention_days": 30,  # 0 = keep forever
-    # library and lists
-    "library_default_layout": "list",  # "list" | "shelf" | "board"
-    "title_language": "english",  # which spelling of an anime title to show
-    "lists_default_sort": "custom",  # "custom" | "name" | "count" | "recent"
-    # statistics
-    "stats_include_plan": True,  # count Plan to Watch titles in title totals
+    "notification_retention_days": 30,
+    "library_default_layout": "list",
+    "title_language": "english",
+    "lists_default_sort": "custom",
+    "stats_include_plan": True,
+    "anilist_import_enabled": False,
+    "anilist_import_username": "",
+    "anilist_import_interval_minutes": 24 * 60,
+    "anilist_import_update_existing": False,
+    "anilist_import_last_run_at": None,
 }
 
 _CHOICES: dict[str, tuple[Any, ...]] = {
@@ -63,9 +63,6 @@ _SET_CHOICES: dict[str, tuple[str, ...]] = {
 
 
 def validate_preference(key: str, value: Any) -> Any:
-    """Returns the value if it is a legal setting for `key`, else raises
-    ValueError. Unknown keys are rejected so a typo can't silently store
-    junk."""
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
     default = DEFAULTS[key]
@@ -82,10 +79,24 @@ def validate_preference(key: str, value: Any) -> Any:
         allowed = _SET_CHOICES[key]
         if not isinstance(value, list) or any(v not in allowed for v in value):
             raise ValueError(f"{key} must be a list drawn from {list(allowed)}")
-        return [v for v in allowed if v in value]  # de-duplicated, in a fixed order
+        return [v for v in allowed if v in value]
     if key in _CHOICES:
         if value not in _CHOICES[key]:
             raise ValueError(f"{key} must be one of {list(_CHOICES[key])}")
+        return value
+    if key == "anilist_import_username":
+        if not isinstance(value, str) or len(value.strip()) > 100:
+            raise ValueError("anilist_import_username must be a string of at most 100 characters")
+        return value.strip()
+    if key == "anilist_import_interval_minutes":
+        if not isinstance(value, int) or isinstance(value, bool) or not 60 <= value <= 30 * 24 * 60:
+            raise ValueError("anilist_import_interval_minutes must be between 60 and 43200")
+        return value
+    if key == "anilist_import_last_run_at":
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+        ):
+            raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
         return value
     if isinstance(default, bool):
         if not isinstance(value, bool):
@@ -107,7 +118,6 @@ async def save_preferences(
     if row is None:
         row = UserPreferences(user_id=user_id, data={})
         db.add(row)
-    # reassign rather than mutate: SQLAlchemy does not see in-place JSONB edits
     row.data = {**row.data, **clean}
     await db.commit()
     return {**DEFAULTS, **row.data}

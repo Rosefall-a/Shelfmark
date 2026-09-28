@@ -23,6 +23,11 @@ export interface Preferences {
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
   stats_include_plan: boolean;
+  anilist_import_enabled: boolean;
+  anilist_import_username: string;
+  anilist_import_interval_minutes: number;
+  anilist_import_update_existing: boolean;
+  anilist_import_last_run_at: number | null;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -52,45 +57,24 @@ export const DEFAULT_PREFERENCES: Preferences = {
 
 export async function fetchPreferences(): Promise<Preferences> {
   const response = await fetch("/api/preferences", { credentials: "include" });
-  if (!response.ok)
-    throw new Error(`Failed to load preferences: ${response.status}`);
+  if (!response.ok) throw new Error(`Failed to load preferences: ${response.status}`);
   return { ...DEFAULT_PREFERENCES, ...(await response.json()) };
 }
 
-export async function updatePreferences(
-  changes: Partial<Preferences>,
-): Promise<Preferences> {
+export async function updatePreferences(changes: Partial<Preferences>): Promise<Preferences> {
   const response = await fetch("/api/preferences", {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(changes),
   });
-  if (!response.ok)
-    throw new Error(`Failed to save preferences: ${response.status}`);
+  if (!response.ok) throw new Error(`Failed to save preferences: ${response.status}`);
   return { ...DEFAULT_PREFERENCES, ...(await response.json()) };
 }
 
-// Saves go one at a time, in the order they were made. Sent together, two
-// changes to the same setting can be handled out of order by the server, so
-// a quick double click could end on the wrong value. `latest` says nothing
-// newer is waiting, which is when the screen may take the server's answer.
 let saveQueue: Promise<unknown> = Promise.resolve();
 let saving = 0;
-export function queuePreferences(
-  changes: Partial<Preferences>,
-): Promise<{ prefs: Preferences; latest: boolean }> {
+export function queuePreferences(changes: Partial<Preferences>): Promise<{ prefs: Preferences; latest: boolean }> {
   saving += 1;
   const run = saveQueue.then(() => updatePreferences(changes));
   saveQueue = run.catch(() => undefined);
-  return run.then(
-    (prefs) => {
-      saving -= 1;
-      return { prefs, latest: saving === 0 };
-    },
-    (err) => {
-      saving -= 1;
-      throw err;
-    },
-  );
+  return run.then((prefs) => { saving -= 1; return { prefs, latest: saving === 0 }; }, (err) => { saving -= 1; throw err; });
 }
