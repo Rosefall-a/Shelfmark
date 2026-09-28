@@ -154,8 +154,7 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
         "status": ["ps"], "health": ["ps"], "logs": ["logs", "--tail", "160"],
     }[action]
     if action in {"start", "rebuild"}:
-        command += (["--build", "--pull", "never"] if instance["build_mode"] == "local"
-                    else ["--no-build", "--pull", "always"])
+        command += ["--build"] if instance["build_mode"] == "local" else ["--no-build", "--pull", "always"]
     return [
         "docker", "compose", "--env-file", str(CONFIG_PATH), "--project-name", instance["project"],
         "-f", str(compose), *command,

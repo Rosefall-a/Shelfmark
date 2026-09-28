@@ -7,7 +7,7 @@ import control
 class ControlCommandTests(unittest.TestCase):
     def test_dev_start_builds_current_checkout(self):
         args = control.compose_args(control.DEFAULT_INSTANCES[0], "start")
-        self.assertEqual(args[-5:], ["up", "-d", "--build", "--pull", "never"])
+        self.assertEqual(args[-3:], ["up", "-d", "--build"])
         self.assertIn("--env-file", args)
         self.assertIn("uta-debug-dev", args)
 
