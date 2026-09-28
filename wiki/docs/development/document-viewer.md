@@ -1,40 +1,29 @@
 # Document viewer architecture
 
-The viewer is intentionally layered on the existing game-document storage rather than introducing a second media store.
+The viewer reuses the existing game-document storage and authorization model.
 
 ## Request flow
 
-1. GameDetail.vue lists existing doc files through listGameFiles().
-2. Clicking a document opens DocumentViewer.vue.
-3. documentViewer.ts requests /api/game/{game_id}/files/doc/{filename}/view.
-4. games.py authenticates the caller and resolves the game with _get_game_or_404(), scoped to the current user's game.
-5. document_viewer.py validates the filename, checks the stored file, identifies PDF/text content, and constructs a safe response.
+1. Game detail lists existing `doc` files.
+2. The user selects a document.
+3. The frontend requests `/api/game/{game_id}/files/doc/{filename}/view`.
+4. The backend authenticates the current user and resolves the game through the existing ownership-scoped lookup.
+5. `document_viewer.py` validates the filename, checks the stored file and determines whether it is a PDF or supported UTF-8 text.
 
-## MIME and format handling
+## Content handling
 
-PDFs are recognized by their %PDF- file signature and served as application/pdf with an inline content disposition so the browser can use its native viewer.
+PDFs are identified by their `%PDF-` signature and returned as `application/pdf` with inline disposition.
 
-Text viewing uses a conservative extension/MIME allowlist. SVG remains excluded. HTML/XHTML are transported as text and sanitized before rendering; scripts, embeds, forms, media, external-resource tags, and inline styles are stripped. Text is decoded as UTF-8 and returned as text/plain.
+Text formats use an extension/MIME allowlist. HTML/XHTML may be classified as text but are returned as `text/plain`; they are not sanitized and rendered as HTML. SVG is excluded.
 
-The browser-supplied upload MIME type is not trusted by the viewer.
+Text is read only after a 5 MiB size check and must be valid UTF-8 without binary control bytes.
 
-## Authorization and path safety
+## Security
 
-The endpoint is authenticated by the existing route dependency and calls _get_game_or_404(game_id, db, current_user.id). The file path is constructed only beneath that user's game directory.
+The viewer uses the existing authenticated game ownership check. The requested filename must not contain path separators or traversal after URL decoding.
 
-The requested filename must be a single filename component. Path separators and traversal forms are rejected instead of being stripped.
+The dedicated viewer route is separate from generic download behavior. Unsupported formats continue to download normally.
 
-The endpoint is separate from the generic download route. Existing generic game documents continue to download normally; only the dedicated viewer route returns an inline PDF/text response.
+## Extending the viewer
 
-## Resource limits
-
-Text files larger than 5 MiB are rejected before their contents are read. PDFs continue to use FileResponse so the server does not load the entire PDF into application memory.
-
-## Adding another document type
-
-1. Add type/signature checks to document_viewer.py.
-2. Decide whether it is safe to return inline under the application's origin.
-3. Add backend security/content tests.
-4. Add a frontend result type and rendering branch.
-5. Add frontend/browser/error tests and update the user guide.
-6. Avoid a new dependency unless native browser support is demonstrably insufficient.
+A new format requires a safe content check, an explicit decision that inline rendering is safe under the application's origin, backend security/resource tests, a frontend rendering branch and documentation. Avoid a new dependency when native browser support is sufficient.
