@@ -1,11 +1,11 @@
 # pylint: disable=missing-class-docstring,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring,duplicate-code
 """API routes for managing movies."""
 
-from datetime import date
-from uuid import UUID
 import asyncio
+from datetime import date
 import re
 import time
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
