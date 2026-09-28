@@ -24,7 +24,7 @@ jobs:
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Apply safe Ruff fixes
-        run: ruff check . --fix
+        run: ruff check . --fix || true
       - name: Commit Ruff fixes and remove temporary workflow
         working-directory: .
         run: |
