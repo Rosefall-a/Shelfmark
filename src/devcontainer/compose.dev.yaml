@@ -43,11 +43,14 @@ services:
       dockerfile: Dockerfile
     ports:
       - "${DEVCONTAINER_APP_PORT:-5173}:80"
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost/ >/dev/null" ]
+      interval: 5s
+      timeout: 3s
+      retries: 24
     volumes:
       - ../frontend/src:/app/src:ro
       - ../frontend/public:/app/public:ro
-    environment:
-      VITE_API_BASE_URL: http://localhost:${DEVCONTAINER_APP_PORT:-5173}/api
     depends_on:
       - backend
 

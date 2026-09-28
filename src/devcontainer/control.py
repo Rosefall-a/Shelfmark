@@ -230,13 +230,13 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
         )
     )
     command = {
-        "start": ["up", "-d"],
+        "start": ["up", "-d", "--wait", "--wait-timeout", "120"],
         "stop": ["down", "--remove-orphans"],
         "reset": ["down", "--volumes", "--remove-orphans"],
-        "rebuild": ["up", "-d"],
+        "rebuild": ["up", "-d", "--wait", "--wait-timeout", "120"],
         "status": ["ps"],
         "health": ["ps"],
-        "logs": ["logs", "--tail", "160"],
+        "logs": ["logs", "--tail", "160", "--timestamps"],
     }[action]
     if action in {"start", "rebuild"}:
         command += (

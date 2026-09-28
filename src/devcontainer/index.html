@@ -12,17 +12,17 @@
       <div>
         <p class="eyebrow">Unnamed Tracking App</p>
         <h1>Developer Environment</h1>
-        <p>Run isolated Compose environments, switch ports/images, and watch the repository wiki live.</p>
+        <p>Deploy isolated Compose environments without living in the terminal.</p>
       </div>
       <a class="docs" href="http://localhost:999/" target="_blank" rel="noreferrer">Open documentation</a>
     </header>
-    <section class="warning"><strong>Trusted local tooling.</strong> Docker socket access is powerful; keep this UI bound to localhost.</section>
-    <section class="panel">
-      <div class="panel-heading"><h2>Environments</h2><span id="env-state">Ready</span></div>
-      <p>Paste a complete .env file here. The global file is used by every stack; each stack can also have its own override file.</p>
+    <section class="warning"><strong>Local developer tool.</strong> Deploy waits for health; Reset volumes is the destructive option.</section>
+    <section class="panel compact-panel">
+      <div class="panel-heading"><h2>Images & environment</h2><span id="env-state">Ready</span></div>
+      <p>Use one global .env and optional per-instance overrides. Build the three local images when needed.</p>
       <div class="actions"><button id="edit-global-env">Edit global .env</button></div>
       <div class="image-build"><label>Final tag<input id="build-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required></label><button id="build-images">Build all 3 images from source</button></div>
-      <p>Builds the production, frontend and backend images locally with the same final tag. It does not push to GHCR.</p>
+      <p>Uses the same final tag for the production, frontend and backend image repositories. Nothing is pushed.</p>
     </section>
     <dialog id="env-modal">
       <form method="dialog" class="env-dialog">
@@ -34,7 +34,7 @@
     </dialog>
     <section class="panel">
       <div class="panel-heading"><h2>Compose instances</h2><span>Each instance has its own project, port and volumes.</span></div>
-      <p>Run several development stacks at once, plus one or more production-like stacks. Project names and application ports must be unique.</p>
+      <p>Multiple stacks are supported; each gets its own Compose project, port and volumes.</p>
       <form id="instance-form" class="instance-form">
         <input type="hidden" id="instance-id">
         <label>Name<input id="instance-name" required></label>
@@ -47,7 +47,7 @@
       </form>
     </section>
     <div id="stacks"></div>
-    <section class="panel"><h2>Diagnostics</h2><p id="last-action">Ready.</p><pre id="output"></pre></section>
+    <details class="panel diagnostics"><summary>Diagnostics</summary><p id="last-action">Ready.</p><pre id="output"></pre></details>
   </main>
   <script src="/app.js"></script>
 </body>

@@ -136,7 +136,7 @@ function actionButton(instance, action, label) {
     busy = true;
     setBusy(b, true, label);
     document.querySelector("#last-action").textContent = label + " " + instance.name + "…";
-    document.querySelector("#output").textContent = "Docker is working. A fresh build can take a while.";
+    document.querySelector("#output").textContent = action === "logs" ? "Fetching recent container logs…" : "Docker is working. Deploy waits for the application to become healthy.";
     try {
       const result = await api("/api/action", {method: "POST", body: JSON.stringify({instance_id: instance.id, action})});
       document.querySelector("#last-action").textContent = "Action completed.";
@@ -173,7 +173,7 @@ function render(instances) {
     ].join("\n");
     const actions = document.createElement("div");
     actions.className = "actions";
-    [["start","Start"],["rebuild","Rebuild & restart"],["stop","Stop"],["reset","Reset"],["status","Status"],["health","Health"],["logs","Logs"]]
+    [["start","Deploy"],["rebuild","Rebuild"],["stop","Stop"],["reset","Reset volumes"],["logs","Logs"]]
       .forEach(([action, label]) => actions.appendChild(actionButton(instance, action, label)));
     const edit = document.createElement("button");
     edit.textContent = "Edit";
@@ -186,6 +186,13 @@ function render(instances) {
     const remove = document.createElement("button");
     remove.textContent = "Remove";
     remove.addEventListener("click", () => deleteInstance(instance.id));
+    const open = document.createElement("a");
+    open.className = "button-link";
+    open.href = "http://localhost:" + instance.port + "/";
+    open.target = "_blank";
+    open.rel = "noreferrer";
+    open.textContent = "Open";
+    actions.appendChild(open);
     actions.appendChild(remove);
     const live = document.createElement("div");
     live.className = "live-status";

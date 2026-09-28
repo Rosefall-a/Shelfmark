@@ -1,36 +1,39 @@
-:root {
-  color-scheme: dark light;
-  font-family: system-ui, sans-serif;
-}
+:root { color-scheme: dark light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+* { box-sizing: border-box; }
 body { margin: 0; background: Canvas; color: CanvasText; }
-main { max-width: 1150px; margin: 0 auto; padding: 32px 20px 60px; }
-header { display: flex; gap: 24px; align-items: flex-start; justify-content: space-between; }
-h1 { margin: 4px 0 8px; }
-p { line-height: 1.5; }
-.eyebrow { text-transform: uppercase; letter-spacing: .08em; opacity: .65; font-size: .8rem; }
-.docs, button {
-  border: 1px solid currentColor; border-radius: 8px; padding: 9px 13px;
-  text-decoration: none; color: inherit; background: transparent; cursor: pointer;
-}
-button.busy { outline: 3px solid color-mix(in srgb, CanvasText 35%, transparent); cursor: wait; }
-button:disabled { opacity: .65; cursor: wait; }
-.warning, .panel, .stack {
-  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
-  border-radius: 12px; padding: 18px; margin-top: 18px;
-}
-.warning { border-color: #c47f00; }
-.stack h2 { margin-top: 0; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.status { font-family: ui-monospace, monospace; white-space: pre-wrap; opacity: .85; }
-pre { white-space: pre-wrap; max-height: 360px; overflow: auto; margin-bottom: 0; }
-.panel-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-.env-grid, .instance-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-label { display: grid; gap: 5px; font-weight: 600; }
-input, select { min-width: 0; padding: 9px; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 7px; background: Canvas; color: CanvasText; }
-.instance-form .actions { grid-column: 1 / -1; }
-
-.live-status { margin: 10px 0; font-weight: 700; }
-dialog { width: min(900px, 92vw); border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 12px; padding: 0; background: Canvas; color: CanvasText; }
-dialog::backdrop { background: rgb(0 0 0 / 55%); }
-.env-dialog { padding: 20px; }
-.env-dialog textarea { width: 100%; min-height: 55vh; box-sizing: border-box; resize: vertical; margin-top: 8px; padding: 12px; font: 13px/1.5 ui-monospace, monospace; background: Canvas; color: CanvasText; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; }
+main { max-width: 1400px; margin: 0 auto; padding: 24px 22px 48px; }
+header { display:flex; gap:20px; align-items:center; justify-content:space-between; padding-bottom:10px; }
+h1 { margin: 2px 0 6px; font-size: clamp(1.7rem, 3vw, 2.35rem); }
+h2 { margin:0; font-size:1.05rem; }
+p { line-height:1.45; margin:7px 0; opacity:.82; }
+.eyebrow { margin:0; text-transform:uppercase; letter-spacing:.1em; font-size:.72rem; opacity:.55; }
+.docs, button, .button-link { border:1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius:9px; padding:8px 11px; text-decoration:none; color:inherit; background:color-mix(in srgb, Canvas 92%, CanvasText 8%); cursor:pointer; font:inherit; }
+button:hover, .button-link:hover { border-color:CanvasText; }
+button.busy { outline:2px solid color-mix(in srgb, CanvasText 35%, transparent); cursor:wait; }
+button:disabled { opacity:.55; cursor:wait; }
+.warning, .panel, .stack { border:1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius:12px; padding:14px; background:color-mix(in srgb, Canvas 97%, CanvasText 3%); }
+.warning { border-color:#b87900; padding:9px 12px; margin:12px 0; font-size:.88rem; }
+.panel { margin-top:12px; }
+.compact-panel { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 18px; align-items:center; }
+.compact-panel > p { grid-column:1 / -1; }
+.panel-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+.actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+#stacks { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:12px; margin-top:12px; }
+.stack { margin:0; min-width:0; }
+.stack h2 { margin:0 0 7px; }
+.status { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 12px; font-size:.78rem; opacity:.72; }
+.live-status { display:inline-block; margin-top:9px; padding:4px 8px; border-radius:999px; background:color-mix(in srgb, CanvasText 8%, transparent); font-size:.78rem; font-weight:700; }
+.instance-form { display:grid; grid-template-columns:2fr 1.2fr 1.4fr 1fr 1.4fr 1fr auto; gap:9px; align-items:end; }
+label { display:grid; gap:4px; font-size:.8rem; font-weight:650; }
+input, select { width:100%; min-width:0; padding:8px; border:1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius:8px; background:Canvas; color:CanvasText; }
+.instance-form .actions { margin:0; }
+.image-build { display:flex; gap:8px; align-items:end; justify-content:flex-end; }
+.image-build label { width:130px; }
+pre { white-space:pre-wrap; max-height:330px; overflow:auto; margin:10px 0 0; padding:10px; border-radius:8px; background:color-mix(in srgb, CanvasText 6%, transparent); font:12px/1.45 ui-monospace,monospace; }
+summary { cursor:pointer; font-weight:700; }
+dialog { width:min(900px,94vw); border:1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius:12px; padding:0; background:Canvas; color:CanvasText; }
+dialog::backdrop { background:rgb(0 0 0 / 55%); }
+.env-dialog { padding:18px; }
+.env-dialog textarea { width:100%; min-height:52vh; resize:vertical; margin-top:8px; padding:12px; font:13px/1.5 ui-monospace,monospace; background:Canvas; color:CanvasText; border:1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius:8px; }
+@media (max-width:900px) { .instance-form { grid-template-columns:repeat(3,minmax(0,1fr)); } .compact-panel { grid-template-columns:1fr; } .image-build { justify-content:flex-start; } }
+@media (max-width:600px) { main { padding:16px 12px 32px; } header { align-items:flex-start; flex-direction:column; } #stacks { grid-template-columns:1fr; } .instance-form { grid-template-columns:repeat(2,minmax(0,1fr)); } .status { grid-template-columns:1fr; } }

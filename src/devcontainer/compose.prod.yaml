@@ -19,6 +19,11 @@ services:
       PRIMARY_USER_EMAIL: ${DEV_PRIMARY_USER_EMAIL:-admin@example.invalid}
       PRIMARY_USER_PASSWORD: ${DEV_PRIMARY_USER_PASSWORD:-debug-admin-password}
       AUTH_COOKIE_SECURE: ${DEV_AUTH_COOKIE_SECURE:-false}
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost/ >/dev/null" ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
     volumes:
       - devcontainer_prod_data:/data
     depends_on:
