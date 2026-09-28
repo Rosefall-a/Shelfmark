@@ -48,7 +48,7 @@ The production edge disables version disclosure, keeps bounded proxy timeouts, f
 
 ## Optional embedded TLS
 
-HTTP-only remains the default. TLS is deployment-only and certificate generation is intentionally out of scope.
+HTTP-only remains the default. TLS is deployment-only. If TLS is enabled without certificate/key paths, the container generates a self-signed localhost certificate/key pair under `/run/unnamed-tracking/tls`; explicit mounted certificate/key files remain supported for production.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

@@ -13,8 +13,8 @@ services:
       PRIMARY_USER_PASSWORD: ${PRIMARY_USER_PASSWORD:?Set PRIMARY_USER_PASSWORD in .env}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       NGINX_TLS_ENABLED: ${NGINX_TLS_ENABLED:-false}
-      NGINX_TLS_CERTIFICATE: ${NGINX_TLS_CERTIFICATE:-/etc/nginx/tls/tls.crt}
-      NGINX_TLS_PRIVATE_KEY: ${NGINX_TLS_PRIVATE_KEY:-/etc/nginx/tls/tls.key}
+      NGINX_TLS_CERTIFICATE: ${NGINX_TLS_CERTIFICATE:-}
+      NGINX_TLS_PRIVATE_KEY: ${NGINX_TLS_PRIVATE_KEY:-}
       NGINX_TLS_REDIRECT_HTTP: ${NGINX_TLS_REDIRECT_HTTP:-false}
     volumes:
       - ./data:/data
@@ -31,7 +31,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-unnamed_tracking} -d ${POSTGRES_DB:-unnamed_tracking}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-unnamed_tracking} -d ${POSTGRES_DB:-unnamed_tracking}" ]
       interval: 5s
       timeout: 5s
       retries: 20

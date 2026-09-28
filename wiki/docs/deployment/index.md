@@ -16,7 +16,7 @@ Use the root compose.yaml for development. It keeps frontend and backend contain
 
 ## HTTPS
 
-The production container supports optional embedded Nginx TLS. HTTP-only remains the default. TLS is enabled through deployment environment variables and externally mounted certificate/key files; the image does not generate certificates.
+The production container supports optional embedded Nginx TLS. HTTP-only remains the default. TLS is enabled through deployment environment variables and externally mounted certificate/key files; the image generates a self-signed localhost certificate/key pair when TLS is enabled without certificate/key paths.
 
 Set `NGINX_TLS_ENABLED=true`, configure `NGINX_TLS_CERTIFICATE` and `NGINX_TLS_PRIVATE_KEY` to the mounted PEM paths, and publish host port 443 to container port 443. Set `NGINX_TLS_REDIRECT_HTTP=true` when HTTP should redirect to HTTPS after the production configuration becomes ready. For HTTPS deployments, set `AUTH_COOKIE_SECURE=true`.
 

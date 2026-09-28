@@ -48,7 +48,7 @@ These are operational diagnostics, not durable log storage.
 
 ## TLS failures
 
-TLS is enabled only when `NGINX_TLS_ENABLED=true`.
+TLS is enabled only when `NGINX_TLS_ENABLED=true`. With both certificate variables empty, a self-signed localhost certificate/key pair is generated automatically.
 
 Check that:
 

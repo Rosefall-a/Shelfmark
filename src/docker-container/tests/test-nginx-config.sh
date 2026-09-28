@@ -26,6 +26,13 @@ grep -q "ssl_certificate $work/tls/cert.pem;" "$rendered"
 grep -q "ssl_certificate_key $work/tls/key.pem;" "$rendered"
 nginx -t -c "$rendered"
 
+rm -rf /run/unnamed-tracking/tls
+NGINX_TLS_ENABLED=true "$render" "$work/generated.conf"
+test -s /run/unnamed-tracking/tls/tls.crt
+test -s /run/unnamed-tracking/tls/tls.key
+openssl x509 -in /run/unnamed-tracking/tls/tls.crt -noout -subject >/dev/null
+nginx -t -c "$work/generated.conf"
+
 if NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/missing.pem" \
   NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" "$work/missing-cert.conf"; then
   echo "missing certificate unexpectedly succeeded" >&2
