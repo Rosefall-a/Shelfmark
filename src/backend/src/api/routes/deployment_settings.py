@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_providers.base import NotificationMessage
+from src.features.notification_providers.smtp import smtp_provider
 
 router = APIRouter(
     prefix="/api/settings/deployment", tags=["settings"], dependencies=[Depends(get_current_admin)]
@@ -350,3 +354,24 @@ async def update_deployment_settings(
     await db.commit()
     apply_deployment_provider_credentials(app)
     return await get_deployment_settings(db, admin)
+
+@router.post("/smtp-test")
+async def send_smtp_test(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, str]:
+    if not (admin.email or "").strip():
+        raise HTTPException(400, "The administrator account has no email address.")
+    provider = await smtp_provider(db)
+    if not provider.available():
+        raise HTTPException(400, "SMTP is not fully configured and enabled.")
+    destination = await provider.lookup_destination(db, admin, None)
+    if destination is None:
+        raise HTTPException(400, "The administrator account email address is invalid.")
+    result = await provider.deliver(destination, NotificationMessage(
+        uuid4(), "smtp_test", "Unnamed Tracking App SMTP test",
+        "This is a test email from Unnamed Tracking App.", "system", uuid4(), int(time.time())
+    ))
+    if not result.success:
+        raise HTTPException(502, result.error or "SMTP test delivery failed.")
+    return {"status": "sent"}
