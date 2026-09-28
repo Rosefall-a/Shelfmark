@@ -47,6 +47,34 @@ Environment values have higher precedence than persisted settings. Environment-o
 
 The setup UI is generated from the backend schema, so adding a normal configuration field should generally be handled in the registry rather than by hard-coding another field into the Vue setup component.
 
+## Per-user scheduled AniList imports
+
+AniList automatic imports are implemented as a lightweight extension of the existing application scheduler.
+
+The flow is:
+
+```
+existing scheduler loop
+        |
+        v
+per-user AniList preferences
+        |
+        v
+check whether each user's interval is due
+        |
+        v
+reusable AniList import service
+        |
+        v
+that user's anime library
+```
+
+The scheduler reads each user's preferences, skips disabled or incomplete configurations, and runs a bounded batch of due users.
+
+The current scheduler checks for due AniList imports once per minute and processes at most four users per tick. This is intentionally bounded so a deployment with many users does not let AniList imports starve the application's other scheduled work.
+
+AniList scheduling is per user rather than an administrator-configured deployment job. It therefore does not use the administrator's Scheduled Tasks settings.
+
 ## Database
 
 PostgreSQL is the normal production database.
