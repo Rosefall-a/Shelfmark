@@ -95,6 +95,8 @@ def compose_args(environment: str, action: str) -> list[str]:
     return [
         "docker",
         "compose",
+        "--env-file",
+        str(CONFIG_PATH),
         "--project-name",
         stack["project"],
         "-f",
