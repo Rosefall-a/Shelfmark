@@ -4,7 +4,8 @@ services:
     restart: unless-stopped
     ports:
       - "${UNNAMED_TRACKING_APP_PORT:-8080}:80"
-      # Publish 443:443 when embedded TLS is enabled.
+      # Publish 443:443 only when embedded TLS is enabled.
+      # TLS is disabled by default.
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-unnamed_tracking}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-unnamed_tracking}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}

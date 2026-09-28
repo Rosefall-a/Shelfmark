@@ -36,7 +36,7 @@ Nginx hides its version and emits security headers for the production frontend/H
 
 ## Optional embedded HTTPS/TLS
 
-HTTP-only is the default. Embedded TLS is enabled through environment variables. If TLS is enabled without certificate/key paths, the image generates a self-signed localhost certificate/key pair under `/run/unnamed-tracking/tls`; explicit certificate/key paths remain supported for production.
+HTTP-only is the default. Embedded TLS is enabled through environment variables. If TLS is enabled without certificate/key paths, the image first uses a complete certificate/key pair already present at `/etc/nginx/tls/tls.crt` and `/etc/nginx/tls/tls.key`; otherwise it generates a self-signed localhost certificate/key pair under `/run/unnamed-tracking/tls`. The conventional `/etc/nginx/tls` paths also fall back to the generated pair when those files are not mounted. Explicit non-default certificate/key paths remain supported for production. TLS itself remains disabled by default.
 
 Set:
 

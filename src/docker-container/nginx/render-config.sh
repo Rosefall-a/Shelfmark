@@ -32,23 +32,37 @@ if [ "$redirect" = true ] && [ "$enabled" != true ]; then
 fi
 
 if [ "$enabled" = true ]; then
+  default_cert="/etc/nginx/tls/tls.crt"
+  default_key="/etc/nginx/tls/tls.key"
+
   if [ -z "$cert" ] && [ -z "$key" ]; then
-    cert="$generated_dir/tls.crt"
-    key="$generated_dir/tls.key"
-    mkdir -p "$generated_dir"
-    if [ ! -s "$cert" ] || [ ! -s "$key" ]; then
-      printf '%s\n' "No TLS certificate/private key supplied; generating a self-signed certificate for localhost." >&2
-      umask 077
-      openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
-        -keyout "$key" -out "$cert" \
-        -subj "/CN=localhost" \
-        -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
-      chmod 0644 "$cert"
-      chmod 0600 "$key"
+    if [ -s "$default_cert" ] && [ -s "$default_key" ]; then
+      cert="$default_cert"
+      key="$default_key"
+    else
+      cert="$generated_dir/tls.crt"
+      key="$generated_dir/tls.key"
     fi
   elif [ -z "$cert" ] || [ -z "$key" ]; then
     printf '%s\n' "NGINX_TLS_CERTIFICATE and NGINX_TLS_PRIVATE_KEY must be supplied together." >&2
     exit 1
+  elif [ "$cert" = "$default_cert" ] && [ "$key" = "$default_key" ] &&
+       { [ ! -s "$cert" ] || [ ! -s "$key" ]; }; then
+    cert="$generated_dir/tls.crt"
+    key="$generated_dir/tls.key"
+  fi
+
+  if [ "$cert" = "$generated_dir/tls.crt" ] && [ "$key" = "$generated_dir/tls.key" ] &&
+     { [ ! -s "$cert" ] || [ ! -s "$key" ]; }; then
+    printf '%s\n' "No usable TLS certificate/private key supplied; generating a self-signed certificate for localhost." >&2
+    mkdir -p "$generated_dir"
+    umask 077
+    openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+      -keyout "$key" -out "$cert" \
+      -subj "/CN=localhost" \
+      -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+    chmod 0644 "$cert"
+    chmod 0600 "$key"
   fi
   if [ ! -f "$cert" ]; then printf '%s\n' "TLS certificate file is missing: $cert" >&2; exit 1; fi
   if [ ! -f "$key" ]; then printf '%s\n' "TLS private key file is missing: $key" >&2; exit 1; fi
