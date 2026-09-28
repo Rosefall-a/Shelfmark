@@ -164,8 +164,8 @@ async def import_anilist_library(
                 skipped += 1
                 continue
 
-            def parsed(key: str):
-                value = entry[key]
+            def parsed(key: str, source=entry):
+                value = source[key]
                 return date.fromisoformat(value) if value else None
 
             season: AnimeSeason | None = None
