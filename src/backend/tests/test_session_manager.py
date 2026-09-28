@@ -146,10 +146,9 @@ def test_create_session_persists_network_metadata(monkeypatch) -> None:
     )
     db = FakeDb()
 
-    awaitable = create_session(db, user, request)
     import asyncio
 
-    await asyncio.wait_for(awaitable, timeout=1)
+    asyncio.run(create_session(db, user, request))
     assert db.session is not None
     assert db.session.geo_network_number == 13335
     assert db.session.geo_network_organization == "Cloudflare"
