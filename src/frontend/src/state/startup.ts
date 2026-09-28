@@ -29,7 +29,9 @@ export function safeReturnPath(value: unknown): string | null {
   try {
     const url = new URL(value, "https://unnamed-tracking.invalid");
     if (url.origin !== "https://unnamed-tracking.invalid") return null;
-    return url.pathname + url.search + url.hash;
+    const normalized = url.pathname + url.search + url.hash;
+    if (normalized !== value) return null;
+    return normalized;
   } catch {
     return null;
   }
