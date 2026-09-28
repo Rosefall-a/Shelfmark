@@ -1,5 +1,3 @@
-name: uta-debug-dev
-
 services:
   db:
     image: postgres:18
@@ -16,6 +14,8 @@ services:
       retries: 20
 
   backend:
+    image: ${DEV_BACKEND_IMAGE:-unnamed_tracking_app-dev-backend:local}
+    pull_policy: ${DEV_PULL_POLICY:-build}
     build:
       context: ../backend
       dockerfile: dockerfile
@@ -29,16 +29,23 @@ services:
       STARTUP_MODE: dev
     volumes:
       - devcontainer_dev_data:/data
+      - ../backend/src:/app/src:ro
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       db:
         condition: service_healthy
 
   frontend:
+    image: ${DEV_FRONTEND_IMAGE:-unnamed_tracking_app-dev-frontend:local}
+    pull_policy: ${DEV_PULL_POLICY:-build}
     build:
       context: ../frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:${DEVCONTAINER_DEV_PORT:-5173}:80"
+      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-5173}:80"
+    volumes:
+      - ../frontend/src:/app/src:ro
+      - ../frontend/public:/app/public:ro
     depends_on:
       - backend
 

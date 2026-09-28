@@ -1,105 +1,52 @@
 # Developer control container
 
-The repository has a dedicated /src/devcontainer for local development infrastructure. It is separate from the normal development stack and the real production container.
+The repository has a dedicated /src/devcontainer for local developer infrastructure. It is separate from the normal root Compose workflow and the real production image.
 
-## Responsibilities
+## What it provides
 
-The devcontainer:
+- A Docker-socket-backed control UI.
+- Any number of isolated development Compose instances.
+- Any number of isolated production-like Compose instances.
+- Per-instance application ports and Compose project names.
+- Local source builds or explicitly selected image tags.
+- One shared environment file for all managed instances.
+- Fast source feedback and live MkDocs documentation.
 
-1. controls an isolated development Compose project;
-2. controls a production-like Compose project using the existing production image;
-3. exposes fixed status, health, and log diagnostics;
-4. serves the existing /wiki MkDocs site as its documentation viewer.
+## Start
 
-It does not add a documentation route to the Vue application, and it does not change the real production image.
-
-## Architecture
-
-    Host Docker daemon
-          |
-          | /var/run/docker.sock
-          v
-    src/devcontainer
-       |-- control UI/API
-       |-- Docker CLI + Compose
-       |-- MkDocs viewer
-       |
-       +--> uta-debug-dev
-       |      PostgreSQL + backend + frontend
-       |
-       +--> uta-debug-prod
-              production image + PostgreSQL
-
-The Docker socket is intentionally a trusted local developer boundary. Keep the control port localhost-only.
-
-## Starting it
-
-From the repository root:
-
+    cp src/devcontainer/.env.example src/devcontainer/.env
     docker compose -f src/devcontainer/compose.yaml up --build
 
-Then open http://localhost:9000/ for the control UI or http://localhost:999/ for the wiki viewer.
+Then open http://localhost:9000/ or http://localhost:999/.
 
-The ports can be changed with the DEVCONTAINER_*_PORT variables.
+## Multiple environments
 
-## Shared environment configuration
+Use Add instance in the control UI. Every instance needs a unique project name and application port. For example, three development instances can use 5173, 5174 and 5175 while a production-like instance uses 8180.
 
-Both environments use the same configuration in `src/devcontainer/.env`. The control UI provides an editor for the database, application secret, initial admin, and cookie settings. Save changes, then restart the affected stack.
+Instance definitions are kept in the ignored src/devcontainer/.instances.json file so they survive control-container restarts without becoming repository configuration.
 
-## Development environment
+## Build and image tags
 
-The Development action builds the backend and frontend from the current checkout and starts PostgreSQL. It uses the dedicated Compose project `uta-debug-dev` and dedicated named volumes. It does not reuse the normal root `compose.yaml` data volume.
+Build from checkout uses the current repository source. Production-like builds use the repository root as the context and src/docker-container/Dockerfile as the Dockerfile; that Dockerfile copies src/backend and src/frontend, so the repository root context is required.
 
-## Production-like environment
+Use image/tag skips building and pulls the exact configured tag. This supports testing published releases or another registry image. Compose supports services with both build and image definitions, with pull/build behavior selected by policy.
 
-The Production-like action uses the same published application image family as the real deployment:
+## Shared environment
 
-    ghcr.io/rosefall-a/unnamed_tracking_app:<tag>
+All managed stacks use one src/devcontainer/.env. The control UI can edit it. Save the environment and use Rebuild & restart on a stack to apply it.
 
-Set UNNAMED_TRACKING_APP_VERSION when a specific image should be exercised. The stack uses dedicated volumes and binds its application port to localhost.
+## Fast source feedback
 
-This is a reproduction environment, not a production deployment. It does not build or modify src/docker-container.
+Development maps src/backend/src to /app/src and runs Uvicorn reload. It maps src/frontend/src and public and uses Vite polling. Normal code edits therefore take effect without rebuilding.
 
-## Lifecycle
+For dependency, Dockerfile, or other image-level changes, use Rebuild & restart.
 
-The UI exposes only:
+## Wiki live updates
 
-- Start — create or update the selected stack;
-- Stop — stop and remove its containers and network;
-- Reset — also remove that stack's named volumes;
-- Status — show Compose state;
-- Health — show Compose state and the published application endpoint;
-- Logs — show the recent Compose log tail.
+MkDocs runs against /workspace/wiki itself rather than a copied build artifact. Markdown, navigation and MkDocs configuration changes are therefore picked up by MkDocs live reload immediately.
 
-Reset is deliberately scoped to uta-debug-dev or uta-debug-prod. The tooling never runs docker system prune, docker volume prune, or another host-wide destructive operation.
+## Lifecycle and isolation
 
-## Diagnostics
+Each instance maps to its own Compose project. Stop/reset operations are scoped to that project. Reset removes only that project's volumes and never calls Docker-wide prune commands.
 
-Diagnostics are collected outside the application where practical:
-
-- Compose project/container state;
-- PostgreSQL healthcheck state;
-- published application reachability;
-- recent container logs.
-
-The control API does not expose arbitrary environment variables, Docker inspect data, connection strings, credentials, OIDC secrets, or API keys.
-
-## Documentation viewer
-
-The devcontainer runs MkDocs against /workspace/wiki/mkdocs.yml. /wiki remains the source of truth and can still be served independently.
-
-The normal application frontend is intentionally unaware of the viewer. There is no /docs application route, no Vue sidebar entry, and no MkDocs build in src/docker-container.
-
-## Security
-
-The Docker socket is a privileged trust boundary. Run this container only for local development and keep its control port bound to 127.0.0.1. Do not expose it through a reverse proxy or public interface.
-
-The repository mount is writable so the developer environment can use the current checkout. Do not mount arbitrary host directories into the devcontainer.
-
-## Troubleshooting
-
-If the control UI cannot reach Docker, verify that /var/run/docker.sock is mounted and that the host Docker daemon is running.
-
-If the Development stack fails to build, use Logs and inspect the backend/frontend build output.
-
-If the Production-like stack fails immediately, check the selected UNNAMED_TRACKING_APP_VERSION and its startup logs. The stack intentionally uses the existing production image rather than a second copy of the production Dockerfile.
+The UI exposes no arbitrary Docker command runner. Docker socket access remains a trusted local boundary.

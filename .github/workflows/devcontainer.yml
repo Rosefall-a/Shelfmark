@@ -32,15 +32,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=devcontainer
 
       - name: Run control-container unit tests
-        run: |
-          docker run --rm --entrypoint python3 unnamed_tracking_app:devcontainer-ci             -m unittest discover -s /opt/devcontainer/tests -p 'test_*.py'
-
-      - name: Build wiki with the devcontainer toolchain
-        run: |
-          docker run --rm --entrypoint mkdocs             -v "$PWD:/workspace:ro"             unnamed_tracking_app:devcontainer-ci             build -f /workspace/wiki/mkdocs.yml --site-dir /tmp/site --clean
+        run: docker run --rm --entrypoint python3 unnamed_tracking_app:devcontainer-ci -m unittest discover -s /opt/devcontainer/tests -p 'test_*.py'
 
       - name: Validate Compose syntax
         run: |
           docker compose -f src/devcontainer/compose.yaml config --quiet
           docker compose -f src/devcontainer/compose.dev.yaml config --quiet --no-interpolate --no-path-resolution
           docker compose -f src/devcontainer/compose.prod.yaml config --quiet --no-interpolate --no-path-resolution
+          grep -q 'context: ../..' src/devcontainer/compose.prod.yaml
+
+      - name: Validate production Dockerfile
+        run: docker build --check -f src/docker-container/Dockerfile .

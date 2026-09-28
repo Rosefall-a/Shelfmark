@@ -12,17 +12,14 @@
       <div>
         <p class="eyebrow">Unnamed Tracking App</p>
         <h1>Developer Environment</h1>
-        <p>Local control for isolated development and production-like stacks.</p>
+        <p>Run isolated Compose environments, switch ports/images, and watch the repository wiki live.</p>
       </div>
       <a class="docs" href="http://localhost:999/" target="_blank" rel="noreferrer">Open documentation</a>
     </header>
-    <section class="warning">
-      <strong>Trusted local tooling.</strong>
-      This container has access to the Docker socket. Keep it bound to localhost and do not expose it to an untrusted network.
-    </section>
+    <section class="warning"><strong>Trusted local tooling.</strong> Docker socket access is powerful; keep this UI bound to localhost.</section>
     <section class="panel">
       <div class="panel-heading"><h2>Shared environment</h2><span id="env-state">Loading…</span></div>
-      <p>Both environments use the same developer configuration. Edit the values below, then restart either environment to apply them.</p>
+      <p>One environment file is shared by every managed stack. Save it, then rebuild/restart a stack to apply changes.</p>
       <div class="env-grid">
         <label>Database user<input id="env-db-user" autocomplete="off"></label>
         <label>Database password<input id="env-db-password" type="password" autocomplete="new-password"></label>
@@ -35,12 +32,24 @@
       </div>
       <div class="actions"><button id="save-env">Save environment</button></div>
     </section>
-    <div id="stacks"></div>
     <section class="panel">
-      <h2>Diagnostics</h2>
-      <p id="last-action">Ready.</p>
-      <pre id="output"></pre>
+      <div class="panel-heading"><h2>Compose instances</h2><span>Each instance has its own project, port and volumes.</span></div>
+      <p>Run several development stacks at once, plus one or more production-like stacks. Project names and application ports must be unique.</p>
+      <form id="instance-form" class="instance-form">
+        <input type="hidden" id="instance-id">
+        <label>Name<input id="instance-name" required></label>
+        <label>Type<select id="instance-env"><option value="dev">Development</option><option value="prod">Production-like</option></select></label>
+        <label>Project<input id="instance-project" pattern="[a-z0-9][a-z0-9_-]*" required></label>
+        <label>Port<input id="instance-port" type="number" min="1" max="65535" required></label>
+        <label>Mode<select id="instance-mode"><option value="local">Build from checkout</option><option value="image">Use image/tag</option></select></label>
+        <label id="image-field">Application image/tag<input id="instance-image" placeholder="ghcr.io/rosefall-a/unnamed_tracking_app:tag"></label>
+        <label id="backend-image-field">Backend image/tag<input id="instance-backend-image" placeholder="registry/image:tag"></label>
+        <label id="frontend-image-field">Frontend image/tag<input id="instance-frontend-image" placeholder="registry/image:tag"></label>
+        <div class="actions"><button type="submit" id="save-instance">Add instance</button><button type="button" id="cancel-instance">Clear</button></div>
+      </form>
     </section>
+    <div id="stacks"></div>
+    <section class="panel"><h2>Diagnostics</h2><p id="last-action">Ready.</p><pre id="output"></pre></section>
   </main>
   <script src="/app.js"></script>
 </body>

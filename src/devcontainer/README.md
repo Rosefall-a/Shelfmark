@@ -1,58 +1,38 @@
 # Developer control container
 
-This is a local developer control environment, not part of the application runtime.
-
-It has access to the host Docker socket so it can create and manage two isolated Compose projects:
-
-- Development: builds the normal backend/frontend images and uses dedicated named volumes.
-- Production-like: runs the existing published production image with production-style startup and Nginx behavior, but uses dedicated debug volumes and localhost-only ports.
-
-The container also serves the repository's existing MkDocs wiki at port 999. The normal Vue frontend and the real production container are not modified to host the documentation viewer.
+This is trusted local developer tooling, separate from the application runtime.
 
 ## Start
 
-From the repository root:
-
+    cp src/devcontainer/.env.example src/devcontainer/.env
     docker compose -f src/devcontainer/compose.yaml up --build
 
-Open the control UI at http://localhost:9000/ or the documentation at http://localhost:999/.
+Open http://localhost:9000/ for the control UI or http://localhost:999/ for the live MkDocs viewer.
 
-The control UI exposes only fixed lifecycle and diagnostic actions. It does not provide an arbitrary Docker command runner.
+## Managed instances
 
-## Docker socket
+The UI keeps instance definitions in the ignored src/devcontainer/.instances.json file. Every instance is an independent Docker Compose project with its own project name and application port. Docker Compose project names isolate containers, networks, and named volumes, so you can run several copies simultaneously.
 
-The Docker socket is equivalent to powerful host Docker access. Keep the control port bound to localhost and only run this container as trusted developer tooling. Do not publish it to a LAN or the public internet.
+For example: dev-a on 5173, dev-b on 5174, dev-c on 5175, and prod-a on 8180.
 
-The repository mount lets the container read the current backend/frontend/wiki sources. Managed application data is stored in Compose named volumes and is separate from the normal development and production data directories.
+## Build and image modes
 
-## Environments
+Each instance can either build from the checkout or use an image/tag. Production-like local builds use src/docker-container/Dockerfile with the repository root as the build context, so the real production backend/frontend/Nginx image is exercised.
 
-Both managed environments use the same shared configuration stored in `src/devcontainer/.env`. The control UI can edit this configuration; restart a stack after saving to apply changes.
+Image mode skips building and pulls the configured tag. Production-like instances accept tags such as ghcr.io/rosefall-a/unnamed_tracking_app:latest. Development instances accept separate backend and frontend image tags.
 
-The shared values include database credentials, the application secret key, initial admin credentials, and cookie security. This is a local developer environment: do not put production secrets in this file.
+## Shared environment
 
-Development builds the backend/frontend from the current checkout.
+All instances use the same src/devcontainer/.env. The control UI edits database credentials, application secret, initial admin credentials, and cookie security for every managed instance. Rebuild/restart an instance after saving to apply changes.
 
-Production-like builds the existing `src/docker-container` production image locally, so its backend and Nginx startup path are exercised rather than using a separate debug backend. It uses the same shared environment and dedicated production-like volumes.
+## Fast source and wiki feedback
 
-## Reset
+Development maps the backend src and frontend src/public into the running containers. Backend uses Uvicorn reload and frontend uses Vite polling, so normal source edits are picked up without rebuilding. Use Rebuild & restart after Dockerfile, dependency, or other image-level changes.
 
-Reset is scoped to the corresponding project name and removes only that project's containers, networks, and named volumes. It never runs Docker-wide prune commands.
+MkDocs reads /workspace/wiki directly, so wiki edits appear through MkDocs live reload immediately.
 
-## Documentation
+## Reset and security
 
-The viewer is MkDocs Material and reads /workspace/wiki/mkdocs.yml directly. This keeps /wiki as the single source of truth and avoids adding documentation routes to the application frontend or production image.
+Reset is scoped to the selected Compose project and removes only its containers, network and named volumes. No Docker-wide prune commands are used.
 
-The existing standalone wiki workflow remains valid:
-
-    cd wiki
-    mkdocs serve -a 0.0.0.0:999
-
-## Troubleshooting
-
-Use the control UI's Status, Health, and Logs actions. Logs are intentionally local diagnostics and may contain application-generated messages; do not expose the control port to untrusted users.
-
-From a shell, the same projects can be inspected with:
-
-    docker compose --project-name uta-debug-dev -f src/devcontainer/compose.dev.yaml ps
-    docker compose --project-name uta-debug-prod -f src/devcontainer/compose.prod.yaml ps
+The Docker socket is a privileged trust boundary. Keep the control and application ports on localhost and use this container only as trusted developer tooling.

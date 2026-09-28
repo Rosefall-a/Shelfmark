@@ -1,13 +1,13 @@
-name: uta-debug-prod
-
 services:
   app:
+    image: ${PROD_IMAGE:-ghcr.io/rosefall-a/unnamed_tracking_app:latest}
+    pull_policy: ${DEV_PULL_POLICY:-build}
     build:
-      context: ../docker-container
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: src/docker-container/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${DEVCONTAINER_PROD_PORT:-8180}:80"
+      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-8180}:80"
     environment:
       POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
       POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
@@ -27,7 +27,6 @@ services:
 
   db:
     image: postgres:18
-    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
       POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}

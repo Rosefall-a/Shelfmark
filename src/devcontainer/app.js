@@ -17,35 +17,6 @@ function setBusy(button, state, label) {
   button.textContent = state ? "Working…" : label;
 }
 
-function button(environment, action, label) {
-  const b = document.createElement("button");
-  b.textContent = label;
-  b.addEventListener("click", async () => {
-    if (busy) return;
-    busy = true;
-    setBusy(b, true, label);
-    document.querySelector("#last-action").textContent =
-      `${label} ${environment === "prod" ? "Production-like" : "Development"}…`;
-    document.querySelector("#output").textContent = "The Docker operation is running. Please wait…";
-    try {
-      const result = await api("/api/action", {
-        method: "POST",
-        body: JSON.stringify({environment, action})
-      });
-      document.querySelector("#last-action").textContent = result.ok === false ? "Action failed." : "Action completed.";
-      document.querySelector("#output").textContent = result.output || result.error || "";
-      await refresh();
-    } catch (error) {
-      document.querySelector("#last-action").textContent = "Action failed.";
-      document.querySelector("#output").textContent = error.message;
-    } finally {
-      setBusy(b, false, label);
-      busy = false;
-    }
-  });
-  return b;
-}
-
 function value(id) { return document.querySelector(id).value; }
 
 function loadEnvironment(env) {
@@ -58,10 +29,6 @@ function loadEnvironment(env) {
   document.querySelector("#env-admin-password").value = env.admin_password || "";
   document.querySelector("#env-secure").value = String(env.auth_cookie_secure);
   document.querySelector("#env-state").textContent = "Loaded";
-}
-
-async function loadConfig() {
-  loadEnvironment(await api("/api/environment"));
 }
 
 async function saveEnvironment() {
@@ -79,52 +46,161 @@ async function saveEnvironment() {
       })
     });
     loadEnvironment(result);
-    document.querySelector("#last-action").textContent = "Environment saved. Restart a stack to apply it.";
+    document.querySelector("#last-action").textContent = "Environment saved. Rebuild/restart a stack to apply it.";
   } catch (error) {
     document.querySelector("#env-state").textContent = "Save failed";
-    document.querySelector("#last-action").textContent = "Environment save failed.";
     document.querySelector("#output").textContent = error.message;
   } finally {
     setBusy(b, false, "Save environment");
   }
 }
 
-document.querySelector("#save-env").addEventListener("click", saveEnvironment);
+function editInstance(instance) {
+  document.querySelector("#instance-id").value = instance.id;
+  document.querySelector("#instance-name").value = instance.name;
+  document.querySelector("#instance-env").value = instance.environment;
+  document.querySelector("#instance-project").value = instance.project;
+  document.querySelector("#instance-port").value = instance.port;
+  document.querySelector("#instance-mode").value = instance.build_mode;
+  document.querySelector("#instance-image").value = instance.image || "";
+  document.querySelector("#instance-backend-image").value = instance.backend_image || "";
+  document.querySelector("#instance-frontend-image").value = instance.frontend_image || "";
+  document.querySelector("#save-instance").textContent = "Save instance";
+  toggleImageFields();
+}
 
-function render(data) {
+function clearInstanceForm() {
+  document.querySelector("#instance-form").reset();
+  document.querySelector("#instance-id").value = "";
+  document.querySelector("#save-instance").textContent = "Add instance";
+  toggleImageFields();
+}
+
+async function saveInstance(event) {
+  event.preventDefault();
+  const button = document.querySelector("#save-instance");
+  const originalLabel = button.textContent;
+  const editing = Boolean(value("#instance-id"));
+  setBusy(button, true, originalLabel);
+  try {
+    const payload = {
+      id: value("#instance-id") || value("#instance-project"),
+      name: value("#instance-name"),
+      environment: value("#instance-env"),
+      project: value("#instance-project"),
+      port: Number(value("#instance-port")),
+      build_mode: value("#instance-mode"),
+      image: value("#instance-image"),
+      backend_image: value("#instance-backend-image"),
+      frontend_image: value("#instance-frontend-image")
+    };
+    const result = await api("/api/instances", {method: editing ? "PUT" : "POST", body: JSON.stringify(payload)});
+    document.querySelector("#last-action").textContent = "Instance saved.";
+    clearInstanceForm();
+    render(result);
+  } catch (error) {
+    document.querySelector("#output").textContent = error.message;
+  } finally {
+    setBusy(button, false, editing ? "Save instance" : "Add instance");
+  }
+}
+
+async function deleteInstance(id) {
+  if (!confirm("Remove this instance definition? Running containers are not stopped automatically.")) return;
+  try {
+    render(await api("/api/instances", {method: "DELETE", body: JSON.stringify({id})}));
+    document.querySelector("#last-action").textContent = "Instance definition removed.";
+  } catch (error) {
+    document.querySelector("#output").textContent = error.message;
+  }
+}
+
+function actionButton(instance, action, label) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.addEventListener("click", async () => {
+    if (busy) return;
+    busy = true;
+    setBusy(b, true, label);
+    document.querySelector("#last-action").textContent = label + " " + instance.name + "…";
+    document.querySelector("#output").textContent = "Docker is working. A fresh build can take a while.";
+    try {
+      const result = await api("/api/action", {method: "POST", body: JSON.stringify({instance_id: instance.id, action})});
+      document.querySelector("#last-action").textContent = "Action completed.";
+      document.querySelector("#output").textContent = result.output || "";
+      await refresh();
+    } catch (error) {
+      document.querySelector("#last-action").textContent = "Action failed.";
+      document.querySelector("#output").textContent = error.message;
+    } finally {
+      setBusy(b, false, label);
+      busy = false;
+    }
+  });
+  return b;
+}
+
+function render(instances) {
   const root = document.querySelector("#stacks");
   root.replaceChildren();
-  for (const [environment, stack] of Object.entries(data)) {
+  for (const instance of instances) {
     const section = document.createElement("section");
     section.className = "stack";
     const title = document.createElement("h2");
-    title.textContent = stack.name;
+    title.textContent = instance.name;
     const summary = document.createElement("div");
     summary.className = "status";
-    summary.textContent =
-      "Compose: " + (stack.compose_valid ? "valid" : "failed") +
-      "\nEndpoint: " + stack.endpoint.state +
-      "\nURL: " + stack.endpoint_url +
-      "\nProject: " + stack.project;
+    summary.textContent = [
+      (instance.environment === "prod" ? "Production-like" : "Development") + " · " + instance.build_mode,
+      "Project: " + instance.project,
+      "URL: http://localhost:" + instance.port + "/",
+      instance.build_mode === "image" ? "Image: " + (instance.image || instance.backend_image || instance.frontend_image || "(not set)") : "Source: current checkout"
+    ].join("\n");
     const actions = document.createElement("div");
     actions.className = "actions";
-    for (const [action, label] of [
-      ["start", "Start"], ["stop", "Stop"], ["reset", "Reset"],
-      ["status", "Status"], ["health", "Health"], ["logs", "Logs"]
-    ]) actions.appendChild(button(environment, action, label));
+    [["start","Start"],["rebuild","Rebuild & restart"],["stop","Stop"],["reset","Reset"],["status","Status"],["health","Health"],["logs","Logs"]]
+      .forEach(([action, label]) => actions.appendChild(actionButton(instance, action, label)));
+    const edit = document.createElement("button");
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => editInstance(instance));
+    actions.appendChild(edit);
+    const remove = document.createElement("button");
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => deleteInstance(instance.id));
+    actions.appendChild(remove);
     section.append(title, summary, actions);
     root.appendChild(section);
   }
 }
 
 async function refresh() {
-  try { render(await api("/api/status")); }
+  try { render(await api("/api/instances")); }
   catch (error) {
-    document.querySelector("#last-action").textContent = "Unable to read environment status.";
+    document.querySelector("#last-action").textContent = "Unable to read instances.";
     document.querySelector("#output").textContent = error.message;
   }
 }
 
-loadConfig();
-refresh();
+function toggleImageFields() {
+  const prod = value("#instance-env") === "prod";
+  const remote = value("#instance-mode") === "image";
+  document.querySelector("#image-field").hidden = !prod;
+  document.querySelector("#backend-image-field").hidden = prod || !remote;
+  document.querySelector("#frontend-image-field").hidden = prod || !remote;
+  document.querySelector("#instance-image").required = prod && remote;
+  document.querySelector("#instance-backend-image").required = !prod && remote;
+  document.querySelector("#instance-frontend-image").required = !prod && remote;
+}
+
+document.querySelector("#save-env").addEventListener("click", saveEnvironment);
+document.querySelector("#instance-form").addEventListener("submit", saveInstance);
+document.querySelector("#cancel-instance").addEventListener("click", clearInstanceForm);
+document.querySelector("#instance-env").addEventListener("change", toggleImageFields);
+document.querySelector("#instance-mode").addEventListener("change", toggleImageFields);
+
+Promise.all([api("/api/environment"), api("/api/instances")]).then(([env, instances]) => {
+  loadEnvironment(env);
+  render(instances);
+  toggleImageFields();
+}).catch(error => { document.querySelector("#output").textContent = error.message; });
 setInterval(refresh, 5000);
