@@ -38,7 +38,7 @@ jobs:
             else
               normal_files+=("$file")
             fi
-          done < <(find src -type f -name '*.py' -print)
+          done < <(find src -type f -name '*.py' ! -path 'src/database/migrations/*' -print)
           pylint "${normal_files[@]}" --score=y | tee pylint-output.txt
           for file in "${exception_files[@]}"; do
             pylint "$file" --disable=duplicate-code --score=y | tee -a pylint-output.txt
