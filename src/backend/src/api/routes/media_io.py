@@ -10,62 +10,36 @@
 The MAL import never changes a title already on the site (same MAL id, or
 same title) unless the user picks that title, so importing twice is harmless."""
 
+from typing import Any
 import csv
-
 import io
-
 import json
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
-
 from fastapi.responses import Response
-
 from pydantic import BaseModel
-
 from sqlalchemy import func, select
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.anime import _derive_sort_title
-
 from src.core.app_integrations import get_or_create_app_integration_settings
-
 from src.core.auth import get_current_user
-
 from src.core.integrations import resolve_integrations
-
 from src.database.models.anime import Anime, AnimeSeason
-
 from src.database.models.movies import Movie
-
 from src.database.models.tv_show import TVSeason, TVShow
-
 from src.database.models.user import User
-
 from src.database.session import get_db
-
 from src.features.imports.list_apply import apply_tracking as list_apply_tracking
-
 from src.features.imports.list_apply import differences as list_differences
-
 from src.features.imports.list_apply import fill_details as list_fill_details
-
 from src.features.imports.list_apply import OmdbLookup, match_titles, new_title
-
 from src.features.imports.lists import ImportedTitle, ListImportError, parse_imdb, parse_letterboxd
-
 from src.features.imports.mal import MAX_BYTES, MalEntry, MalImportError, parse_mal_export
-
 from src.features.imports.mal_apply import apply_tracking, differences, fill_details, match_entries
-
 from src.features.imports.restore import restore_media
-
 from src.features.imports.yamtrack import build_yamtrack_item, parse_yamtrack
-
 from src.features.metadata.movies.omdb import OMDBClient
-
 from src.features.metadata.movies.tmdb import TMDBClient
 
 LIST_MAX_BYTES = 30 * 1024 * 1024
