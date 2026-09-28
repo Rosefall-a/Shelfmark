@@ -32,6 +32,9 @@ async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(path, { ...options, credentials: "include" });
   if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error("The upload is too large for the configured proxy. Please use a smaller file or increase the proxy upload limit.");
+    }
     throw new Error((await response.text()) || "Request failed: " + response.status);
   }
   return response.json() as Promise<T>;
