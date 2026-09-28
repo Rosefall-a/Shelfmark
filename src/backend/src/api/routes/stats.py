@@ -1,4 +1,4 @@
-# pylint: disable=missing-function-docstring,too-many-locals,not-callable
+# pylint: disable=missing-function-docstring,too-many-locals,not-callable,duplicate-code
 """API routes for the Server Stats dashboard — everything computed live
 from the caller's own library, no caching/background jobs."""
 

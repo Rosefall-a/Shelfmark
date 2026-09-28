@@ -1,4 +1,4 @@
-# pylint: disable=missing-function-docstring
+# pylint: disable=missing-function-docstring,duplicate-code
 """iCalendar (.ics) feed of the calendar, subscribable from Google/Apple
 Calendar. Calendar apps fetch by plain URL and can't send a login
 cookie, so the feed lives at a secret per-user token path instead of
