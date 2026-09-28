@@ -20,6 +20,21 @@
       <strong>Trusted local tooling.</strong>
       This container has access to the Docker socket. Keep it bound to localhost and do not expose it to an untrusted network.
     </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Shared environment</h2><span id="env-state">Loading…</span></div>
+      <p>Both environments use the same developer configuration. Edit the values below, then restart either environment to apply them.</p>
+      <div class="env-grid">
+        <label>Database user<input id="env-db-user" autocomplete="off"></label>
+        <label>Database password<input id="env-db-password" type="password" autocomplete="new-password"></label>
+        <label>Database name<input id="env-db-name" autocomplete="off"></label>
+        <label>Secret key<input id="env-secret" type="password" autocomplete="new-password"></label>
+        <label>Admin username<input id="env-admin-user" autocomplete="off"></label>
+        <label>Admin email<input id="env-admin-email" type="email" autocomplete="off"></label>
+        <label>Admin password<input id="env-admin-password" type="password" autocomplete="new-password"></label>
+        <label>Secure cookies<select id="env-secure"><option value="false">false</option><option value="true">true</option></select></label>
+      </div>
+      <div class="actions"><button id="save-env">Save environment</button></div>
+    </section>
     <div id="stacks"></div>
     <section class="panel">
       <h2>Diagnostics</h2>
