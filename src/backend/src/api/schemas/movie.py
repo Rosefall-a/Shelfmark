@@ -1,3 +1,6 @@
+# pylint: disable=duplicate-code
+# Domain schemas intentionally mirror the corresponding database/provider models.
+
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
