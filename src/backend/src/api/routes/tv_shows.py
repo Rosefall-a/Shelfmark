@@ -4,12 +4,12 @@
 
 """API routes for managing TV shows and their seasons."""
 
-from datetime import date
-from uuid import UUID
 import asyncio
+from datetime import date
 import logging
 import re
 import time
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
