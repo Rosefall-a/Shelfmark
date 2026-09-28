@@ -1,43 +1,44 @@
 # Authentication
 
-Unnamed Tracking App supports local username/password authentication and OpenID Connect (OIDC) / SSO.
+Unnamed Tracking App has two user-facing authentication methods: local username/password authentication and OpenID Connect (OIDC) / SSO.
 
 ## Local sign-in
 
-A successful local login creates a server-side session. The browser receives an opaque, HttpOnly session cookie; the session record is stored server-side and expires after 30 days.
+Local accounts use the application's username/password login. A successful login creates a server-side session and the browser receives the application's session cookie.
 
-Passwords are hashed and are never stored in plaintext.
-
-### Password requirements
-
-The default local-password policy is at least 9 characters, one uppercase, one lowercase and one symbol; a number is not required by default. Administrators can change the policy in **Settings → Password Policy** unless the relevant values are environment-managed.
-
-Password and editable secret fields are masked by default and include an accessible eye control for temporary reveal. Saved secrets are not populated into browser fields.
+Passwords are not stored in plaintext. API requests made by the web application normally use the session cookie automatically.
 
 ## API keys
 
-Users can create bearer API keys for integrations that do not use a browser session:
+Users can create API keys for integrations that need to authenticate without a browser session.
+
+API keys use the `utk_` prefix and are sent as:
 
 ```http
 Authorization: Bearer utk_<secret>
 ```
 
-The full key is shown only when created. The server stores a hash, and keys can be revoked.
+Keys are associated with the user who created them and can be revoked. The server stores a hash of the key rather than the full secret.
 
 ## OIDC / SSO
 
-Administrators configure OIDC under **Settings → OIDC / SSO**. OIDC credentials remain server-side and successful OIDC sign-in creates the same server-side session type as local login.
+OIDC is configured by an administrator under **Settings → OIDC / SSO**. It is a server-side login flow; the identity-provider client secret is not sent to the browser.
 
-The first-run setup flow can also configure OIDC when its section is explicitly selected, or when all required OIDC environment credentials are supplied.
+After a successful OIDC login, the application creates the same type of local server-side session used by normal login.
 
-See [OpenID Connect / SSO](oidc.md).
+See [OpenID Connect / SSO](oidc.md) for provider settings and account matching.
 
-## Multiple application hosts
+## Session security
 
-Session cookie names are derived from the browser-visible Host value, including the port. Separate instances such as `localhost:5173` and `localhost:8080` therefore do not overwrite each other's browser cookie. The server-side sessions remain separate, with HttpOnly, SameSite=Lax and configurable Secure behavior.
+Sessions are stored server-side and have an expiry. Authenticated requests can use a bearer API key or the normal session cookie.
 
-## Startup routing
+For HTTPS deployments, configure `AUTH_COOKIE_SECURE=true` so the authentication cookie is restricted to secure connections.
 
-The frontend distinguishes an unavailable backend from a confirmed unauthenticated response. Protected routes preserve a validated internal return path, including query strings and hashes, through login/setup. External and protocol-relative return URLs are rejected. OIDC callbacks preserve the intended route using tab-scoped session storage. Invalid or missing return paths fall back to home.
+## Startup routing and backend availability
 
-For HTTPS deployments, configure `AUTH_COOKIE_SECURE=true`.
+The frontend distinguishes a backend/network failure from a confirmed unauthenticated or setup-required response. A failed backend setup-status request is presented as **backend unavailable** with retry rather than incorrectly entering setup.
+
+Protected startup routes retain a validated same-origin relative return path through login/setup. Query strings and hashes are preserved. External and protocol-relative return URLs are rejected.
+
+OIDC preserves the intended internal route across its callback using tab-scoped session storage. Missing or invalid return paths fall back to the normal home route.
+
