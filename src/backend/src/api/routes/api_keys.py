@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring
+# pylint: disable=duplicate-code
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
