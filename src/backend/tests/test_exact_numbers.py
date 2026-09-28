@@ -1569,7 +1569,7 @@ async def test_manual_calendar_entries_are_private_validated_and_in_the_feed():
             assert await list_events(None, None, db, other) == []  # nobody else sees them
 
             # a bad time is refused at the edge, a half-linked title is refused by the route
-            with pytest.raises(Exception):
+            with pytest.raises((TypeError, ValueError)):
                 EventCreate(title="x", event_date=date(2026, 1, 1), event_time="25:99")
             with pytest.raises(HTTPException) as bad:
                 await create_event(
@@ -2111,9 +2111,10 @@ def test_calendar_projects_no_episode_past_the_season_total():
         )
 
     window = now + 365 * 86400
-    numbers = lambda s: [
-        e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)
-    ]
+    def numbers(s):
+        return [
+            e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)
+        ]
     assert numbers(show(24, 24)) == [24]  # the next episode is the last one
     assert numbers(show(11, 13)) == [11, 12, 13]
     # a count below the next episode is a lagging snapshot, not a ceiling
