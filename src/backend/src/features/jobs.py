@@ -1,3 +1,5 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-many-instance-attributes,global-statement,broad-exception-caught
+
 """Cleanup jobs: recurring work an administrator can switch on, schedule and
 run by hand.
 
