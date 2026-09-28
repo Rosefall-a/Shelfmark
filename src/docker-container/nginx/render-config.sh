@@ -7,6 +7,13 @@ redirect="${NGINX_TLS_REDIRECT_HTTP:-false}"
 cert="${NGINX_TLS_CERTIFICATE:-}"
 key="${NGINX_TLS_PRIVATE_KEY:-}"
 generated_dir="/run/unnamed-tracking/tls"
+source="/etc/nginx/ready.conf"
+tmp_output="${output}.tmp.$$"
+
+cleanup() {
+  rm -f "$tmp_output"
+}
+trap cleanup EXIT INT TERM
 
 case "$enabled" in
   true|TRUE|1|yes|YES) enabled=true ;;
@@ -49,14 +56,16 @@ if [ "$enabled" = true ]; then
   if [ ! -r "$key" ]; then printf '%s\n' "TLS private key is not readable: $key" >&2; exit 1; fi
   sed -e "s#ssl_certificate /etc/nginx/tls/tls.crt;#ssl_certificate $cert;#" \
       -e "s#ssl_certificate_key /etc/nginx/tls/tls.key;#ssl_certificate_key $key;#" \
-      /etc/nginx/ready.conf > "$output"
+      "$source" > "$tmp_output"
 else
   awk '/^    # TLS SERVER BEGIN$/ { skip=1; next }
        /^    # TLS SERVER END$/ { skip=0; next }
-       !skip { print }' /etc/nginx/ready.conf > "$output"
+       !skip { print }' "$source" > "$tmp_output"
 fi
 
 if [ "$redirect" = true ]; then
-  sed -i '/listen 80;/a\        if ($scheme = http) { return 301 https://$host$request_uri; }' "$output"
+  sed -i '/listen 80;/a\        if ($scheme = http) { return 301 https://$host$request_uri; }' "$tmp_output"
 fi
-  
+
+mv "$tmp_output" "$output"
+trap - EXIT INT TERM
