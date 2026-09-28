@@ -2,34 +2,52 @@
 from __future__ import annotations
 
 import json
+
 import secrets
+
 import time
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
 from pydantic import BaseModel, Field, field_validator
+
 from sqlalchemy import select, text, update
+
 from sqlalchemy.exc import IntegrityError
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import (
-    SESSION_COOKIE,
-    SESSION_TTL_SECONDS,
     get_current_admin,
     hash_password,
     hash_token,
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
     validate_password,
 )
+
 from src.core.config import settings
-from src.core.crypto import encrypt_secret
-from src.core.env_handler import EnvConfigHandler
-from src.core.provider_credentials import apply_deployment_provider_credentials
+
 from src.core.config_registry import CONFIG_REGISTRY
+
+from src.core.crypto import encrypt_secret
+
+from src.core.env_handler import EnvConfigHandler
+
+from src.core.provider_credentials import apply_deployment_provider_credentials
+
 from src.database.models.app_integration_settings import AppIntegrationSettings
+
 from src.database.models.auth import UserSession
+
 from src.database.models.game import Game
+
 from src.database.models.oidc_settings import OidcSettings
+
 from src.database.models.user import User
+
 from src.database.session import get_db
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
