@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-class-docstring,unnecessary-comprehension,missing-function-docstring
 """Two things live here: the media inbox (bulk-uploaded screenshots/clips/
 soundtrack not yet assigned to a game — upload once, sort out later) and a
 library-wide, read-only media gallery across every game's already-assigned

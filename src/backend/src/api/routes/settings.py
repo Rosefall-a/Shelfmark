@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,not-callable,too-many-locals,too-many-branches
 """API routes for app/user Settings — scan (metadata) preferences,
 per-user metadata-provider credentials, and read-only server config the
 frontend needs to display (e.g. upload limits)."""

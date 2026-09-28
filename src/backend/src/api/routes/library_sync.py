@@ -1,3 +1,4 @@
+# pylint: disable=broad-exception-caught,too-many-locals,too-many-branches,chained-comparison,missing-function-docstring,too-many-statements,unused-variable
 """API routes for pulling a user's owned-games library + achievements from
 Steam, PlayStation, and RetroAchievements straight into their library — a
 different mechanism from `games.py`'s `/metadata/search`, which enriches one

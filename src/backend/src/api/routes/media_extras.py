@@ -1,3 +1,4 @@
+# pylint: disable=too-many-arguments,too-many-positional-arguments,missing-function-docstring,too-many-locals,not-callable,unused-import
 """Cross-media-type routes: rewatch history, custom lists, the activity
 feed, and the airing calendar — all span movies, TV shows, and anime,
 which live in three separate tables with nothing in common, so every

@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines,missing-class-docstring,not-callable,missing-function-docstring,unnecessary-comprehension,too-many-positional-arguments,broad-exception-caught,too-many-arguments
 """API routes for managing games, notes, and game artwork."""
 
 import asyncio

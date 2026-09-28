@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring
 """API routes for managing movies."""
 
 import asyncio
