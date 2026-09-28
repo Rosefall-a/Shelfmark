@@ -140,9 +140,9 @@ async def search_metadata(
 ) -> dict:
     """Search external providers for data that can prefill a new game.
 
-    SteamGridDB art is only included if the requesting user has their own
-    key saved (Settings) — there's no app-wide fallback key. Provider order
-    and which fields get saved come from the user's scan settings.
+    Keys come from the user's own settings first, then the server-wide ones
+    (Server Integrations or the environment). Provider order and which
+    fields get saved come from the user's scan settings.
     """
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
     preferences = _scan_settings_to_preferences(scan_settings)

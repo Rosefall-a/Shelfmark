@@ -25,7 +25,9 @@ const error = ref<string | null>(null);
 const saved = ref(false);
 const providers = reactive<Record<string, string>>({});
 const configured = reactive<Record<string, boolean>>({});
-const deploymentSettings = ref<Awaited<ReturnType<typeof fetchDeploymentSettings>> | null>(null);
+const deploymentSettings = ref<Awaited<
+  ReturnType<typeof fetchDeploymentSettings>
+> | null>(null);
 
 onMounted(async () => {
   try {
@@ -81,6 +83,12 @@ async function save() {
       browser after saving. Values supplied by the deployment environment are
       managed there and cannot be replaced from this page.
     </p>
+    <p class="hint">
+      These are the server-wide defaults, used for everyone who hasn't saved
+      their own key under Settings &rsaquo; Metadata/API. A user's own key
+      always takes precedence for that user, which is why the same provider
+      appears in both places.
+    </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
       <div class="grid">
@@ -95,8 +103,8 @@ async function save() {
                 ? 'password'
                 : 'text'
             "
-             :placeholder="
-              deploymentSettings?.provider_locks[key] ?? false
+            :placeholder="
+              (deploymentSettings?.provider_locks[key] ?? false)
                 ? 'Managed by deployment environment'
                 : configured[key]
                   ? 'Already saved — enter a new value to replace it'

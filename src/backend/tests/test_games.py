@@ -196,3 +196,20 @@ async def test_saving_a_left_off_point_starts_a_movie_and_finishing_clears_it(sc
         )
         assert finished.status == MovieStatus.WATCHED
         assert finished.progress_minutes is None
+
+
+async def test_personal_key_cards_report_a_server_wide_fallback(monkeypatch):
+    """#234: a key saved under Server Integrations covers searches for users
+    without their own, so the personal cards must say so instead of
+    reading "Not configured"."""
+    from src.api.routes import settings as settings_routes
+
+    monkeypatch.setattr(settings_routes.settings, "STEAMGRIDDB_API_KEY", "server-key")
+    monkeypatch.setattr(settings_routes.settings, "GIANTBOMB_API_KEY", None)
+    user = User(id=uuid.uuid4(), username="nobody", email="nobody@example.test")
+    async with SessionLocal() as db:
+        status = await settings_routes.get_provider_credentials(db, user)
+
+    assert status["SteamGridDB"] == {"status": "not_configured", "server_configured": True}
+    assert status["GiantBomb"]["server_configured"] is False
+    assert "server-key" not in str(status)

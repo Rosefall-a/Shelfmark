@@ -147,6 +147,9 @@ export interface ProviderCredentialStatus {
   status: "not_configured" | "configured" | "connected" | "saved" | "error";
   detail?: string | null;
   app_configured?: boolean;
+  // a server-wide key (Server Integrations or the environment) covers this
+  // provider for anyone without their own
+  server_configured?: boolean;
   // library-sync providers only (Steam, RetroAchievements, PlayStation)
   library_games?: number;
   last_synced_at?: number | null;

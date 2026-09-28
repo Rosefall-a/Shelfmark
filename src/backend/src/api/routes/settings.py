@@ -312,6 +312,27 @@ async def get_provider_credentials(
         settings.SCREENSCRAPER_DEVID and settings.SCREENSCRAPER_DEVPASSWORD
     )
 
+    # The personal SteamGridDB key lives on the profile rather than in
+    # PROVIDER_FIELD_MAP, but it's shown alongside the others.
+    result["SteamGridDB"] = {
+        "status": "configured" if current_user.steamgriddb_api_key else "not_configured"
+    }
+    # Whether a server-wide key (Settings > Server Integrations or the
+    # environment, already folded into `settings` at startup/save) covers a
+    # provider for anyone without a personal key. Without this the personal
+    # cards said "Not configured" while searches quietly used the server key,
+    # which made the two places look like unsynced duplicates (#234). Only a
+    # yes/no ever leaves the server.
+    server_keys = {
+        "SteamGridDB": bool(settings.STEAMGRIDDB_API_KEY),
+        "GiantBomb": bool(settings.GIANTBOMB_API_KEY),
+        "RetroAchievements": bool(settings.RETROACHIEVEMENTS_API_KEY),
+        "ScreenScraper": bool(settings.SCREENSCRAPER_SSID and settings.SCREENSCRAPER_SSPASSWORD),
+    }
+    for provider, configured in server_keys.items():
+        result.setdefault(provider, {"status": "not_configured"})
+        result[provider]["server_configured"] = configured
+
     # library-sync providers also report how much has actually been pulled
     # in — a persistent "N games, last synced ..." beats a toast that
     # disappears the moment you navigate away. `library_games` counts every

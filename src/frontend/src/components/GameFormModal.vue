@@ -18,6 +18,7 @@ import type {
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
 import { currentUser } from "../state/auth";
+import { fetchProviderCredentials } from "../services/settings";
 import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
 import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
 import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
@@ -42,6 +43,13 @@ onMounted(async () => {
     // parent picker just stays empty, not worth failing the whole form
   }
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  fetchProviderCredentials()
+    .then((status) => {
+      serverHasSteamgriddbKey.value = !!status.SteamGridDB?.server_configured;
+    })
+    .catch(() => {
+      // the hint just stays visible
+    });
   try {
     const response = await fetch("/api/currency-codes", {
       credentials: "include",
@@ -198,8 +206,13 @@ const pickedBannerUrl = ref<string | null>(null);
 const keyArtCandidates = ref<string[]>([]);
 const bannerCandidates = ref<string[]>([]);
 
+// a personal key, or a server-wide one that searches fall back to (#234)
+const serverHasSteamgriddbKey = ref(false);
 const hasSteamgriddbKey = computed(
-  () => !!currentUser.value?.steamgriddb_api_key,
+  () =>
+    !!currentUser.value?.steamgriddb_api_key ||
+    serverHasSteamgriddbKey.value ||
+    steamgriddbConfigured.value,
 );
 
 async function searchMetadata() {
