@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-few-public-methods
 """Cross-media-type tables — rewatch history, custom lists, and the
 activity log all need to reference "a movie, a TV show, or an anime"
 generically, and those three live in entirely separate tables with no
