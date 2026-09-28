@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,too-few-public-methods
+# pylint: disable=missing-module-docstring,too-few-public-methods,unsubcriptable-object
 import time
 
 from sqlalchemy import BigInteger, Boolean, Integer, String

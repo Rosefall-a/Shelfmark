@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-class-docstring,too-few-public-methods
+# pylint: disable=missing-module-docstring,missing-class-docstring,too-few-public-methods,unsubcriptable-object
 import time
 from datetime import date
 from decimal import Decimal
