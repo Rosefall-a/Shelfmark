@@ -7,23 +7,34 @@ import control
 class ControlCommandTests(unittest.TestCase):
     def test_dev_start_builds_current_checkout(self):
         args = control.compose_args(control.DEFAULT_INSTANCES[0], "start")
-        self.assertEqual(args[-6:], ["up", "-d", "--wait", "--wait-timeout", "120", "--build"])
+        self.assertEqual(
+            args[-7:],
+            ["up", "-d", "--wait", "--wait-timeout", "120", "--build", "--pull", "always"],
+        )
         self.assertIn("--env-file", args)
         self.assertIn("uta-debug-dev", args)
 
     def test_image_mode_uses_tag_without_building(self):
         instance = {**control.DEFAULT_INSTANCES[1], "build_mode": "tag", "tag": "v1"}
         args = control.compose_args(instance, "start")
-        self.assertEqual(args[-8:], ["up", "-d", "--wait", "--wait-timeout", "120", "--no-build", "--pull", "always"])
+        self.assertEqual(
+            args[-8:],
+            ["up", "-d", "--wait", "--wait-timeout", "120", "--no-build", "--pull", "always"],
+        )
         self.assertIn("IMAGE_TAG", control.compose_env(instance))
 
     def test_instances_are_isolated_by_project_and_port(self):
         instances = [
-            {**control.DEFAULT_INSTANCES[0], "id": "dev-a", "project": "dev-a", "port": 5173},
-            {**control.DEFAULT_INSTANCES[0], "id": "dev-b", "project": "dev-b", "port": 5174},
-            {**control.DEFAULT_INSTANCES[1], "id": "prod-a", "project": "prod-a", "port": 8180},
+            {**control.DEFAULT_INSTANCES[0], "id": "dev-a", "project": "dev", "name": "dev", "port": 5173},
+            {**control.DEFAULT_INSTANCES[0], "id": "dev-b", "project": "dev-2", "name": "dev-2", "port": 5174},
+            {**control.DEFAULT_INSTANCES[1], "id": "prod-a", "project": "prod", "name": "prod", "port": 8180},
         ]
         self.assertEqual(len(control.validate_instances(instances)), 3)
+
+    def test_next_project_name_adds_number(self):
+        self.assertEqual(control.next_project_name("dev", control.DEFAULT_INSTANCES), "dev")
+        existing = [{**control.DEFAULT_INSTANCES[0], "project": "dev", "name": "dev"}]
+        self.assertEqual(control.next_project_name("dev", existing), "dev-2")
 
     def test_duplicate_ports_are_rejected(self):
         instances = [
