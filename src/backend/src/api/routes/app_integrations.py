@@ -1,6 +1,3 @@
-# pylint: disable=duplicate-code
-"""Admin API for deployment-wide provider credentials."""
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +18,9 @@ router = APIRouter(
 
 class DeploymentProviderCredentials(BaseModel):
     """Optional deployment-wide credentials; omitted fields are unchanged."""
+
+# Pylint attributes imported model similarity to this route module; the models are intentionally parallel.
+# pylint: disable=duplicate-code
 
     steamgriddb_api_key: str | None = None
     retroachievements_api_key: str | None = None
