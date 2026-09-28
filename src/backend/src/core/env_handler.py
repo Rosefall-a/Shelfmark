@@ -7,14 +7,14 @@ produces a UI-safe schema containing section status and field metadata.
 Secrets are represented only by a configured flag.
 """
 
-from __future__ import annotations
 from .config_registry import CONFIG_REGISTRY, CONFIG_SECTIONS, ConfigSource, DefaultMode
 from .fernet_key import persistent_fernet_key
+from __future__ import annotations
 from dataclasses import dataclass
 from dotenv import dotenv_values
+import os
 from pathlib import Path
 from typing import Any
-import os
 
 
 @dataclass(frozen=True)
