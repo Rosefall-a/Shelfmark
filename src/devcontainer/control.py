@@ -10,6 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+CONFIG_PATH = ROOT / "src" / "devcontainer" / ".env"
+
 ROOT = Path(os.environ.get("DEVCONTAINER_WORKSPACE", "/workspace"))
 CONTROL_PORT = int(os.environ.get("DEVCONTAINER_CONTROL_PORT", "9000"))
 DOCS_PORT = int(os.environ.get("DEVCONTAINER_DOCS_PORT", "999"))
@@ -34,7 +36,47 @@ STACKS = {
 }
 
 ACTIONS = {"start", "stop", "reset", "logs", "health", "status"}
+CONFIG_FIELDS = {
+    "db_user": "DEV_POSTGRES_USER", "db_password": "DEV_POSTGRES_PASSWORD",
+    "db_name": "DEV_POSTGRES_DB", "secret_key": "DEV_SECRET_KEY",
+    "admin_username": "DEV_PRIMARY_USER_USERNAME", "admin_email": "DEV_PRIMARY_USER_EMAIL",
+    "admin_password": "DEV_PRIMARY_USER_PASSWORD", "auth_cookie_secure": "DEV_AUTH_COOKIE_SECURE",
+}
 
+
+
+def load_config() -> dict[str, Any]:
+    values: dict[str, str] = {}
+    if CONFIG_PATH.is_file():
+        for line in CONFIG_PATH.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, value = line.split("=", 1)
+                values[key] = value
+    result: dict[str, Any] = {}
+    defaults = {
+        "db_user": "unnamed_tracking", "db_password": "debug-password", "db_name": "unnamed_tracking",
+        "secret_key": "devcontainer-not-for-production", "admin_username": "admin",
+        "admin_email": "admin@example.invalid", "admin_password": "debug-admin-password",
+        "auth_cookie_secure": "false",
+    }
+    for field, env_key in CONFIG_FIELDS.items():
+        value = values.get(env_key, os.environ.get(env_key, defaults[field]))
+        result[field] = value.lower() == "true" if field == "auth_cookie_secure" else value
+    return result
+
+
+def save_config(values: dict[str, Any]) -> dict[str, Any]:
+    current = load_config()
+    for field in CONFIG_FIELDS:
+        if field in values:
+            current[field] = values[field]
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# Shared developer environment configuration."]
+    for field, env_key in CONFIG_FIELDS.items():
+        value = str(current[field]).lower() if isinstance(current[field], bool) else str(current[field])
+        lines.append(f"{env_key}={value}")
+    CONFIG_PATH.write_text("\n".join(lines) + "\n")
+    return current
 
 def compose_args(environment: str, action: str) -> list[str]:
     if environment not in STACKS:
@@ -156,6 +198,9 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if self.path == "/api/environment":
+            self._json(load_config())
+            return
         if self.path == "/api/status":
             self._json({key: status(key) for key in STACKS})
             return
@@ -167,11 +212,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        if self.path != "/api/action" or not self._authorized():
+        if self.path not in {"/api/action", "/api/environment"} or not self._authorized():
             self._json({"error": "unauthorized"}, 403)
             return
         try:
             body = self._body()
+            if self.path == "/api/environment":
+                self._json(save_config(body))
+                return
             environment = body.get("environment")
             action = body.get("action")
             if environment not in STACKS or action not in ACTIONS:
