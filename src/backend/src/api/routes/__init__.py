@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """API route package."""
 
 # Pylint anchors cross-module duplicate-code diagnostics here even though this
