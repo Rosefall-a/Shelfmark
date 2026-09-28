@@ -5,13 +5,18 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+
 from dataclasses import dataclass
+
 from typing import Any, Callable, Literal
 
 from src.features.metadata.movies.omdb import OMDBClient
+
 from src.features.metadata.movies.tmdb import TMDBClient
-from src.features.metadata.tv.tvmaze import TVMazeClient
+
 from src.features.metadata.search_utils import format_provider_error, merge_search_result
+
+from src.features.metadata.tv.tvmaze import TVMazeClient
 
 # Reuses the TMDB/OMDb clients built for Movies (same API keys, same
 # deployment-wide AppIntegrationSettings) rather than duplicating a whole
