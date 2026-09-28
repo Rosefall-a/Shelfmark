@@ -118,3 +118,44 @@ async def test_existing_primary_user_is_not_checked_against_a_newer_password_pol
     db.scalar = AsyncMock(return_value=None)
     with pytest.raises(RuntimeError, match="Invalid primary user password"):
         await auth.ensure_primary_user(db)
+
+
+async def test_purge_expired_sessions_keeps_valid_ones() -> None:
+    import time
+    import uuid
+
+    from sqlalchemy import delete, select
+
+    from src.core.auth import purge_expired_sessions
+    from src.database.models.auth import UserSession
+    from src.database.models.user import User
+    from src.database.session import SessionLocal
+
+    now = int(time.time())
+    async with SessionLocal() as db:
+        user = User(
+            username=f"t_{uuid.uuid4().hex[:10]}",
+            email=f"{uuid.uuid4().hex[:10]}@example.test",
+            password_hash="x",
+        )
+        db.add(user)
+        await db.flush()
+        user_id = user.id
+        db.add_all(
+            [
+                UserSession(user_id=user_id, token_hash=uuid.uuid4().hex, expires_at=now - 10),
+                UserSession(user_id=user_id, token_hash=uuid.uuid4().hex, expires_at=now + 3600),
+            ]
+        )
+        await db.commit()
+        try:
+            assert await purge_expired_sessions(db, now=now) >= 1
+            remaining = (
+                await db.scalars(
+                    select(UserSession.expires_at).where(UserSession.user_id == user_id)
+                )
+            ).all()
+            assert remaining == [now + 3600]
+        finally:
+            await db.execute(delete(User).where(User.id == user_id))
+            await db.commit()

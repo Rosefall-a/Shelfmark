@@ -89,6 +89,16 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
     return bool(result.rowcount)
 
 
+async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> int:
+    """Delete sessions past their expiry (#142/#150). Authentication already
+    ignores them, but nothing ever removed them, so the table only grew.
+    Never touches a session that is still valid."""
+    cutoff = int(time.time()) if now is None else now
+    result = await db.execute(delete(UserSession).where(UserSession.expires_at <= cutoff))
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
 async def get_current_user(
     db: AsyncSession = _DB_DEPENDENCY,
     authorization: str | None = Header(default=None),
