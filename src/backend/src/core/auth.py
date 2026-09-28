@@ -6,7 +6,7 @@ import secrets
 import time
 from typing import Final
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ _SCRYPT_N: Final = 2**14
 _SCRYPT_R: Final = 8
 _SCRYPT_P: Final = 1
 _DB_DEPENDENCY = Depends(get_db)
-SESSION_COOKIE: Final = "session"
+SESSION_COOKIE_PREFIX: Final = "session_"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
 
@@ -89,12 +89,21 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
     return bool(result.rowcount)
 
 
+def session_cookie_name(host: str) -> str:
+    """Return a stable cookie name scoped to one application host and port."""
+    normalized_host = host.strip().lower()
+    host_hash = hashlib.sha256(normalized_host.encode("utf-8")).hexdigest()[:16]
+    return f"{SESSION_COOKIE_PREFIX}{host_hash}"
+
+
 async def get_current_user(
+    request: Request,
     db: AsyncSession = _DB_DEPENDENCY,
-    authorization: str | None = Header(default=None),
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = None,
 ) -> User:
     user: User | None = None
+    session_token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
+    authorization = request.headers.get("authorization")
     now = int(time.time())
 
     if authorization and authorization.startswith("Bearer "):
