@@ -19,3 +19,6 @@ SMTP is optional. Leaving it disabled does not affect normal in-app notification
 SMTP passwords are encrypted at rest. Environment-owned configuration remains authoritative when supplied through the deployment environment.
 
 SMTP notifications use each user's existing account email address; there is no second email identity system. Administrators can use **Send test email** to verify the deployment configuration.
+
+
+The Notification providers settings also provides a **Test email** control. Select a generic test or a notification type to verify the currently enabled SMTP configuration.
