@@ -679,6 +679,11 @@ async function handleLogout() {
 
       <div class="sidebar-spacer"></div>
 
+      <a href="/docs/" class="sidebar-item">
+        <span aria-hidden="true">📚</span>
+        <span>Documentation</span>
+      </a>
+
       <router-link
         to="/settings"
         class="sidebar-item"
