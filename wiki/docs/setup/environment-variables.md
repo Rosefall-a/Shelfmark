@@ -157,3 +157,8 @@ For `SECRET_KEY`, omitting the variable is supported by the backend: a stable Fe
 GEOIP_DATABASE_PATH points to the optional local MaxMind DB binary used by the session manager. The default is **/data/GeoIP.mmdb**, which is inside the production application's persistent **./data:/data** mount. The application does not require GeoIP for authentication.
 
 For the administrator upload flow, upload the extracted **.mmdb** binary itself. GeoLite2-City or a licensed GeoIP2-City database is appropriate for map data; Country and network-ownership databases can be added independently. Do not upload the ZIP archive, CSV files, or MaxMind credentials. See the [administrator session-management guide](../administration/session-management.md) for the complete upload and persistence procedure.
+
+
+### Reverse-proxy upload limits
+
+The production Docker image configures its bundled Nginx with a **256 MiB** `client_max_body_size` so the session-manager GeoIP upload endpoint can accept the supported database sizes. If another proxy is placed in front of the application, configure its request-body limit to at least 256 MiB as well. A smaller upstream limit can reject an upload before the application receives it; the frontend converts HTTP 413 responses into a normal user-facing error.
