@@ -8,7 +8,7 @@ class ControlCommandTests(unittest.TestCase):
     def test_dev_start_builds_current_checkout(self):
         args = control.compose_args(control.DEFAULT_INSTANCES[0], "start")
         self.assertEqual(
-            args[-7:],
+            args[-8:],
             ["up", "-d", "--wait", "--wait-timeout", "120", "--build", "--pull", "always"],
         )
         self.assertIn("--env-file", args)
