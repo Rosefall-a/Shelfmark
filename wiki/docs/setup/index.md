@@ -104,6 +104,8 @@ See the [Environment Variables](environment-variables.md) page for the complete 
 
 OIDC is configured after installation from **Settings → OIDC / SSO**. See the [OIDC user guide](../user-guide/oidc.md) for that configuration.
 
+If email notifications are needed, SMTP is configured through the setup/configuration UI. SMTP is optional; it is not required for normal in-app notifications. See the [SMTP configuration guide](../user-guide/smtp.md).
+
 ## 4. Deploy the stack
 
 After entering both the Compose and Environment configurations, deploy/start the stack from Arcane.
