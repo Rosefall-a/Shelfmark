@@ -42,14 +42,13 @@ Then open http://localhost:9000/ for the control UI or http://localhost:999/ for
 
 The ports can be changed with the DEVCONTAINER_*_PORT variables.
 
+## Shared environment configuration
+
+Both environments use the same configuration in `src/devcontainer/.env`. The control UI provides an editor for the database, application secret, initial admin, and cookie settings. Save changes, then restart the affected stack.
+
 ## Development environment
 
-The Development action builds the backend and frontend from the current checkout and starts PostgreSQL. It uses the dedicated Compose project uta-debug-dev and named volumes:
-
-- devcontainer_dev_pgdata;
-- devcontainer_dev_data.
-
-The stack is isolated from the normal root compose.yaml project and does not reuse the repository's normal data bind mount.
+The Development action builds the backend and frontend from the current checkout and starts PostgreSQL. It uses the dedicated Compose project `uta-debug-dev` and dedicated named volumes. It does not reuse the normal root `compose.yaml` data volume.
 
 ## Production-like environment
 
