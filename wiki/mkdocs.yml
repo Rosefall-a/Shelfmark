@@ -1,5 +1,6 @@
 site_name: Unnamed Tracking App
 site_description: Documentation for Unnamed Tracking App
+site_url: /docs/
 
 theme:
   name: material
@@ -49,3 +50,4 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md
+      - Developer Debugging: development/debugging.md
