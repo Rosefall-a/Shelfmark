@@ -179,9 +179,6 @@ async def _episode_stats(
     (against the larger of the rows on record and the known total), so a
     half-finished season never shows up as a finished one."""
     runtime = func.coalesce(ep_model.runtime_minutes, show_model.episode_runtime_minutes)
-    counted = or_(
-        ep_model.watched.is_(True), ep_model.episode_number <= season_model.episodes_watched
-    )
     flagged = ep_model.watched.is_(True)
     season_rows = (
         await db.execute(
