@@ -25,3 +25,8 @@ Current notification preferences still apply when delivery is processed. Disabli
 In **Settings → Notification Providers**, each user can choose which notification types go to each provider independently. For example, episode alerts can be sent by email while movie-release alerts are sent to Discord. Routing is checked again immediately before delivery, so it also applies to notifications already queued.
 
 No provider secret is displayed in the UI or written to normal delivery failure messages.
+
+
+### Testing a provider
+
+Each enabled and configured provider has a test control. Select **Generic test** or one of the notification types (episode aired, season started, new season listed, or movie released), then use **Test webhook** or **Test email**. Tests use the provider's current saved configuration and do not require creating a real notification.
