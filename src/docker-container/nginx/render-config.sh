@@ -72,13 +72,7 @@ if [ "$enabled" = true ]; then
       -e "s#ssl_certificate_key /etc/nginx/tls/tls.key;#ssl_certificate_key $key;#" \
       "$source" > "$tmp_output"
 else
-  awk '/^    # TLS SERVER BEGIN$/ { skip=1; next }
-       /^    # TLS SERVER END$/ { skip=0; next }
-       !skip { print }' "$source" > "$tmp_output"
-fi
-
-if [ "$redirect" = true ]; then
-  sed -i '/listen 80;/a\        if ($scheme = http) { return 301 https://$host$request_uri; }' "$tmp_output"
+  cat "$source" > "$tmp_output"
 fi
 
 mv "$tmp_output" "$output"
