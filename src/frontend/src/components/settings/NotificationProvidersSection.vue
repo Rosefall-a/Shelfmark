@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { fetchNotificationProviders, revokeNotificationProviderDestination, updateNotificationProvider, type NotificationProviderSetting } from "../../services/notificationProviders";
+import { fetchNotificationProviders, revokeNotificationProviderDestination, updateNotificationProvider, sendNotificationProviderTest, type NotificationProviderSetting, type NotificationTestKind } from "../../services/notificationProviders";
 import { fetchPreferences, queuePreferences, type NotificationKind, type Preferences } from "../../services/preferences";
 
 const rows=reactive<NotificationProviderSetting[]>([]);
 const values=reactive<Record<string,string>>({});
 const prefs=ref<Preferences|null>(null);
-const loading=ref(true),saving=ref<string|null>(null),routeSaving=ref(false),error=ref<string|null>(null),saved=ref<string|null>(null),routeSaved=ref(false);
+const loading=ref(true),saving=ref<string|null>(null),routeSaving=ref(false),testing=ref<string|null>(null),error=ref<string|null>(null),saved=ref<string|null>(null),routeSaved=ref(false);
 const notificationKinds:{key:NotificationKind;label:string}[]=[{key:"episode_aired",label:"Episode aired"},{key:"season_started",label:"Season started"},{key:"sequel_announced",label:"New season listed"},{key:"movie_released",label:"Movie released"}];
 
 async function load(){try{const [providers,preferences]=await Promise.all([fetchNotificationProviders(),fetchPreferences()]);rows.splice(0,rows.length,...providers);prefs.value=preferences;}catch(e){error.value=e instanceof Error?e.message:"Failed to load notification providers.";}finally{loading.value=false;}}
@@ -18,6 +18,14 @@ async function save(row:NotificationProviderSetting){
     const result=await updateNotificationProvider(row.id,payload);
     Object.assign(row,result); values[row.id]=""; saved.value=row.id;
   }catch(e){error.value=e instanceof Error?e.message:"Failed to save provider settings."}finally{saving.value=null;}
+}
+const testKinds:{key:NotificationTestKind;label:string}[]=[{key:"generic",label:"Generic test"},{key:"episode_aired",label:"Episode aired"},{key:"season_started",label:"Season started"},{key:"sequel_announced",label:"New season listed"},{key:"movie_released",label:"Movie released"}];
+const testKind=reactive<Record<string,NotificationTestKind>>({smtp:"generic",discord:"generic"});
+async function test(row:NotificationProviderSetting){
+  testing.value=row.id; error.value=null;
+  try{await sendNotificationProviderTest(row.id,testKind[row.id]??"generic"); saved.value=row.id;}
+  catch(e){error.value=e instanceof Error?e.message:"Notification test failed."}
+  finally{testing.value=null;}
 }
 async function revoke(row:NotificationProviderSetting){
   saving.value=row.id; error.value=null;
@@ -52,6 +60,14 @@ onMounted(load);
     <div class="actions"><button :disabled="saving===row.id" @click="save(row)">{{ saving===row.id ? "Saving…" : row.configured ? "Replace webhook" : "Save webhook" }}</button><button v-if="row.configured" class="danger" :disabled="saving===row.id" @click="revoke(row)">Revoke</button></div>
   </template>
   <button v-if="row.id==='smtp'" :disabled="saving===row.id" @click="save(row)">{{ saving===row.id ? "Saving…" : "Save preference" }}</button>
+  <div class="test-actions">
+    <select v-model="testKind[row.id]" :disabled="testing===row.id || saving===row.id || !row.available || !row.enabled || (row.id==='discord' && !row.configured)">
+      <option v-for="kind in testKinds" :key="kind.key" :value="kind.key">{{ kind.label }}</option>
+    </select>
+    <button class="secondary" :disabled="testing===row.id || saving===row.id || !row.available || !row.enabled || (row.id==='discord' && !row.configured)" @click="test(row)">
+      {{ testing===row.id ? "Sending…" : row.id==="discord" ? "Test webhook" : "Test email" }}
+    </button>
+  </div>
   <p v-if="saved===row.id" class="success">Saved.</p>
   <div v-if="prefs" class="routes"><strong>Notification types sent to {{ row.name }}</strong>
     <label v-for="kind in notificationKinds" :key="kind.key" class="route">
@@ -66,5 +82,5 @@ onMounted(load);
 </section>
 </template>
 <style scoped>
-.settings-section h2{margin:0 0 8px;padding-left:12px;border-left:3px solid #d68a34;font-size:1rem;color:#fff}.hint{color:#999;font-size:.82rem;line-height:1.5}.provider{border-top:1px solid #2a2a2a;padding:18px 0}.provider-head{display:flex;justify-content:space-between;gap:16px}.switch{display:flex;gap:8px;align-items:center;color:#ccc;font-size:13px;white-space:nowrap}.destination{color:#bbb;font-size:13px}.provider input[type=url]{width:100%;box-sizing:border-box;background:#111;border:1px solid #3a3a3a;border-radius:8px;color:#fff;padding:10px}.actions{display:flex;gap:8px;margin-top:10px}button{background:#d68a34;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}button:disabled{opacity:.5}.danger{background:#442020;color:#fca5a5}.error{color:#fca5a5}.success,.saved-note{color:#86efac}.routes{margin-top:14px;padding:12px;border:1px solid #333;border-radius:8px;background:#111;display:flex;flex-direction:column;gap:8px}.route{display:flex;gap:8px;align-items:center;color:#bbb;font-size:13px}
+.settings-section h2{margin:0 0 8px;padding-left:12px;border-left:3px solid #d68a34;font-size:1rem;color:#fff}.hint{color:#999;font-size:.82rem;line-height:1.5}.provider{border-top:1px solid #2a2a2a;padding:18px 0}.provider-head{display:flex;justify-content:space-between;gap:16px}.switch{display:flex;gap:8px;align-items:center;color:#ccc;font-size:13px;white-space:nowrap}.destination{color:#bbb;font-size:13px}.provider input[type=url]{width:100%;box-sizing:border-box;background:#111;border:1px solid #3a3a3a;border-radius:8px;color:#fff;padding:10px}.actions{display:flex;gap:8px;margin-top:10px}.test-actions{display:flex;gap:8px;align-items:center;margin-top:12px}.test-actions select{background:#111;border:1px solid #3a3a3a;border-radius:8px;color:#ddd;padding:9px 10px}.secondary{background:#252525;color:#ddd;border:1px solid #3a3a3a}button{background:#d68a34;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}button:disabled{opacity:.5}.danger{background:#442020;color:#fca5a5}.error{color:#fca5a5}.success,.saved-note{color:#86efac}.routes{margin-top:14px;padding:12px;border:1px solid #333;border-radius:8px;background:#111;display:flex;flex-direction:column;gap:8px}.route{display:flex;gap:8px;align-items:center;color:#bbb;font-size:13px}
 </style>
