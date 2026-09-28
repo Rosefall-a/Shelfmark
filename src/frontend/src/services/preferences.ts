@@ -53,6 +53,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lists_default_sort: "custom",
   title_language: "english",
   stats_include_plan: true,
+  // Keep the AniList defaults here so every Preferences value has a client-side fallback.
   anilist_import_enabled: false,
   anilist_import_username: "",
   anilist_import_interval_minutes: 24 * 60,
