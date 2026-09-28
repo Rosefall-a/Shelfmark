@@ -9,8 +9,8 @@ is validated at the API layer, not the database's."""
 
 from datetime import date
 from enum import Enum
-from uuid import UUID, uuid4
 import time
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
