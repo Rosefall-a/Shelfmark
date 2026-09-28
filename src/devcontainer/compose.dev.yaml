@@ -14,7 +14,7 @@ services:
       retries: 20
 
   backend:
-    image: ${DEV_BACKEND_IMAGE:-unnamed_tracking_app-dev-backend:local}
+    image: ghcr.io/rosefall-a/unnamed_tracking_app-backend:${IMAGE_TAG:-main}
     pull_policy: ${DEV_PULL_POLICY:-build}
     build:
       context: ../backend
@@ -36,16 +36,18 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ${DEV_FRONTEND_IMAGE:-unnamed_tracking_app-dev-frontend:local}
+    image: ghcr.io/rosefall-a/unnamed_tracking_app-frontend:${IMAGE_TAG:-main}
     pull_policy: ${DEV_PULL_POLICY:-build}
     build:
       context: ../frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-5173}:80"
+      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-5173}:5173"
     volumes:
       - ../frontend/src:/app/src:ro
       - ../frontend/public:/app/public:ro
+    environment:
+      VITE_API_BASE_URL: http://localhost:${DEVCONTAINER_APP_PORT:-5173}/api
     depends_on:
       - backend
 
