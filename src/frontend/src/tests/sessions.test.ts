@@ -7,6 +7,7 @@ import {
   revokeAllAdminSessions,
   revokeAllMySessions,
   revokeMySession,
+  uploadGeoIp,
 } from "../services/sessions";
 
 describe("session service", () => {
@@ -97,9 +98,7 @@ describe("GeoIP imports", () => {
           path: "/data/GeoIP-Country.mmdb",
         }),
       }),
-    );
-    const { uploadGeoIp } = await import("../services/sessions");
-    const file = new File(["mmdb"], "GeoIP-Country.mmdb");
+    );    const file = new File(["mmdb"], "GeoIP-Country.mmdb");
     await uploadGeoIp(file, "country");
     expect(fetch).toHaveBeenCalledWith(
       "/api/sessions/admin/geoip?kind=country",
