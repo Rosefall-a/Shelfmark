@@ -14,18 +14,14 @@ services:
       DEVCONTAINER_PROD_PROJECT: uta-debug-prod
       DEVCONTAINER_PROD_PORT: ${DEVCONTAINER_PROD_PORT:-8180}
       DEVCONTAINER_DEV_PORT: ${DEVCONTAINER_DEV_PORT:-5173}
-      UNNAMED_TRACKING_APP_VERSION: ${UNNAMED_TRACKING_APP_VERSION:-latest}
-      DEBUG_POSTGRES_USER: ${DEBUG_POSTGRES_USER:-unnamed_tracking}
-      DEBUG_POSTGRES_PASSWORD: ${DEBUG_POSTGRES_PASSWORD:-debug-password}
-      DEBUG_POSTGRES_DB: ${DEBUG_POSTGRES_DB:-unnamed_tracking}
-      DEBUG_PROD_POSTGRES_USER: ${DEBUG_PROD_POSTGRES_USER:-unnamed_tracking}
-      DEBUG_PROD_POSTGRES_PASSWORD: ${DEBUG_PROD_POSTGRES_PASSWORD:-debug-password}
-      DEBUG_PROD_POSTGRES_DB: ${DEBUG_PROD_POSTGRES_DB:-unnamed_tracking}
-      DEBUG_PROD_SECRET_KEY: ${DEBUG_PROD_SECRET_KEY:-devcontainer-not-for-production}
-      DEBUG_PROD_PRIMARY_USER_PASSWORD: ${DEBUG_PROD_PRIMARY_USER_PASSWORD:-debug-admin-password}
-      PRIMARY_USER_USERNAME: ${PRIMARY_USER_USERNAME:-admin}
-      PRIMARY_USER_EMAIL: ${PRIMARY_USER_EMAIL:-admin@example.invalid}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      DEV_POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      DEV_POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      DEV_POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+      DEV_SECRET_KEY: ${DEV_SECRET_KEY:-devcontainer-not-for-production}
+      DEV_PRIMARY_USER_USERNAME: ${DEV_PRIMARY_USER_USERNAME:-admin}
+      DEV_PRIMARY_USER_EMAIL: ${DEV_PRIMARY_USER_EMAIL:-admin@example.invalid}
+      DEV_PRIMARY_USER_PASSWORD: ${DEV_PRIMARY_USER_PASSWORD:-debug-admin-password}
+      DEV_AUTH_COOKIE_SECURE: ${DEV_AUTH_COOKIE_SECURE:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../..:/workspace:rw
