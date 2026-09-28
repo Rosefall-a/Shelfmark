@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.database.models.movies import MovieStatus
 
+# pylint: disable=duplicate-code
+
 
 class MovieBase(BaseModel):
     """Fields shared by create and update payloads."""
