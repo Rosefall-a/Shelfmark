@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=missing-class-docstring,missing-function-docstring,duplicate-code
 """The Tasks screen's cleanup jobs: list them, change a schedule, run one now."""
 
 from typing import Any
