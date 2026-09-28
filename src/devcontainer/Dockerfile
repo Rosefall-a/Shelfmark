@@ -5,8 +5,6 @@ RUN apk add --no-cache python3 py3-pip \
 
 WORKDIR /opt/devcontainer
 COPY control.py index.html style.css app.js ./
-COPY README.md ./
-COPY compose.dev.yaml compose.prod.yaml ./
 COPY tests ./tests
 
 ENV DEVCONTAINER_WORKSPACE=/workspace \
