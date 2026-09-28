@@ -107,3 +107,20 @@ describe("GeoIP imports", () => {
     );
   });
 });
+
+
+describe("session request errors", () => {
+  it("turns a proxy 413 into a normal upload error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 413,
+        text: async () => "<html><title>413 Request Entity Too Large</title></html>",
+      }),
+    );
+    await expect(uploadGeoIp(new File(["data"], "GeoIP.mmdb"))).rejects.toThrow(
+      "The upload is too large for the configured proxy",
+    );
+  });
+});
