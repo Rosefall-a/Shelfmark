@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${PROD_IMAGE:-ghcr.io/rosefall-a/unnamed_tracking_app:latest}
+    image: ghcr.io/rosefall-a/unnamed_tracking_app:${IMAGE_TAG:-main}
     pull_policy: ${DEV_PULL_POLICY:-build}
     build:
       context: ../..
