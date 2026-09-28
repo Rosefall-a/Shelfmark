@@ -59,3 +59,4 @@ fi
 if [ "$redirect" = true ]; then
   sed -i '/listen 80;/a\        if ($scheme = http) { return 301 https://$host$request_uri; }' "$output"
 fi
+  
