@@ -33,3 +33,9 @@ class ControlCommandTests(unittest.TestCase):
         run.return_value.stderr = ""
         control.run_command(["docker", "info"])
         self.assertNotIn("shell", run.call_args.kwargs)
+
+
+    def test_compose_uses_shared_environment_file(self):
+        args = control.compose_args("prod", "status")
+        self.assertIn("--env-file", args)
+        self.assertIn(str(control.CONFIG_PATH), args)
