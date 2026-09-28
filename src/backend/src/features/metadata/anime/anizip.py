@@ -96,7 +96,7 @@ class AniZipClient:
             if not str(key).isdigit() or not isinstance(raw, dict):
                 continue
             number = int(key)
-            if isinstance(limit, int) and limit > 0 and number > limit:
+            if isinstance(limit, int) and number > limit > 0:
                 continue
             runtime = raw.get("runtime") or raw.get("length")
             results.append(
