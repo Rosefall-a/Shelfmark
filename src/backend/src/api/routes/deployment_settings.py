@@ -347,6 +347,9 @@ async def update_deployment_settings(
                 if value not in {"none", "starttls", "ssl"}:
                     raise HTTPException(400, "SMTP security must be none, starttls, or ssl.")
                 setattr(app, field, value)
+            elif field == "smtp_password":
+                if value and value.strip():
+                    app.smtp_password = encrypt_secret(value.strip())
             else:
                 setattr(app, field, value.strip() or None)
         elif field in _SAFE_PROVIDER_FIELDS:
