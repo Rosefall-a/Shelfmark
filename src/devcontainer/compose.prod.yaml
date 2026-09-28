@@ -7,7 +7,7 @@ services:
       dockerfile: src/docker-container/Dockerfile
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-8180}:80"
+      - "${DEVCONTAINER_APP_PORT:-8180}:80"
     environment:
       POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
       POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
@@ -34,7 +34,7 @@ services:
     volumes:
       - devcontainer_prod_pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}" ]
       interval: 5s
       timeout: 5s
       retries: 20

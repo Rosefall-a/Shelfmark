@@ -20,22 +20,44 @@ DOCS_PORT = int(os.environ.get("DEVCONTAINER_DOCS_PORT", "999"))
 TOKEN = secrets.token_urlsafe(24)
 
 DEFAULT_INSTANCES = [
-    {"id": "dev-main", "name": "Development", "environment": "dev", "project": "uta-debug-dev",
-     "port": 5173, "build_mode": "source", "tag": "main"},
-    {"id": "prod-main", "name": "Production-like", "environment": "prod", "project": "uta-debug-prod",
-     "port": 8180, "build_mode": "source", "tag": "main"},
+    {
+        "id": "dev-main",
+        "name": "Development",
+        "environment": "dev",
+        "project": "uta-debug-dev",
+        "port": 5173,
+        "build_mode": "source",
+        "tag": "main",
+    },
+    {
+        "id": "prod-main",
+        "name": "Production-like",
+        "environment": "prod",
+        "project": "uta-debug-prod",
+        "port": 8180,
+        "build_mode": "source",
+        "tag": "main",
+    },
 ]
 
 ACTIONS = {"start", "stop", "reset", "rebuild", "status", "health", "logs"}
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 GHCR_BASE = "ghcr.io/rosefall-a/unnamed_tracking_app"
-IMAGE_NAMES = {"app": GHCR_BASE, "frontend": GHCR_BASE + "-frontend", "backend": GHCR_BASE + "-backend"}
+IMAGE_NAMES = {
+    "app": GHCR_BASE,
+    "frontend": GHCR_BASE + "-frontend",
+    "backend": GHCR_BASE + "-backend",
+}
 CONFIG_FIELDS = {
-    "db_user": "DEV_POSTGRES_USER", "db_password": "DEV_POSTGRES_PASSWORD",
-    "db_name": "DEV_POSTGRES_DB", "secret_key": "DEV_SECRET_KEY",
-    "admin_username": "DEV_PRIMARY_USER_USERNAME", "admin_email": "DEV_PRIMARY_USER_EMAIL",
-    "admin_password": "DEV_PRIMARY_USER_PASSWORD", "auth_cookie_secure": "DEV_AUTH_COOKIE_SECURE",
+    "db_user": "DEV_POSTGRES_USER",
+    "db_password": "DEV_POSTGRES_PASSWORD",
+    "db_name": "DEV_POSTGRES_DB",
+    "secret_key": "DEV_SECRET_KEY",
+    "admin_username": "DEV_PRIMARY_USER_USERNAME",
+    "admin_email": "DEV_PRIMARY_USER_EMAIL",
+    "admin_password": "DEV_PRIMARY_USER_PASSWORD",
+    "auth_cookie_secure": "DEV_AUTH_COOKIE_SECURE",
 }
 
 
@@ -63,16 +85,20 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("environment must be dev or prod")
     project = str(instance.get("project", "")).strip()
     if not PROJECT_RE.fullmatch(project):
-        raise ValueError("project must use lowercase letters, numbers, dashes, or underscores")
+        raise ValueError(
+            "project must use lowercase letters, numbers, dashes, or underscores"
+        )
     port = int(instance.get("port", 0))
     if not 1 <= port <= 65535:
         raise ValueError("port must be between 1 and 65535")
-    build_mode = instance.get("build_mode", "source")
+    build_mode = "tag" if "tag" in instance.get("build_mode", "source") else "source"
     if build_mode not in {"source", "tag"}:
         raise ValueError("build_mode must be source or tag")
     tag = str(instance.get("tag", "main")).strip() or "main"
     if not TAG_RE.fullmatch(tag):
-        raise ValueError("tag must contain only letters, numbers, dots, underscores or hyphens")
+        raise ValueError(
+            "tag must contain only letters, numbers, dots, underscores or hyphens"
+        )
     result = dict(instance)
     result["project"] = project
     result["port"] = port
@@ -104,15 +130,21 @@ def load_config() -> dict[str, Any]:
                 key, value = line.split("=", 1)
                 values[key] = value
     defaults = {
-        "db_user": "unnamed_tracking", "db_password": "debug-password", "db_name": "unnamed_tracking",
-        "secret_key": "devcontainer-not-for-production", "admin_username": "admin",
-        "admin_email": "admin@example.invalid", "admin_password": "debug-admin-password",
+        "db_user": "unnamed_tracking",
+        "db_password": "debug-password",
+        "db_name": "unnamed_tracking",
+        "secret_key": "devcontainer-not-for-production",
+        "admin_username": "admin",
+        "admin_email": "admin@example.invalid",
+        "admin_password": "debug-admin-password",
         "auth_cookie_secure": "false",
     }
     result: dict[str, Any] = {}
     for field, env_key in CONFIG_FIELDS.items():
         value = values.get(env_key, os.environ.get(env_key, defaults[field]))
-        result[field] = value.lower() == "true" if field == "auth_cookie_secure" else value
+        result[field] = (
+            value.lower() == "true" if field == "auth_cookie_secure" else value
+        )
     return result
 
 
@@ -124,7 +156,11 @@ def save_config(values: dict[str, Any]) -> dict[str, Any]:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Shared developer environment configuration."]
     for field, env_key in CONFIG_FIELDS.items():
-        value = str(current[field]).lower() if isinstance(current[field], bool) else str(current[field])
+        value = (
+            str(current[field]).lower()
+            if isinstance(current[field], bool)
+            else str(current[field])
+        )
         lines.append(f"{env_key}={value}")
     CONFIG_PATH.write_text("\n".join(lines) + "\n")
     return current
@@ -148,26 +184,55 @@ def compose_env(instance: dict[str, Any]) -> dict[str, str]:
 def compose_args(instance: dict[str, Any], action: str) -> list[str]:
     if action not in ACTIONS:
         raise ValueError("unknown action")
-    compose = ROOT / "src" / "devcontainer" / (
-        "compose.dev.yaml" if instance["environment"] == "dev" else "compose.prod.yaml"
+    compose = (
+        ROOT
+        / "src"
+        / "devcontainer"
+        / (
+            "compose.dev.yaml"
+            if instance["environment"] == "dev"
+            else "compose.prod.yaml"
+        )
     )
     command = {
-        "start": ["up", "-d"], "stop": ["down", "--remove-orphans"],
-        "reset": ["down", "--volumes", "--remove-orphans"], "rebuild": ["up", "-d"],
-        "status": ["ps"], "health": ["ps"], "logs": ["logs", "--tail", "160"],
+        "start": ["up", "-d"],
+        "stop": ["down", "--remove-orphans"],
+        "reset": ["down", "--volumes", "--remove-orphans"],
+        "rebuild": ["up", "-d"],
+        "status": ["ps"],
+        "health": ["ps"],
+        "logs": ["logs", "--tail", "160"],
     }[action]
     if action in {"start", "rebuild"}:
-        command += ["--build"] if instance["build_mode"] == "source" else ["--no-build", "--pull", "always"]
+        command += (
+            ["--build"]
+            if instance["build_mode"] == "source"
+            else ["--no-build", "--pull", "always"]
+        )
     return [
-        "docker", "compose", "--env-file", str(CONFIG_PATH), "--project-name", instance["project"],
-        "-f", str(compose), *command,
+        "docker",
+        "compose",
+        "--env-file",
+        str(CONFIG_PATH),
+        "--project-name",
+        instance["project"],
+        "-f",
+        str(compose),
+        *command,
     ]
 
 
-def run_command(args: list[str], timeout: int = 120, environment: dict[str, str] | None = None) -> tuple[int, str]:
+def run_command(
+    args: list[str], timeout: int = 120, environment: dict[str, str] | None = None
+) -> tuple[int, str]:
     try:
         completed = subprocess.run(
-            args, cwd=ROOT, check=False, capture_output=True, text=True, timeout=timeout,
+            args,
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
             env=environment or os.environ.copy(),
         )
     except FileNotFoundError as exc:
@@ -176,7 +241,12 @@ def run_command(args: list[str], timeout: int = 120, environment: dict[str, str]
         output = (exc.stdout or "") + (exc.stderr or "")
         return 124, f"Command timed out after {timeout}s.\n{output}".strip()
     output = (completed.stdout + completed.stderr).strip()
-    return completed.returncode, f"$ {shlex.join(args)}\nexit code: {completed.returncode}\n{output}".strip()[-16000:]
+    return (
+        completed.returncode,
+        f"$ {shlex.join(args)}\nexit code: {completed.returncode}\n{output}".strip()[
+            -16000:
+        ],
+    )
 
 
 def probe(url: str) -> dict[str, Any]:
@@ -190,9 +260,13 @@ def probe(url: str) -> dict[str, Any]:
 
 
 def status(instance: dict[str, Any]) -> dict[str, Any]:
-    code, output = run_command(compose_args(instance, "status"), 20, compose_env(instance))
+    code, output = run_command(
+        compose_args(instance, "status"), 20, compose_env(instance)
+    )
     return {
-        **instance, "compose_valid": code == 0, "containers": output,
+        **instance,
+        "compose_valid": code == 0,
+        "containers": output,
         "endpoint": probe(f"http://host.docker.internal:{instance['port']}/"),
         "endpoint_url": f"http://localhost:{instance['port']}/",
     }
@@ -200,7 +274,7 @@ def status(instance: dict[str, Any]) -> dict[str, Any]:
 
 def build_images(tag: str) -> tuple[int, str]:
     if not TAG_RE.fullmatch(tag):
-        raise ValueError("tag must contain only letters, numbers, ".", "_" or "-"")
+        raise ValueError('''tag must contain only letters, numbers, ".", "_" or "-"''')
     builds = [
         ("app", ROOT, ROOT / "src/docker-container/Dockerfile"),
         ("frontend", ROOT / "src/frontend", ROOT / "src/frontend/Dockerfile"),
@@ -209,7 +283,18 @@ def build_images(tag: str) -> tuple[int, str]:
     output = []
     for name, context, dockerfile in builds:
         image = f"{IMAGE_NAMES[name]}:{tag}"
-        code, result = run_command(["docker", "build", "--tag", image, "--file", str(dockerfile), str(context)], 600)
+        code, result = run_command(
+            [
+                "docker",
+                "build",
+                "--tag",
+                image,
+                "--file",
+                str(dockerfile),
+                str(context),
+            ],
+            600,
+        )
         output.append(result)
         if code:
             return code, "\n\n".join(output)
@@ -218,8 +303,11 @@ def build_images(tag: str) -> tuple[int, str]:
 
 def docs_process() -> subprocess.Popen[str]:
     return subprocess.Popen(
-        ["mkdocs", "serve", "-a", f"0.0.0.0:{DOCS_PORT}"], cwd=ROOT / "wiki",
-        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, text=True,
+        ["mkdocs", "serve", "-a", f"0.0.0.0:{DOCS_PORT}"],
+        cwd=ROOT / "wiki",
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
 
 
@@ -241,12 +329,16 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(raw or b"{}")
 
     def _authorized(self) -> bool:
-        return secrets.compare_digest(self.headers.get("X-Devcontainer-Token", ""), TOKEN)
+        return secrets.compare_digest(
+            self.headers.get("X-Devcontainer-Token", ""), TOKEN
+        )
 
     def do_GET(self) -> None:
         if self.path == "/":
             html = Path(__file__).with_name("index.html").read_text()
-            html = html.replace("</head>", f"<meta name='devcontainer-token' content='{TOKEN}'></head>")
+            html = html.replace(
+                "</head>", f"<meta name='devcontainer-token' content='{TOKEN}'></head>"
+            )
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html.encode())))
@@ -257,7 +349,10 @@ class Handler(BaseHTTPRequestHandler):
             path = Path(__file__).with_name(self.path.lstrip("/"))
             data = path.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "text/css" if self.path.endswith(".css") else "application/javascript")
+            self.send_header(
+                "Content-Type",
+                "text/css" if self.path.endswith(".css") else "application/javascript",
+            )
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -284,7 +379,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/build-images":
                 tag = str(body.get("tag", "main")).strip() or "main"
                 code, output = build_images(tag)
-                self._json({"ok": code == 0, "exit_code": code, "output": output}, 200 if code == 0 else 409)
+                self._json(
+                    {"ok": code == 0, "exit_code": code, "output": output},
+                    200 if code == 0 else 409,
+                )
                 return
             if self.path == "/api/action":
                 instance = instance_by_id(str(body.get("instance_id")))
@@ -296,7 +394,10 @@ class Handler(BaseHTTPRequestHandler):
                     300 if action in {"start", "rebuild"} else 120,
                     compose_env(instance),
                 )
-                self._json({"ok": code == 0, "exit_code": code, "output": output}, 200 if code == 0 else 409)
+                self._json(
+                    {"ok": code == 0, "exit_code": code, "output": output},
+                    200 if code == 0 else 409,
+                )
                 return
             if self.path == "/api/instances":
                 instances = load_instances()
@@ -323,7 +424,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/instances":
                 instance = validate_instance(body)
-                instances = [item for item in load_instances() if item["id"] != instance["id"]]
+                instances = [
+                    item for item in load_instances() if item["id"] != instance["id"]
+                ]
                 instances.append(instance)
                 self._json(save_instances(validate_instances(instances)))
                 return

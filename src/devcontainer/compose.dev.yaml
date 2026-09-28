@@ -8,7 +8,7 @@ services:
     volumes:
       - devcontainer_dev_pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -30,7 +30,7 @@ services:
     volumes:
       - devcontainer_dev_data:/data
       - ../backend/src:/app/src:ro
-    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: [ "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +42,7 @@ services:
       context: ../frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:${DEVCONTAINER_APP_PORT:-5173}:5173"
+      - "${DEVCONTAINER_APP_PORT:-5173}:80"
     volumes:
       - ../frontend/src:/app/src:ro
       - ../frontend/public:/app/public:ro
