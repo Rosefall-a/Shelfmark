@@ -49,6 +49,9 @@ async def process_pending_deliveries(db:AsyncSession, limit:int=50)->int:
         setting=await db.scalar(select(NotificationProviderSetting).where(NotificationProviderSetting.user_id==user.id,NotificationProviderSetting.provider_id==delivery.provider_id))
         if not provider.enabled_for_user(setting):
             delivery.status="skipped"; continue
+        routes = prefs.get("notification_provider_routes", {})
+        if delivery.provider_id not in routes or notification.kind not in routes.get(delivery.provider_id, []):
+            delivery.status="skipped"; continue
         destination=await provider.lookup_destination(db,user,setting)
         if destination is None:
             delivery.status="skipped"; continue
