@@ -77,3 +77,44 @@ async def test_revoke_session_is_idempotent() -> None:
 
     assert await revoke_session(db, "already-revoked") is False
     db.commit.assert_awaited_once()
+
+
+def test_validation_errors_never_echo_submitted_values() -> None:
+    """A rejected request used to come back with the whole submitted body in
+    each error's `input`, plaintext password included (#118)."""
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    secret = "Hunter2-plaintext-secret!"
+    response = TestClient(app).post(
+        "/api/auth/login", json={"username": "someone", "password": secret, "remember": []}
+    )
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    errors = response.json()["detail"]
+    assert errors and all(set(error) <= {"type", "loc", "msg"} for error in errors)
+    assert any(error["loc"][-1] == "username_or_email" for error in errors)
+
+
+async def test_existing_primary_user_is_not_checked_against_a_newer_password_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The environment password only seeds a new account; a policy change
+    must not stop the app starting for an account that already exists."""
+    from src.core import auth
+    from src.database.models.user import User
+
+    monkeypatch.setattr(auth.settings, "PRIMARY_USER_USERNAME", "admin")
+    monkeypatch.setattr(auth.settings, "PRIMARY_USER_EMAIL", "admin@example.com")
+    monkeypatch.setattr(auth.settings, "PRIMARY_USER_PASSWORD", "weak")
+    existing = User(username="admin", email="admin@example.com", is_admin=True, is_active=True)
+    db = Mock()
+    db.scalar = AsyncMock(return_value=existing)
+
+    assert await auth.ensure_primary_user(db) is existing
+
+    db.scalar = AsyncMock(return_value=None)
+    with pytest.raises(RuntimeError, match="Invalid primary user password"):
+        await auth.ensure_primary_user(db)

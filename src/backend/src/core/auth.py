@@ -136,16 +136,19 @@ async def ensure_primary_user(db: AsyncSession) -> User:
     email = settings.PRIMARY_USER_EMAIL.strip().lower()
     if not username or not email or not settings.PRIMARY_USER_PASSWORD:
         raise RuntimeError("Primary user username, email, and password must be configured.")
-    try:
-        validate_password(settings.PRIMARY_USER_PASSWORD)
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid primary user password: {exc}") from exc
 
     user = await db.scalar(select(User).where(User.username == username))
     if user is None:
         user = await db.scalar(select(User).where(User.email == email))
 
     if user is None:
+        # only a new account takes its password from the environment, so
+        # only then does the policy apply; checking it on every start made a
+        # later policy change crash startup for an account that already exists
+        try:
+            validate_password(settings.PRIMARY_USER_PASSWORD)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid primary user password: {exc}") from exc
         user = User(
             username=username,
             email=email,
