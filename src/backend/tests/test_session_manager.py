@@ -1,3 +1,7 @@
+import asyncio
+from types import SimpleNamespace
+from uuid import uuid4
+
 from src.core.geoip import GeoIpProvider, GeoLocation
 from src.core.session_manager import create_session, session_state
 from src.api.routes.session_manager import view
@@ -108,8 +112,6 @@ def test_geoip_reader_failure_returns_unavailable(tmp_path) -> None:
 
 
 def test_create_session_persists_network_metadata(monkeypatch) -> None:
-    from uuid import uuid4
-
     from starlette.requests import Request
 
     class FakeDb:
@@ -125,7 +127,7 @@ def test_create_session_persists_network_metadata(monkeypatch) -> None:
         async def flush(self) -> None:
             return None
 
-    user = type("UserStub", (), {"id": uuid4()})()
+    user = SimpleNamespace(id=uuid4())
     request = Request(
         {
             "type": "http",
@@ -145,8 +147,6 @@ def test_create_session_persists_network_metadata(monkeypatch) -> None:
         ),
     )
     db = FakeDb()
-
-    import asyncio
 
     asyncio.run(create_session(db, user, request))
     assert db.session is not None
