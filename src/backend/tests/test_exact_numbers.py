@@ -22,8 +22,8 @@ from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
 from src.database.models.user import User
 from src.database.session import SessionLocal
-from src.features.metadata.anime.anizip import AniZipClient
 from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
+from src.features.metadata.anime.anizip import AniZipClient
 from src.features.metadata.tv.search import _looks_like_anime
 from src.features.notifications import _episode_row, generate_for_user
 from src.features.tv_seasons import check_new_seasons, new_seasons
