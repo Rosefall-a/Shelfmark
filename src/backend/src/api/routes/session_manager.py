@@ -24,7 +24,7 @@ def view(
 ) -> dict:
     """Serialize a session without including either raw or hashed credentials."""
     state = session_state(session)
-    coordinates_available = geoip._get_reader() is not None
+    coordinates_available = geoip.city_configured()
     return {
         "id": str(session.id),
         "user_id": str(session.user_id),
@@ -206,17 +206,18 @@ async def geoip_status(admin: User = Depends(get_current_admin)) -> dict[str, ob
     """Return availability of each optional local GeoIP database."""
     del admin
     return {
-        "city": {"configured": geoip._get_reader() is not None, "path": str(geoip.path)},
+        "city": {"configured": geoip.city_configured(), "path": str(geoip.path)},
         "country": {
-            "configured": geoip._get_country_reader() is not None,
+            "configured": geoip.country_configured(),
             "path": str(geoip.country_path),
         },
-        "network": {"configured": geoip._get_asn_reader() is not None, "path": str(geoip.asn_path)},
+        "network": {"configured": geoip.asn_configured(), "path": str(geoip.asn_path)},
     }
 
 
 @router.post("/admin/geoip")
 async def upload_geoip(
+    *,
     file: UploadFile = File(...),
     kind: str = Query(default="city", pattern="^(city|country|network)$"),
     admin: User = Depends(get_current_admin),
@@ -248,8 +249,6 @@ async def upload_geoip(
             raise HTTPException(400, "Invalid or unsupported GeoIP database.")
         temporary.replace(path)
         geoip.reset()
-    except HTTPException:
-        raise
     except OSError as exc:
         temporary.unlink(missing_ok=True)
         raise HTTPException(400, f"Could not store GeoIP database: {exc}") from exc
