@@ -9,4 +9,3 @@ class Base(DeclarativeBase):
     Every model that inherits from Base is included
     in SQLAlchemy's metadata.
     """
-

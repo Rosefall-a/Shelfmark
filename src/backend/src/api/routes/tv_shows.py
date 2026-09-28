@@ -241,6 +241,7 @@ async def list_shows(
         status_counts=status_counts,
     )
 
+
 @router.get("/get/{show_id}", response_model=TVShowRead)
 async def get_show(
     show_id: UUID,

@@ -99,7 +99,12 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
         value = getattr(app, attribute)
         if value:
             values[f"{spec_name}__configured"] = True
-            if spec_name in {"IGDB_CLIENT_ID", "SCREENSCRAPER_DEVID", "SCREENSCRAPER_SSID", "XBOX_CLIENT_ID"}:
+            if spec_name in {
+                "IGDB_CLIENT_ID",
+                "SCREENSCRAPER_DEVID",
+                "SCREENSCRAPER_SSID",
+                "XBOX_CLIENT_ID",
+            }:
                 values[spec_name] = value
 
     provider_name = "Provider 1"
@@ -111,21 +116,23 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
             provider_slug = str(providers[0].get("slug") or provider_slug)
     except (TypeError, ValueError):
         pass
-    values.update({
-        "OIDC_PROVIDER_NAME": provider_name,
-        "OIDC_PROVIDER_SLUG": provider_slug,
-        "OIDC_ISSUER_URL": oidc.issuer_url,
-        "OIDC_CLIENT_ID": oidc.client_id,
-        "OIDC_CLIENT_SECRET__configured": bool(oidc.client_secret),
-        "OIDC_REDIRECT_URI": oidc.redirect_uri,
-        "OIDC_SCOPES": oidc.scopes,
-        "OIDC_GROUPS_CLAIM": oidc.groups_claim,
-        "OIDC_ADMIN_GROUP": oidc.admin_group,
-        "OIDC_USER_MATCH_FIELD": oidc.user_match_field,
-        "OIDC_ALLOW_NEW_USERS": oidc.allow_new_users,
-        "OIDC_DEFAULT_LOGIN_METHOD": oidc.default_login_method,
-        "OIDC_LOGIN_BUTTON_TEXT": oidc.login_button_text,
-    })
+    values.update(
+        {
+            "OIDC_PROVIDER_NAME": provider_name,
+            "OIDC_PROVIDER_SLUG": provider_slug,
+            "OIDC_ISSUER_URL": oidc.issuer_url,
+            "OIDC_CLIENT_ID": oidc.client_id,
+            "OIDC_CLIENT_SECRET__configured": bool(oidc.client_secret),
+            "OIDC_REDIRECT_URI": oidc.redirect_uri,
+            "OIDC_SCOPES": oidc.scopes,
+            "OIDC_GROUPS_CLAIM": oidc.groups_claim,
+            "OIDC_ADMIN_GROUP": oidc.admin_group,
+            "OIDC_USER_MATCH_FIELD": oidc.user_match_field,
+            "OIDC_ALLOW_NEW_USERS": oidc.allow_new_users,
+            "OIDC_DEFAULT_LOGIN_METHOD": oidc.default_login_method,
+            "OIDC_LOGIN_BUTTON_TEXT": oidc.login_button_text,
+        }
+    )
     return values
 
 
@@ -185,8 +192,7 @@ async def _save_configuration(
         setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else str(value))
 
     oidc_env_complete = all(
-        handler.has(name)
-        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+        handler.has(name) for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
     )
     oidc_selected = "oidc" in selected_sections
 
@@ -237,7 +243,9 @@ async def _save_configuration(
         if not value
     ]
     if missing:
-        raise HTTPException(400, "OIDC requires an issuer URL, client ID, and client secret when enabled.")
+        raise HTTPException(
+            400, "OIDC requires an issuer URL, client ID, and client secret when enabled."
+        )
 
     # A provider is only enabled after all required credentials have been
     # resolved. This prevents an empty setup OIDC row from being treated as
@@ -252,31 +260,37 @@ async def _save_configuration(
     except (TypeError, ValueError):
         providers = []
     providers = [
-        item for item in providers
+        item
+        for item in providers
         if isinstance(item, dict)
         and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
     ]
-    providers.insert(0, {
-        "name": values.get("OIDC_PROVIDER_NAME") or "Provider 1",
-        "slug": values.get("OIDC_PROVIDER_SLUG") or "provider-1",
-        "issuer_url": oidc.issuer_url,
-        "client_id": oidc.client_id,
-        "client_secret": oidc.client_secret,
-        "scopes": oidc.scopes or "openid profile email",
-        "groups_claim": oidc.groups_claim or "groups",
-        "admin_group": oidc.admin_group,
-        "user_match_field": oidc.user_match_field or "email",
-        "allow_new_users": oidc.allow_new_users,
-        "button_text": oidc.login_button_text or "Continue with SSO",
-        "enabled": True,
-        "show_on_login": True,
-        "autostart_enabled": True,
-    })
+    providers.insert(
+        0,
+        {
+            "name": values.get("OIDC_PROVIDER_NAME") or "Provider 1",
+            "slug": values.get("OIDC_PROVIDER_SLUG") or "provider-1",
+            "issuer_url": oidc.issuer_url,
+            "client_id": oidc.client_id,
+            "client_secret": oidc.client_secret,
+            "scopes": oidc.scopes or "openid profile email",
+            "groups_claim": oidc.groups_claim or "groups",
+            "admin_group": oidc.admin_group,
+            "user_match_field": oidc.user_match_field or "email",
+            "allow_new_users": oidc.allow_new_users,
+            "button_text": oidc.login_button_text or "Continue with SSO",
+            "enabled": True,
+            "show_on_login": True,
+            "autostart_enabled": True,
+        },
+    )
     oidc.providers_json = json.dumps(providers)
 
 
 @router.get("/configuration")
-async def setup_configuration(request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+async def setup_configuration(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, object]:
     return await _configuration(db, request)
 
 
@@ -300,7 +314,9 @@ async def update_setup_configuration(
 ) -> dict[str, object]:
     del admin
     selected = set(payload.sections)
-    await _save_configuration(db, payload.configuration, selected, str(request.url_for("oidc_callback")))
+    await _save_configuration(
+        db, payload.configuration, selected, str(request.url_for("oidc_callback"))
+    )
     await db.commit()
     apply_deployment_provider_credentials(await _app_row(db))
     return await _configuration(db, request)
@@ -316,7 +332,9 @@ async def setup_admin(
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('unnamed_tracking_app_setup'))"))
 
     if await db.scalar(select(User.id).limit(1)) is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Setup is already complete.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Setup is already complete."
+        )
 
     handler = EnvConfigHandler()
     values = dict(payload.configuration)
@@ -324,8 +342,12 @@ async def setup_admin(
     # The browser only submits editable fields. Deployment values therefore
     # come directly from EnvConfigHandler and cannot be replaced by the UI.
     admin_values = handler.bootstrap_primary_user()
-    username = (payload.username or values.get("PRIMARY_USER_USERNAME") or admin_values["username"]).strip()
-    email = (payload.email or values.get("PRIMARY_USER_EMAIL") or admin_values["email"]).strip().lower()
+    username = (
+        payload.username or values.get("PRIMARY_USER_USERNAME") or admin_values["username"]
+    ).strip()
+    email = (
+        (payload.email or values.get("PRIMARY_USER_EMAIL") or admin_values["email"]).strip().lower()
+    )
     password = payload.password or values.get("PRIMARY_USER_PASSWORD") or admin_values["password"]
 
     if not username or not email or not password:
@@ -335,8 +357,7 @@ async def setup_admin(
     # and will enable OIDC after complete provider credentials are saved.
     selected = set(payload.sections)
     oidc_env_complete = all(
-        handler.has(name)
-        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+        handler.has(name) for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
     )
     if oidc_env_complete:
         selected.add("oidc")
@@ -369,7 +390,9 @@ async def setup_admin(
         await db.refresh(user)
     except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists."
+        ) from exc
 
     response.set_cookie(
         key=SESSION_COOKIE,

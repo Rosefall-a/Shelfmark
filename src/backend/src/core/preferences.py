@@ -55,9 +55,7 @@ _SET_CHOICES: dict[str, tuple[str, ...]] = {
 
 def _validate_anilist_username(value: Any) -> str:
     if not isinstance(value, str) or len(value.strip()) > 100:
-        raise ValueError(
-            "anilist_import_username must be a string of at most 100 characters"
-        )
+        raise ValueError("anilist_import_username must be a string of at most 100 characters")
     return value.strip()
 
 
@@ -68,9 +66,7 @@ def _validate_anilist_interval(value: Any) -> int:
 
 
 def _validate_anilist_last_run(value: Any) -> int | None:
-    if value is not None and (
-        not isinstance(value, int) or isinstance(value, bool) or value < 0
-    ):
+    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
         raise ValueError("anilist_import_last_run_at must be a Unix timestamp or null")
     return value
 
