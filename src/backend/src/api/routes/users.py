@@ -1,4 +1,3 @@
-# pylint: disable=duplicate-code
 # pylint: disable=missing-module-docstring
 from __future__ import annotations
 
