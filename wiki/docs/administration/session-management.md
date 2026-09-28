@@ -30,7 +30,7 @@ The session list can be searched by username, IP, browser/device information, co
 
 The session list can be searched by username, IP, browser/device information, country, or region.
 
-When the City database is configured, the administrator map shows active session locations. Individual users are assigned stable colours for the current view, while nearby sessions are clustered into numbered bubbles. Click a pin or bubble to inspect the session or sessions at that location. Coordinates are approximate and should not be treated as precise physical tracking. If no City database is configured, the map is not rendered.
+When the City database is configured, the administrator map shows active session locations. Individual users are assigned stable colours for the current view, while nearby sessions are clustered into numbered bubbles. Click a pin or bubble to inspect the session or sessions at that location. Coordinates are approximate and should not be treated as precise physical tracking. The map is an interactive GIS view: administrators can pan and zoom, and pins/clusters remain clickable as the map moves. The visible basemap is loaded from OpenStreetMap tiles and includes the required attribution. If no City database is configured, the map is not rendered.
 
 ## GeoIP database
 
@@ -97,3 +97,12 @@ The PostgreSQL database remains the authoritative store for session metadata. Do
 The GeoIP database is separate file data and is persisted through the application's **/data** volume. Replacing the application container does not remove it unless the persistent data directory/volume is removed.
 
 Session metadata is retained only for the bounded session-data lifecycle. The application does not create an independent indefinite geographic history solely for this feature. IP, user-agent, and location data should be treated as sensitive operational information.
+
+
+## Large GeoIP uploads and reverse proxies
+
+The production container's Nginx configuration permits GeoIP uploads up to **256 MiB**, matching the session-manager upload validation. This is intentionally independent of the normal application media upload setting.
+
+If another reverse proxy, ingress controller, load balancer, or web server sits in front of Unnamed Tracking, it must allow requests of at least 256 MiB to the application upload endpoint. Otherwise that proxy may reject the request before FastAPI receives it.
+
+When a proxy returns HTTP **413 Request Entity Too Large**, the frontend detects the status and replaces the proxy's raw HTML error page with a normal session-manager error explaining that the proxy upload limit must be increased or a smaller file selected.
