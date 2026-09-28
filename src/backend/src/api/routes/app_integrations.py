@@ -1,4 +1,4 @@
-"""App integration stuff, module dockstring goes here."""
+"""Admin API for deployment-wide provider credentials."""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel

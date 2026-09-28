@@ -1,5 +1,5 @@
 # pylint: disable=duplicate-code
-"""this is something about api keys"""
+"""API routes for user API keys."""
 
 from __future__ import annotations
 
@@ -20,8 +20,7 @@ async def list_user_api_keys(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, str | int | list[str] | None]]:
-    """List all API keys for the current user, without revealing the raw or hashed credentials. (apparently)"""
-
+    """Return the caller's API keys, including revoked keys."""
     keys = await db.scalars(
         select(UserApiKey)
         .where(UserApiKey.user_id == user.id)
