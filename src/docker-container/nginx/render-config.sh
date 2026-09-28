@@ -83,4 +83,3 @@ fi
 
 mv "$tmp_output" "$output"
 trap - EXIT INT TERM
-  
