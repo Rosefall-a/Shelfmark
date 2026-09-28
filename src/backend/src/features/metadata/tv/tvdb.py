@@ -88,7 +88,7 @@ class TVDBClient:
 
         extended = self._get(f"/series/{series_id}/extended").get("data") or {}
         lists = extended.get("lists") or []
-        franchise_list = next((l for l in lists if l.get("isOfficial")), None) or (
+        franchise_list = next((entry for entry in lists if entry.get("isOfficial")), None) or (
             lists[0] if lists else None
         )
         if not franchise_list:
