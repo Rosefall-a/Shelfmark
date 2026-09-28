@@ -37,9 +37,11 @@ Every managed instance accepts only one final image tag, defaulting to `main`. T
 
 Production-like source builds use the repository root as the context and `src/docker-container/Dockerfile`; this is required because that Dockerfile copies both backend and frontend source.
 
-## Shared environment
+## Environment files
 
-All managed stacks use one src/devcontainer/.env. The control UI can edit it. Save the environment and use Rebuild & restart on a stack to apply it.
+There is one global `src/devcontainer/.env`, plus one optional `.env` override per managed instance under the ignored `src/devcontainer/environments/` directory. The control UI opens each file as a plain text editor so you can paste an existing `.env` without translating it into individual fields.
+
+The global file is loaded first and the instance file is loaded second, so instance values override global values. Save the relevant file and use Rebuild & restart to apply it.
 
 ## Fast source feedback
 
