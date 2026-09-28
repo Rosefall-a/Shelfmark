@@ -37,10 +37,10 @@ disable = [
   "too-few-public-methods",
   "broad-exception-caught",
   "global-statement",
+  "unsubscriptable-object",
+  "not-callable",
 ]
 
-[tool.pylint.typecheck]
-ignored-classes = ["sqlalchemy.orm.Mapped", "sqlalchemy.sql.functions._FunctionGenerator"]
 
 [tool.pylint.format]
 max-line-length = 120
