@@ -15,7 +15,7 @@ pythonpath = ["."]
 
 [tool.pylint.main]
 py-version = "3.12"
-source-roots = ["src"]
+source-roots = ["."]
 ignore = ["__pycache__", "migrations"]
 
 [tool.pylint.format]
