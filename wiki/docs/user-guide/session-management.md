@@ -60,4 +60,4 @@ IP addresses, user-agents, and location metadata are operationally sensitive. Th
 
 Expired/revoked session metadata is periodically removed after a bounded retention period. Administrators should preserve only the data needed for their operational and privacy requirements.
 
-The map uses data already stored on sessions and does not contact a third-party mapping service.
+The map uses data already stored on sessions for markers, while the visible basemap is loaded interactively from OpenStreetMap tiles. It supports mouse/touch panning and zooming and requests only the tiles needed for the current view. The basemap is subject to OpenStreetMap tile-service availability and usage policy. The application does not send session IP addresses to the map service; only map tile requests are made.
