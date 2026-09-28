@@ -8,12 +8,9 @@ different possible tables) instead of a real foreign key. `media_type`
 is validated at the API layer, not the database's."""
 
 from datetime import date
-
 from enum import Enum
-
-import time
-
 from uuid import UUID, uuid4
+import time
 
 from sqlalchemy import (
     BigInteger,
@@ -27,9 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database.base import Base
