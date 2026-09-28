@@ -175,7 +175,7 @@ async def list_archives(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> list[dict]:
     """List active archives of the requested kind for a game."""
-    await _get_game_or_404(game_id, db, current_user.id
+    await _get_game_or_404(game_id, db, current_user.id)
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
