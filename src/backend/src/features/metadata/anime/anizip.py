@@ -53,6 +53,8 @@ def _description(raw: dict[str, Any]) -> str | None:
 
 
 class AniZipClient:
+    """Client for retrieving AniList episode mappings from ani.zip."""
+
     def __init__(self, *, session: requests.Session | None = None) -> None:
         self.session = session or requests.Session()
 
@@ -94,7 +96,7 @@ class AniZipClient:
             if not str(key).isdigit() or not isinstance(raw, dict):
                 continue
             number = int(key)
-            if isinstance(limit, int) and 0 < limit < number:
+            if isinstance(limit, int) and limit > 0 and number > limit:
                 continue
             runtime = raw.get("runtime") or raw.get("length")
             results.append(
