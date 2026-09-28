@@ -26,6 +26,22 @@ User API keys are created for individual accounts and can be revoked. The backen
 
 The game API and other authenticated routes resolve the caller from either the bearer API key or the normal session cookie.
 
+## User preferences
+
+User preferences are exposed through the existing preferences API. The AniList automatic-import feature adds these per-user fields:
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `anilist_import_enabled` | boolean | Enables scheduled AniList imports for the user. Defaults to `false`. |
+| `anilist_import_username` | string | Public AniList username to import. Empty by default; maximum 100 characters. |
+| `anilist_import_interval_minutes` | integer | Minimum 60 minutes and maximum 43,200 minutes (30 days). Defaults to 1,440 minutes (24 hours). |
+| `anilist_import_update_existing` | boolean | Allows matching existing titles to be updated from AniList. Defaults to `false`. |
+| `anilist_import_last_run_at` | integer or null | Unix timestamp maintained by the scheduler after a scheduled import attempt. Defaults to `null`. |
+
+The preferences are scoped to individual users rather than deployments.
+
+The frontend presents the interval as Hourly, Every 6 hours, Twice daily, Daily, or Weekly, with a custom interval from 1 to 720 hours.
+
 ## Playnite API surface
 
 The Playnite extension currently uses these authenticated endpoints:
