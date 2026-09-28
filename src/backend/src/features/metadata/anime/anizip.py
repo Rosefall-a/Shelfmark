@@ -1,4 +1,3 @@
-# pylint: disable=use-maxsplit-arg,missing-class-docstring,chained-comparison
 """ani.zip: a free, keyless mapping service that joins AniList ids to
 TheTVDB/AniDB episode data. It is the best source for currently airing
 shows: real episode titles, synopses, screenshots and an exact air time
@@ -49,7 +48,7 @@ def _description(raw: dict[str, Any]) -> str | None:
     if not text:
         return None
     # the summary variant ends with a "Source: ..." credit line
-    text = str(text).replace("`", "'").split("\nSource:")[0].strip()
+    text = str(text).replace("`", "'").split("\nSource:", maxsplit=1)[0].strip()
     return text or None
 
 
@@ -95,7 +94,7 @@ class AniZipClient:
             if not str(key).isdigit() or not isinstance(raw, dict):
                 continue
             number = int(key)
-            if isinstance(limit, int) and limit > 0 and number > limit:
+            if isinstance(limit, int) and 0 < limit < number:
                 continue
             runtime = raw.get("runtime") or raw.get("length")
             results.append(
