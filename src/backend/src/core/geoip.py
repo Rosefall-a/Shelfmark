@@ -1,5 +1,7 @@
 """Optional local GeoIP lookup support for session metadata."""
 
+# Optional database support intentionally fails closed when its dependency/data is absent.
+
 from __future__ import annotations
 
 import ipaddress
