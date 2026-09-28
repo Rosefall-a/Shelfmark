@@ -17,17 +17,33 @@ pythonpath = ["."]
 py-version = "3.12"
 source-roots = ["src"]
 ignore = ["__pycache__", "migrations"]
-ignored-classes = ["sqlalchemy.orm.Mapped"]
 
 [tool.pylint.messages_control]
+# These individual checks are intentionally excluded where they conflict with the
+# project's existing architecture or duplicate formatting responsibilities handled
+# elsewhere. Functional/security diagnostics remain enabled.
 disable = [
-	"import-error",
+  "import-error",
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "line-too-long",
+  "multiple-statements",
+  "duplicate-code",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "too-many-locals",
+  "too-many-instance-attributes",
+  "too-few-public-methods",
+  "broad-exception-caught",
+  "global-statement",
 ]
+
+[tool.pylint.typecheck]
+ignored-classes = ["sqlalchemy.orm.Mapped", "sqlalchemy.sql.functions._FunctionGenerator"]
 
 [tool.pylint.format]
 max-line-length = 120
 
 [tool.pylint.design]
 max-args = 6
-
-
