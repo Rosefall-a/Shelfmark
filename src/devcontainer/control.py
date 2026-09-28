@@ -72,7 +72,7 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("build_mode must be source or tag")
     tag = str(instance.get("tag", "main")).strip() or "main"
     if not TAG_RE.fullmatch(tag):
-        raise ValueError("tag must contain only letters, numbers, ".", "_" or "-"")
+        raise ValueError("tag must contain only letters, numbers, dots, underscores or hyphens")
     result = dict(instance)
     result["project"] = project
     result["port"] = port
