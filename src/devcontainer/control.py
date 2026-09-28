@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import subprocess
+import shlex
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,14 +21,16 @@ TOKEN = secrets.token_urlsafe(24)
 
 DEFAULT_INSTANCES = [
     {"id": "dev-main", "name": "Development", "environment": "dev", "project": "uta-debug-dev",
-     "port": 5173, "build_mode": "local", "backend_image": "unnamed_tracking_app-dev-backend:local",
-     "frontend_image": "unnamed_tracking_app-dev-frontend:local"},
+     "port": 5173, "build_mode": "source", "tag": "main"},
     {"id": "prod-main", "name": "Production-like", "environment": "prod", "project": "uta-debug-prod",
-     "port": 8180, "build_mode": "local", "image": "unnamed_tracking_app:devcontainer-prod"},
+     "port": 8180, "build_mode": "source", "tag": "main"},
 ]
 
 ACTIONS = {"start", "stop", "reset", "rebuild", "status", "health", "logs"}
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+GHCR_BASE = "ghcr.io/rosefall-a/unnamed_tracking_app"
+IMAGE_NAMES = {"app": GHCR_BASE, "frontend": GHCR_BASE + "-frontend", "backend": GHCR_BASE + "-backend"}
 CONFIG_FIELDS = {
     "db_user": "DEV_POSTGRES_USER", "db_password": "DEV_POSTGRES_PASSWORD",
     "db_name": "DEV_POSTGRES_DB", "secret_key": "DEV_SECRET_KEY",
@@ -64,13 +67,17 @@ def validate_instance(instance: dict[str, Any]) -> dict[str, Any]:
     port = int(instance.get("port", 0))
     if not 1 <= port <= 65535:
         raise ValueError("port must be between 1 and 65535")
-    build_mode = instance.get("build_mode", "local")
-    if build_mode not in {"local", "image"}:
-        raise ValueError("build_mode must be local or image")
+    build_mode = instance.get("build_mode", "source")
+    if build_mode not in {"source", "tag"}:
+        raise ValueError("build_mode must be source or tag")
+    tag = str(instance.get("tag", "main")).strip() or "main"
+    if not TAG_RE.fullmatch(tag):
+        raise ValueError("tag must contain only letters, numbers, ".", "_" or "-"")
     result = dict(instance)
     result["project"] = project
     result["port"] = port
     result["build_mode"] = build_mode
+    result["tag"] = tag
     result["name"] = str(result.get("name") or project)
     result["id"] = str(result.get("id") or project)
     return result
@@ -133,12 +140,8 @@ def instance_by_id(instance_id: str) -> dict[str, Any]:
 def compose_env(instance: dict[str, Any]) -> dict[str, str]:
     env = os.environ.copy()
     env["DEVCONTAINER_APP_PORT"] = str(instance["port"])
-    env["DEV_PULL_POLICY"] = "build" if instance["build_mode"] == "local" else "always"
-    if instance["environment"] == "prod":
-        env["PROD_IMAGE"] = instance.get("image") or "ghcr.io/rosefall-a/unnamed_tracking_app:latest"
-    else:
-        env["DEV_BACKEND_IMAGE"] = instance.get("backend_image", "unnamed_tracking_app-dev-backend:local")
-        env["DEV_FRONTEND_IMAGE"] = instance.get("frontend_image", "unnamed_tracking_app-dev-frontend:local")
+    env["DEV_PULL_POLICY"] = "build" if instance["build_mode"] == "source" else "always"
+    env["IMAGE_TAG"] = instance["tag"]
     return env
 
 
@@ -154,7 +157,7 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
         "status": ["ps"], "health": ["ps"], "logs": ["logs", "--tail", "160"],
     }[action]
     if action in {"start", "rebuild"}:
-        command += ["--build"] if instance["build_mode"] == "local" else ["--no-build", "--pull", "always"]
+        command += ["--build"] if instance["build_mode"] == "source" else ["--no-build", "--pull", "always"]
     return [
         "docker", "compose", "--env-file", str(CONFIG_PATH), "--project-name", instance["project"],
         "-f", str(compose), *command,
@@ -167,7 +170,7 @@ def run_command(args: list[str], timeout: int = 120, environment: dict[str, str]
         env=environment or os.environ.copy(),
     )
     output = (completed.stdout + completed.stderr).strip()
-    return completed.returncode, output[-16000:]
+    return completed.returncode, f"$ {shlex.join(args)}\\nexit code: {completed.returncode}\\n{output}".strip()[-16000:]
 
 
 def probe(url: str) -> dict[str, Any]:
@@ -187,6 +190,24 @@ def status(instance: dict[str, Any]) -> dict[str, Any]:
         "endpoint": probe(f"http://host.docker.internal:{instance['port']}/"),
         "endpoint_url": f"http://localhost:{instance['port']}/",
     }
+
+
+def build_images(tag: str) -> tuple[int, str]:
+    if not TAG_RE.fullmatch(tag):
+        raise ValueError("tag must contain only letters, numbers, ".", "_" or "-"")
+    builds = [
+        ("app", ROOT, ROOT / "src/docker-container/Dockerfile"),
+        ("frontend", ROOT / "src/frontend", ROOT / "src/frontend/Dockerfile"),
+        ("backend", ROOT / "src/backend", ROOT / "src/backend/dockerfile"),
+    ]
+    output = []
+    for name, context, dockerfile in builds:
+        image = f"{IMAGE_NAMES[name]}:{tag}"
+        code, result = run_command(["docker", "build", "--tag", image, "--file", str(dockerfile), str(context)], 600)
+        output.append(result)
+        if code:
+            return code, "\n\n".join(output)
+    return 0, "\n\n".join(output)
 
 
 def docs_process() -> subprocess.Popen[str]:
@@ -254,6 +275,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = self._body()
+            if self.path == "/api/build-images":
+                tag = str(body.get("tag", "main")).strip() or "main"
+                code, output = build_images(tag)
+                self._json({"ok": code == 0, "exit_code": code, "output": output}, 200 if code == 0 else 409)
+                return
             if self.path == "/api/action":
                 instance = instance_by_id(str(body.get("instance_id")))
                 action = body.get("action")
@@ -264,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
                     300 if action in {"start", "rebuild"} else 120,
                     compose_env(instance),
                 )
-                self._json({"ok": code == 0, "output": output}, 200 if code == 0 else 409)
+                self._json({"ok": code == 0, "exit_code": code, "output": output}, 200 if code == 0 else 409)
                 return
             if self.path == "/api/instances":
                 instances = load_instances()
