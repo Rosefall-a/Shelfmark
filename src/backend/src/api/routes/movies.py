@@ -1,48 +1,29 @@
 # pylint: disable=missing-class-docstring,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring,duplicate-code
 """API routes for managing movies."""
 
-import asyncio
-
 from datetime import date
-
+from uuid import UUID
+import asyncio
 import re
-
 import time
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from pydantic import BaseModel
-
 from sqlalchemy import func, select
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.media_extras import log_activity, status_change_detail
-
 from src.api.schemas.movie import MovieCreate, MovieRead, MovieUpdate
-
 from src.api.schemas.pagination import PaginatedResponse
-
 from src.core.app_integrations import get_or_create_app_integration_settings
-
 from src.core.auth import get_current_user
-
 from src.core.integrations import resolve_integrations
-
 from src.database.models.media_extras import ActivityEventType
-
 from src.database.models.movies import Movie, MovieStatus
-
 from src.database.models.user import User
-
 from src.database.session import get_db
-
 from src.features.metadata.locked_fields import apply_updates_with_locking
-
 from src.features.metadata.movies.search import search_movie_metadata
-
 from src.features.metadata.movies.tmdb import TMDBClient
 
 router = APIRouter(prefix="/api/movie", tags=["movie"], dependencies=[Depends(get_current_user)])
