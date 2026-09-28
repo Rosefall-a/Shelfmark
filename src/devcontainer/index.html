@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unnamed Tracking Developer Environment</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">Unnamed Tracking App</p>
+        <h1>Developer Environment</h1>
+        <p>Local control for isolated development and production-like stacks.</p>
+      </div>
+      <a class="docs" href="http://localhost:999/" target="_blank" rel="noreferrer">Open documentation</a>
+    </header>
+    <section class="warning">
+      <strong>Trusted local tooling.</strong>
+      This container has access to the Docker socket. Keep it bound to localhost and do not expose it to an untrusted network.
+    </section>
+    <div id="stacks"></div>
+    <section class="panel">
+      <h2>Diagnostics</h2>
+      <p id="last-action">Ready.</p>
+      <pre id="output"></pre>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
