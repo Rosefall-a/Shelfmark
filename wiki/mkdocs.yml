@@ -1,6 +1,5 @@
 site_name: Unnamed Tracking App
 site_description: Documentation for Unnamed Tracking App
-
 theme:
   name: material
   palette:
@@ -9,7 +8,6 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Switch to dark mode
-
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       toggle:
@@ -28,8 +26,11 @@ nav:
       - Authentication: user-guide/authentication.md
       - OpenID Connect / SSO: user-guide/oidc.md
       - Notification Providers: user-guide/notification-providers.md
-      - Session Management: user-guide/session-management.md
       - SMTP / Email: user-guide/smtp.md
+      - Discord Webhooks: user-guide/discord.md
+      - Calendar & ICS: user-guide/calendar.md
+      - Session Management: user-guide/session-management.md
+      - Document Viewing: user-guide/document-viewer.md
       - Data, Exports & Backups: user-guide/data-and-backups.md
       - Games: user-guide/games.md
       - Anime: user-guide/anime.md
@@ -43,16 +44,23 @@ nav:
   - Administration:
       - Overview: administration/index.md
       - Users: administration/users.md
-      - Session Management: administration/session-management.md
+      - Session Manager: administration/session-management.md
       - Scheduled Tasks: administration/tasks.md
   - Deployment:
       - Overview: deployment/index.md
       - Production Docker Image: deployment/production-docker.md
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
+      - Production Runtime Smoke Tests: deployment/production-runtime-smoke.md
   - Development:
       - Overview: development/index.md
       - Architecture: development/architecture.md
+      - Password Policy: development/password-policy.md
+      - Notification Providers: development/notification-providers.md
+      - Calendar / ICS: development/calendar-ics.md
+      - Document Viewer: development/document-viewer.md
+      - Session Manager: development/session-manager.md
+      - Developer Control Container: development/devcontainer.md
+      - Production Runtime Smoke Tests: development/production-runtime-smoke.md
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md
-      - Session Manager: development/session-manager.md
