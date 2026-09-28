@@ -20,3 +20,27 @@ export async function revokeNotificationProviderDestination(id:string):Promise<v
   const r=await fetch(`/api/settings/notification-providers/${encodeURIComponent(id)}/destination`,{method:"DELETE",credentials:"include"});
   if(!r.ok) throw new Error(`Failed to revoke provider destination: ${r.status}`);
 }
+
+
+export type NotificationTestKind =
+  | "generic"
+  | "episode_aired"
+  | "season_started"
+  | "sequel_announced"
+  | "movie_released";
+
+export async function sendNotificationProviderTest(
+  id: string,
+  kind: NotificationTestKind,
+): Promise<void> {
+  const response = await fetch(`/api/settings/notification-providers/${encodeURIComponent(id)}/test`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Notification test failed: ${response.status}`);
+  }
+}
