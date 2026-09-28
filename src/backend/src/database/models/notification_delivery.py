@@ -1,3 +1,5 @@
+"""Durable notification-provider delivery state."""
+
 from __future__ import annotations
 
 import time
@@ -11,6 +13,8 @@ from src.database.base import Base
 
 
 class NotificationDelivery(Base):
+    # SQLAlchemy declarative models expose persistence fields rather than methods.
+    # pylint: disable=too-few-public-methods
     """Durable provider-delivery state for a notification."""
 
     __tablename__ = "notification_deliveries"
