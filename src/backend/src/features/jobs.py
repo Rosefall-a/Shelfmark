@@ -93,8 +93,17 @@ async def _run_airing(force: bool) -> None:
 
 
 JOBS: dict[str, JobSpec] = {
-    "airing_check": JobSpec("airing_check", "Airing episode check", "Checks for newly aired episodes.", 5, 24 * 60, 30, True, _start_airing, _airing_is_running, _summarize_airing, "all"),
-    "media_refresh": JobSpec("media_refresh", "Media refresh", "Fills missing episode metadata and corrects stale media data.", 60, 30 * 24 * 60, 24 * 60, False, refresh_job.start, refresh_job.is_running, _summarize_refresh),
+    "airing_check": JobSpec(
+        "airing_check", "Airing episode check", "Checks for newly aired episodes.",
+        5, 24 * 60, 30, True, _start_airing, _airing_is_running,
+        _summarize_airing, "all",
+    ),
+    "media_refresh": JobSpec(
+        "media_refresh", "Media refresh",
+        "Fills missing episode metadata and corrects stale media data.",
+        60, 30 * 24 * 60, 24 * 60, False,
+        refresh_job.start, refresh_job.is_running, _summarize_refresh,
+    ),
 }
 
 
@@ -119,7 +128,19 @@ async def get_setting(db: AsyncSession, spec: JobSpec) -> JobSetting:
 
 async def describe(db: AsyncSession, spec: JobSpec) -> dict[str, Any]:
     row = await get_setting(db, spec)
-    return {"id": spec.id, "name": spec.name, "description": spec.description, "enabled": row.enabled, "interval_minutes": row.interval_minutes, "min_interval_minutes": spec.min_interval_minutes, "max_interval_minutes": spec.max_interval_minutes, "last_run_at": row.last_run_at, "last_result": row.last_result or {}, "last_summary": spec.summarize(row.last_result or {}) if row.last_run_at else "", "running": spec.is_running()}
+    return {
+        "id": spec.id,
+        "name": spec.name,
+        "description": spec.description,
+        "enabled": row.enabled,
+        "interval_minutes": row.interval_minutes,
+        "min_interval_minutes": spec.min_interval_minutes,
+        "max_interval_minutes": spec.max_interval_minutes,
+        "last_run_at": row.last_run_at,
+        "last_result": row.last_result or {},
+        "last_summary": spec.summarize(row.last_result or {}) if row.last_run_at else "",
+        "running": spec.is_running(),
+    }
 
 
 async def record_run(job_id: str, result: dict[str, Any]) -> None:
@@ -127,7 +148,7 @@ async def record_run(job_id: str, result: dict[str, Any]) -> None:
         spec = JOBS[job_id]
         row = await get_setting(db, spec)
         row.last_run_at = int(time.time())
-        row.last_result = {k: v for k, v in result.items() if isinstance(v, (int, float, str, bool)) or v is None}
+        row.last_result = {\n            k: v for k, v in result.items()\n            if isinstance(v, (int, float, str, bool)) or v is None\n        }
         await db.commit()
 
 
