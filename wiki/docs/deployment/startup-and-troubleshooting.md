@@ -48,7 +48,7 @@ These are operational diagnostics, not durable log storage.
 
 ## TLS failures
 
-TLS is enabled only when `NGINX_TLS_ENABLED=true`. With both certificate variables empty, a self-signed localhost certificate/key pair is generated automatically.
+TLS is disabled by default and is enabled only when `NGINX_TLS_ENABLED=true`. When enabled, the container uses `readytls.conf` unless `NGINX_TLS_REDIRECT_HTTP=true`, in which case it uses `readytlsredirect.conf`. With both certificate variables empty, an existing `/etc/nginx/tls/tls.crt` + `/etc/nginx/tls/tls.key` pair is used when present; otherwise a self-signed localhost certificate/key pair is generated automatically under `/run/unnamed-tracking/tls`.
 
 Check that:
 
