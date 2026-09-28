@@ -24,6 +24,7 @@ def view(
 ) -> dict:
     """Serialize a session without including either raw or hashed credentials."""
     state = session_state(session)
+    coordinates_available = geoip._get_reader() is not None
     return {
         "id": str(session.id),
         "user_id": str(session.user_id),
@@ -34,8 +35,8 @@ def view(
             "country": session.geo_country,
             "region": session.geo_region,
             "city": session.geo_city,
-            "latitude": session.geo_latitude,
-            "longitude": session.geo_longitude,
+            "latitude": session.geo_latitude if coordinates_available else None,
+            "longitude": session.geo_longitude if coordinates_available else None,
             "network_type": session.geo_network_type,
             "network_label": session.geo_network_label,
             "network_number": session.geo_network_number,
