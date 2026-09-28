@@ -81,6 +81,18 @@ class GeoIpProvider:
         self._loaded_asn_path = self.asn_path if self._asn_reader is not None else None
         return self._asn_reader
 
+    def city_configured(self) -> bool:
+        """Return whether the city database is currently readable."""
+        return self._get_reader() is not None
+
+    def country_configured(self) -> bool:
+        """Return whether the country database is currently readable."""
+        return self._get_country_reader() is not None
+
+    def asn_configured(self) -> bool:
+        """Return whether the ASN database is currently readable."""
+        return self._get_asn_reader() is not None
+
     def reset(self) -> None:
         self._reader = None
         self._loaded_path = None
