@@ -1,26 +1,18 @@
 # pylint: disable=line-too-long
 """Fallback artwork for games that do not have stored cover art."""
 
+from html import escape
+from uuid import UUID
 import hashlib
 
-from html import escape
-
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, status
-
 from fastapi.responses import FileResponse, Response
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.games import ALLOWED_ASSET_KINDS, _DATA_ROOT, _get_game_or_404
-
 from src.core.auth import get_current_user
-
 from src.database.models.user import User
-
 from src.database.session import get_db
-
 from src.helpers.save_game_asset import ASSET_FILENAMES, AssetKind
 
 router = APIRouter(
