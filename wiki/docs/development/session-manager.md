@@ -40,7 +40,7 @@ City data supplies coordinates and country/region/city fields; Country data is a
 
 ## Session map
 
-The frontend map uses latitude/longitude already stored on session records. It is rendered locally without a third-party map tile service.
+The frontend map uses latitude/longitude already stored on session records and renders an interactive slippy GIS view with OpenStreetMap raster tiles. It supports panning, zooming, clustering, and clickable pins. Only tiles for the visible viewport are requested; the session IP address is not sent to the tile service. The UI includes OpenStreetMap attribution and should remain within the tile provider's usage policy.
 
 User views show the user's own mapped active sessions. Administrator views colour individual user locations and cluster nearby sessions into numbered bubbles. Pins are clickable and expose the associated session metadata. Sessions without usable public coordinates are not plotted, and the map is hidden when the City database is unavailable.
 
