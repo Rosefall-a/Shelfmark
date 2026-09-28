@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Admin API for deployment-wide provider credentials."""
 
 from fastapi import APIRouter, Depends
