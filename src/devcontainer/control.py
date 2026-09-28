@@ -165,10 +165,16 @@ def compose_args(instance: dict[str, Any], action: str) -> list[str]:
 
 
 def run_command(args: list[str], timeout: int = 120, environment: dict[str, str] | None = None) -> tuple[int, str]:
-    completed = subprocess.run(
-        args, cwd=ROOT, check=False, capture_output=True, text=True, timeout=timeout,
-        env=environment or os.environ.copy(),
-    )
+    try:
+        completed = subprocess.run(
+            args, cwd=ROOT, check=False, capture_output=True, text=True, timeout=timeout,
+            env=environment or os.environ.copy(),
+        )
+    except FileNotFoundError as exc:
+        return 127, f"Unable to execute {args[0]}: {exc}"
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        return 124, f"Command timed out after {timeout}s.\\n{output}".strip()
     output = (completed.stdout + completed.stderr).strip()
     return completed.returncode, f"$ {shlex.join(args)}\\nexit code: {completed.returncode}\\n{output}".strip()[-16000:]
 
@@ -180,7 +186,7 @@ def probe(url: str) -> dict[str, Any]:
     except urllib.error.HTTPError as exc:
         return {"state": "reachable", "status": exc.code}
     except Exception as exc:
-        return {"state": "unreachable", "error": type(exc).__name__}
+        return {"state": "unreachable", "error": f"{type(exc).__name__}: {exc}"}
 
 
 def status(instance: dict[str, Any]) -> dict[str, Any]:
