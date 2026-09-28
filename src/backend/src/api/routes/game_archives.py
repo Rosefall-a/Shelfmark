@@ -89,9 +89,7 @@ def _get_archive_kind_from_string(kind_str: str) -> ArchiveKind:
     raise ValueError(f"Unknown archive kind: {kind_str}")
 
 
-def _archive_dir(
-    game_folder: str, kind: str, archive_id: UUID, user_id: UUID
-) -> Path:
+def _archive_dir(game_folder: str, kind: str, archive_id: UUID, user_id: UUID) -> Path:
     """Return the on-disk directory for an archive."""
     kind = _get_archive_kind_from_string(kind)
     return (
@@ -173,9 +171,9 @@ async def list_archives(
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
- ) -> list[dict]:
+) -> list[dict]:
     """List active archives of the requested kind for a game."""
-    await _get_game_or_404(game_id, db, current_user.id
+    await _get_game_or_404(game_id, db, current_user.id)
     result = await db.execute(
         select(GameArchive)
         .options(selectinload(GameArchive.versions))
@@ -310,7 +308,7 @@ async def rename_archive(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
     """Rename an existing archive."""
-    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id
+    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     if not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required.")
     archive.name = payload.name.strip()
@@ -450,7 +448,7 @@ async def download_archive_version(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
     """Download an archived save version."""
-    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id
+    archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id)
     version = next(
         (v for v in archive.versions if v.id == version_id and v.deleted_at is None), None
@@ -564,7 +562,7 @@ async def get_world_map_thumbnail(
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
     """Return the rendered world-map thumbnail."""
-    game = await _get_game_or_404(game_id, db, current_user.id
+    game = await _get_game_or_404(game_id, db, current_user.id)
     path = bluemap.thumbnail_path(
         _DATA_ROOT / str(current_user.id) / "games" / (game.folder_location or ""), archive_id
     )
