@@ -25,8 +25,8 @@ jobs:
       - name: Validate Compose configurations
         run: |
           cp example.env .env
-          docker compose -f compose.yaml config --quiet
-          docker compose -f src/docker-container/compose.yaml config --quiet
+          docker compose --env-file example.env -f compose.yaml config --quiet
+          docker compose --env-file example.env -f src/docker-container/compose.yaml config --quiet
           docker compose -f src/docker-container/compose.debug.yaml config --quiet
 
       - name: Set up Docker Buildx
