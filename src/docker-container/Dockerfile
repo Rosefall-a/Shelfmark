@@ -14,7 +14,7 @@ ENV PATH="/opt/java/bin:${PATH}"
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx curl gcc postgresql-client unzip ca-certificates \
+    nginx curl gcc postgresql-client unzip ca-certificates gettext-base openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src/backend/requirements.txt /app/
@@ -30,10 +30,17 @@ COPY src/docker-container/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY src/docker-container/nginx/startup.conf /etc/nginx/startup.conf
 COPY src/docker-container/nginx/ready.conf /etc/nginx/ready.conf
 COPY src/docker-container/startup /srv/startup
+COPY src/docker-container/tests /opt/production-tests
 COPY src/docker-container/entrypoint.sh ./entrypoint.sh
+COPY src/docker-container/nginx/render-config.sh /usr/local/bin/render-production-nginx
 
 RUN mkdir -p /run/unnamed-tracking /var/log/nginx \
-    && chmod +x ./entrypoint.sh
+    && chmod +x ./entrypoint.sh /usr/local/bin/render-production-nginx \
+    && chmod 0755 /run/unnamed-tracking
 
-EXPOSE 80
+EXPOSE 80 443
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+    CMD case "${NGINX_TLS_ENABLED:-false}" in true|TRUE|1|yes|YES) curl -kfsS https://127.0.0.1/_startup/status.json ;; *) curl -fsS http://127.0.0.1/_startup/status.json ;; esac | grep -q '"overall":"ready"'
+
+STOPSIGNAL SIGTERM
 ENTRYPOINT ["./entrypoint.sh"]

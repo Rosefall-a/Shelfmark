@@ -29,7 +29,7 @@ jobs:
       - name: Set lowercase repository name
         run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
-      - name: Build production image for smoke tests
+      - name: Build production image for validation
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -40,6 +40,29 @@ jobs:
           cache-to: type=gha,mode=max,scope=production-container
 
           
+      - name: Validate production Nginx and TLS configuration
+        run: docker run --rm --entrypoint /bin/sh unnamed_tracking_app:ci /opt/production-tests/test-nginx-config.sh
+
+      - name: Validate production shell scripts and healthcheck
+        run: |
+          docker run --rm --entrypoint /bin/sh unnamed_tracking_app:ci -n /app/entrypoint.sh
+          docker run --rm --entrypoint /bin/sh unnamed_tracking_app:ci -n /usr/local/bin/render-production-nginx
+          docker inspect unnamed_tracking_app:ci --format '{{json .Config.Healthcheck.Test}}' | grep -F 'overall'
+
+      - name: Reject CRLF in shell scripts
+        run: |
+          python - <<'PY'
+          import pathlib
+          import subprocess
+          import sys
+
+          files = subprocess.check_output(["git", "ls-files", "*.sh"], text=True).splitlines()
+          bad = [path for path in files if b"\r" in pathlib.Path(path).read_bytes()]
+          if bad:
+              print("CR/CRLF line endings found in shell scripts:", *bad, sep="\n", file=sys.stderr)
+              raise SystemExit(1)
+          PY
+
       - name: Publish production image
         if: github.event_name != 'pull_request'
         env:
