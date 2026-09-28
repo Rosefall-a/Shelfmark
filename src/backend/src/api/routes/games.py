@@ -57,7 +57,7 @@ from src.features.metadata.games.search import search_game_metadata
 from src.features.trash.game_trash import move_game_to_trash, restore_game_from_trash
 from src.features.trash.media_trash import move_media_file_to_trash, restore_media_file_from_trash
 from src.features.trash.sweep import RETENTION_SECONDS
-from src.helpers.media import MediaKind, classify_media, list_media, media_subdir, save_media_bytes
+from src.helpers.media import MediaKind, classify_media, list_media, media_subdir, safe_filename, save_media_bytes
 from src.helpers.document_viewer import document_view_response, safe_document_filename
 from src.helpers.save_game_asset import (
     ASSET_FILENAMES,
@@ -88,6 +88,12 @@ class NoteWrite(BaseModel):
     """Request body used to create or replace a game note."""
 
     content: str
+
+
+class RenameFileRequest(BaseModel):
+    """Request body for renaming a stored file without changing its contents."""
+
+    name: str
 
 
 class MetadataSearchResponse(BaseModel):
@@ -528,7 +534,8 @@ def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
 @router.post("/{game_id}/screenshots")
 async def upload_game_screenshots(
     game_id: UUID,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     profile_id: UUID | None = _NONE_FORM,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
@@ -548,8 +555,16 @@ async def upload_game_screenshots(
     if profile_id is not None:
         await _get_profile_or_404(profile_id, game_id, db)
 
+    upload_files = (files if isinstance(files, list) else []) or (
+        [file] if isinstance(file, UploadFile) else []
+    )
+    if not upload_files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="At least one file is required."
+        )
+
     results: list[dict] = []
-    for file in files:
+    for file in upload_files:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
@@ -639,6 +654,7 @@ class MediaItemUpdate(BaseModel):
     note: str | None = None
     linked_achievement_id: UUID | None = None
     profile_id: UUID | None = None
+    filename: str | None = None
 
 
 @router.patch("/{game_id}/screenshots/{media_id}")
@@ -655,7 +671,21 @@ async def update_media_item(
     )
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media item not found.")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    new_filename = updates.pop("filename", None)
+    if new_filename is not None:
+        safe_document_filename(new_filename)
+        game = await _get_game_or_404(game_id, db, current_user.id)
+        game_dir = _DATA_ROOT / str(game.user_id) / "games" / (game.folder_location or "")
+        source = game_dir / media_subdir(item.kind) / item.filename
+        target = source.parent / safe_filename(new_filename)
+        if not source.is_file():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
+        if target.exists():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A file with that name already exists.")
+        source.rename(target)
+        item.filename = target.name
+    for field, value in updates.items():
         setattr(item, field, value)
     await db.commit()
     await db.refresh(item)
@@ -962,6 +992,45 @@ async def get_game_file(
     # stripped back off for the name the browser actually saves it as
     original_name = Path(filename).name.split("_", 1)[-1]
     return FileResponse(path, filename=original_name, media_type="application/octet-stream")
+
+
+@router.put("/{game_id}/files/{kind}/{filename}/rename")
+async def rename_game_file(
+    game_id: UUID,
+    kind: GameFileKind,
+    filename: str,
+    payload: RenameFileRequest,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, str | int]:
+    """Rename a stored game file while keeping the file contents."""
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    safe_document_filename(payload.name)
+    game_dir = _DATA_ROOT / str(game.user_id) / "games" / (game.folder_location or "")
+    source = game_dir / _game_file_subdir(kind) / Path(filename).name
+    if not source.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    target = source.parent / safe_filename(payload.name)
+    if target.exists():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A file with that name already exists.")
+    item = await db.scalar(
+        select(GameFileItem).where(
+            GameFileItem.game_id == game_id,
+            GameFileItem.kind == kind,
+            GameFileItem.filename == source.name,
+            GameFileItem.deleted_at.is_(None),
+        )
+    )
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
+    source.rename(target)
+    item.filename = target.name
+    await db.commit()
+    return {
+        "filename": target.name,
+        "size": target.stat().st_size,
+        "url": f"/api/game/{game_id}/files/{kind}/{target.name}",
+    }
 
 
 @router.delete("/{game_id}/files/{kind}/{filename}")

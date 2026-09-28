@@ -64,13 +64,21 @@ def test_pdf_with_wrong_extension_is_still_safe_to_view(tmp_path: Path) -> None:
     assert response.media_type == "application/pdf"
 
 
-def test_html_and_svg_are_never_viewable(tmp_path: Path) -> None:
-    for suffix, content in ((".html", b"<script>alert(1)</script>"), (".svg", b"<svg/>")):
-        path = tmp_path / f"abcdefgh_file{suffix}"
-        path.write_bytes(content)
-        with pytest.raises(HTTPException) as exc:
-            document_view_response(path, path.name)
-        assert exc.value.status_code == 415
+def test_html_is_viewable_as_plain_text_transport(tmp_path: Path) -> None:
+    path = tmp_path / "abcdefgh_file.html"
+    path.write_text("<h1>Hello</h1><script>alert(1)</script>", encoding="utf-8")
+    response = document_view_response(path, path.name)
+    assert response.media_type == "text/plain"
+    assert response.headers["x-document-format"] == "html"
+    assert b"<script>" in response.body
+
+
+def test_svg_is_not_viewable(tmp_path: Path) -> None:
+    path = tmp_path / "abcdefgh_file.svg"
+    path.write_text("<svg/>", encoding="utf-8")
+    with pytest.raises(HTTPException) as exc:
+        document_view_response(path, path.name)
+    assert exc.value.status_code == 415
 
 
 def test_text_is_returned_as_plain_text(tmp_path: Path) -> None:

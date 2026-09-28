@@ -122,8 +122,8 @@ def _is_utf8_text(path: Path) -> str:
 
 def _looks_like_text_document(path: Path) -> bool:
     suffix = path.suffix.lower()
-    if suffix in {".html", ".htm", ".svg", ".xhtml"}:
-        return False
+    if suffix in {".html", ".htm", ".xhtml"}:
+        return True
     mime_type = mimetypes.guess_type(path.name)[0]
     return suffix in _TEXT_EXTENSIONS or mime_type in _TEXT_MIME_TYPES
 
@@ -169,11 +169,21 @@ def document_view_response(
         )
 
     content = _is_utf8_text(path)
+    is_html = path.suffix.lower() in {".html", ".htm", ".xhtml"}
+    return PlainTextResponse(
+        content=content,
+        media_type="text/plain",
+        headers={
+            **headers,
+            "X-Document-Format": "html" if is_html else "text",
+            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#    content = _is_utf8_text(path)
     return PlainTextResponse(
         content=content,
         media_type="text/plain",
         headers={
             **headers,
             "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#$&+-.^_|~"),
+        },
+    )+-.^_|~"),
         },
     )

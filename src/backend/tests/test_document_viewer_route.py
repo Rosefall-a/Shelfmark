@@ -82,3 +82,23 @@ async def test_game_file_upload_accepts_singular_file_field(monkeypatch, tmp_pat
 
     assert result["results"] == [{"filename": "manual.txt", "status": "saved", "size": 6}]
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_media_upload_accepts_singular_file_field(monkeypatch, tmp_path: Path) -> None:
+    game = SimpleNamespace(id="game-id", user_id="owner-id", folder_location="Library")
+    user = SimpleNamespace(id="owner-id")
+    monkeypatch.setattr(games, "_get_game_or_404", AsyncMock(return_value=game))
+    monkeypatch.setattr(games, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(
+        games, "save_media_bytes", lambda data, dest_dir, filename: dest_dir / filename
+    )
+    db = AsyncMock()
+    upload = UploadFile(file=BytesIO(b"image"), filename="image.png")
+    result = await games.upload_game_screenshots(
+        "game-id", file=upload, db=db, current_user=user
+    )
+    assert result["results"] == [
+        {"filename": "image.png", "status": "saved", "kind": "screenshot"}
+    ]
+    db.commit.assert_awaited_once()
