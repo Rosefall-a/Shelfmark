@@ -180,9 +180,11 @@ async def get_movie(
     return await _get_movie_or_404(movie_id, db, current_user.id)
 
 
-# statuses that mean "not started yet": recording where you left off
-# moves a movie out of these into In progress
-_NOT_STARTED_STATUSES = {MovieStatus.WISHLIST, MovieStatus.WATCHLIST, MovieStatus.BACKLOG}
+# statuses that mean "not started yet" (the UI's Plan to Watch): recording
+# where you left off moves a movie out of these into In progress. BACKLOG is
+# the UI's On Hold, a paused watch, so it keeps its status.
+_NOT_STARTED_STATUSES = {MovieStatus.WISHLIST, MovieStatus.WATCHLIST}
+_FINISHED_STATUSES = {MovieStatus.WATCHED, MovieStatus.FAVORITE}
 
 
 def _sync_watch_progress(movie: Movie, updates: dict) -> None:
@@ -192,7 +194,7 @@ def _sync_watch_progress(movie: Movie, updates: dict) -> None:
     progress_set = bool(updates.get("progress_minutes"))
     if progress_set and "status" not in updates and movie.status in _NOT_STARTED_STATUSES:
         movie.status = MovieStatus.IN_PROGRESS
-    if "status" in updates and movie.status == MovieStatus.WATCHED and not progress_set:
+    if "status" in updates and movie.status in _FINISHED_STATUSES and not progress_set:
         movie.progress_minutes = None
 
 

@@ -5,6 +5,7 @@ import {
   updateTVShow,
   deleteTVShow,
   searchTVShowMetadata,
+  tvShowToInput,
 } from "../services/tvShows";
 import type { TVShowMetadataResult, SeasonInput } from "../services/tvShows";
 import type { TVShow, TVShowStatus } from "../types/tv_show";
@@ -197,7 +198,13 @@ async function submit() {
       seasons: props.show ? undefined : stagedSeasons.value,
     };
     const saved = props.show
-      ? await updateTVShow(props.show.id, input)
+      ? await updateTVShow(props.show.id, {
+          // fields this form doesn't show (note, rewatches, priority, dates,
+          // countries, the other ratings...) keep their saved values instead
+          // of being reset to empty by the update
+          ...tvShowToInput(props.show),
+          ...input,
+        })
       : await createTVShow(input);
     emit("saved", saved);
   } catch (e) {

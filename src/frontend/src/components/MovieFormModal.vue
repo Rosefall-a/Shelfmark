@@ -5,9 +5,14 @@ import {
   updateMovie,
   deleteMovie,
   searchMovieMetadata,
+  movieToInput,
 } from "../services/movies";
 import type { MovieMetadataResult } from "../services/movies";
 import type { Movie, MovieStatus } from "../types/movie";
+import {
+  formatProgressMinutes,
+  parseProgressMinutes,
+} from "../utils/watchProgress";
 import {
   STATUS_BUCKETS,
   statusBucket,
@@ -31,6 +36,7 @@ function blankFields() {
     description: "",
     releaseDate: "",
     runtimeMinutes: null as number | null,
+    progressInput: "",
     director: "",
     writer: "",
     studiosInput: "",
@@ -73,6 +79,10 @@ function loadFromMovie(movie: Movie | null | undefined) {
     description: movie.description ?? "",
     releaseDate: movie.releaseDate ?? "",
     runtimeMinutes: movie.runtimeMinutes,
+    progressInput:
+      movie.progressMinutes === null
+        ? ""
+        : formatProgressMinutes(movie.progressMinutes),
     director: movie.director ?? "",
     writer: movie.writer ?? "",
     studiosInput: movie.studios.join(", "),
@@ -155,10 +165,20 @@ async function submit() {
     error.value = "Title is required.";
     return;
   }
+  const progressMinutes = parseProgressMinutes(fields.value.progressInput);
+  if (progressMinutes !== null && Number.isNaN(progressMinutes)) {
+    error.value = "Left off at: enter minutes (72) or hours:minutes (1:12).";
+    return;
+  }
+  // a position in a movie you hadn't started means you're watching it
+  if (progressMinutes && statusBucket(fields.value.status) === "plan") {
+    fields.value.status = "in progress";
+  }
   saving.value = true;
   error.value = null;
   try {
     const input = {
+      progressMinutes: progressMinutes || null,
       title: fields.value.title.trim(),
       description: fields.value.description.trim() || null,
       releaseDate: fields.value.releaseDate || null,
@@ -177,7 +197,13 @@ async function submit() {
       tmdbScore: fields.value.tmdbScore,
     };
     const saved = props.movie
-      ? await updateMovie(props.movie.id, input)
+      ? await updateMovie(props.movie.id, {
+          // fields this form doesn't show (note, rewatches, priority, dates,
+          // countries, the other ratings...) keep their saved values instead
+          // of being reset to empty by the update
+          ...movieToInput(props.movie),
+          ...input,
+        })
       : await createMovie(input);
     emit("saved", saved);
   } catch (e) {
@@ -300,6 +326,16 @@ async function remove() {
               v-model.number="fields.runtimeMinutes"
               type="number"
               min="0"
+              class="text-input"
+            />
+          </label>
+          <label class="field">
+            <span>Left off at (h:mm)</span>
+            <input
+              v-model="fields.progressInput"
+              type="text"
+              inputmode="numeric"
+              placeholder="not started"
               class="text-input"
             />
           </label>

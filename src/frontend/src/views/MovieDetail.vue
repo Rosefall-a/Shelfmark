@@ -28,6 +28,11 @@ import {
   statusBucket,
   bucketToReal,
 } from "../utils/mediaStatus";
+import {
+  formatProgressMinutes,
+  parseProgressMinutes,
+  progressPercent,
+} from "../utils/watchProgress";
 
 const route = useRoute();
 const router = useRouter();
@@ -111,6 +116,66 @@ async function onStatusChange() {
     });
   } catch {
     movie.value.status = previous;
+  }
+}
+
+// "Left off at" (#191): where you stopped in a movie you haven't finished
+const progressInput = ref("");
+const savingProgress = ref(false);
+const progressError = ref<string | null>(null);
+watch(
+  () => movie.value?.progressMinutes,
+  (minutes) => {
+    progressInput.value =
+      minutes === null || minutes === undefined
+        ? ""
+        : formatProgressMinutes(minutes);
+    progressError.value = null;
+  },
+  { immediate: true },
+);
+const showResumeRow = computed(
+  () =>
+    !!movie.value &&
+    (statusBucket(movie.value.status) !== "completed" ||
+      movie.value.progressMinutes !== null),
+);
+const progressPct = computed(() =>
+  movie.value
+    ? progressPercent(movie.value.progressMinutes, movie.value.runtimeMinutes)
+    : null,
+);
+
+async function saveProgress() {
+  // Enter then blur would otherwise send the same save twice
+  if (!movie.value || savingProgress.value) return;
+  const parsed = parseProgressMinutes(progressInput.value);
+  if (parsed !== null && Number.isNaN(parsed)) {
+    progressError.value = "Enter minutes (72) or hours:minutes (1:12).";
+    return;
+  }
+  const runtime = movie.value.runtimeMinutes;
+  const minutes =
+    parsed !== null && runtime ? Math.min(parsed, runtime) : parsed;
+  if (minutes === movie.value.progressMinutes) return;
+  // saving a position in a movie you hadn't started means you're watching it
+  const status =
+    minutes && statusBucket(movie.value.status) === "plan"
+      ? ("in progress" as MovieStatus)
+      : movie.value.status;
+  savingProgress.value = true;
+  progressError.value = null;
+  try {
+    movie.value = await updateMovie(movie.value.id, {
+      ...movieToInput(movie.value),
+      status,
+      progressMinutes: minutes || null,
+    });
+  } catch (e) {
+    progressError.value =
+      e instanceof Error ? e.message : "Couldn't save where you left off.";
+  } finally {
+    savingProgress.value = false;
   }
 }
 
@@ -416,6 +481,37 @@ async function onRatingChange(value: number | null) {
             />
             <span v-if="releaseYear" class="badge">{{ releaseYear }}</span>
             <span v-if="runtimeLabel" class="badge">{{ runtimeLabel }}</span>
+          </div>
+          <div v-if="showResumeRow" class="resume-row">
+            <label class="resume-label" for="movie-left-off">Left off at</label>
+            <input
+              id="movie-left-off"
+              v-model="progressInput"
+              class="resume-input"
+              inputmode="numeric"
+              placeholder="h:mm"
+              aria-describedby="movie-left-off-hint"
+              @keydown.enter.prevent="saveProgress"
+              @blur="saveProgress"
+            />
+            <span v-if="movie.runtimeMinutes" class="resume-of"
+              >of {{ formatProgressMinutes(movie.runtimeMinutes) }}</span
+            >
+            <span
+              v-if="progressPct !== null"
+              class="resume-bar"
+              role="progressbar"
+              :aria-valuenow="progressPct"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-label="Watched so far"
+              ><span :style="{ width: `${progressPct}%` }"></span
+            ></span>
+            <span id="movie-left-off-hint" class="resume-hint">{{
+              savingProgress
+                ? "Saving…"
+                : (progressError ?? "Minutes or h:mm; blank clears it.")
+            }}</span>
           </div>
           <div class="action-row">
             <button
@@ -786,6 +882,50 @@ async function onRatingChange(value: number | null) {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.resume-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -6px 0 16px;
+  font-size: 0.8rem;
+  color: #9c9c9c;
+}
+.resume-label {
+  font-weight: 600;
+}
+.resume-input {
+  width: 70px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  color: #f2f2f2;
+  font: inherit;
+}
+.resume-input:focus {
+  outline: none;
+  border-color: #d68a34;
+}
+.resume-bar {
+  position: relative;
+  width: 120px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.resume-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #d68a34;
+}
+.resume-hint {
+  color: #666;
+  font-size: 0.74rem;
 }
 .edit-btn {
   background: #d68a34;

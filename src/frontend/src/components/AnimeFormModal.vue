@@ -5,6 +5,7 @@ import {
   updateAnime,
   deleteAnime,
   searchAnimeMetadata,
+  animeToInput,
 } from "../services/anime";
 import type { AnimeMetadataResult } from "../services/anime";
 import type { Anime, AnimeStatus } from "../types/anime";
@@ -188,7 +189,13 @@ async function submit() {
       anilistId: fields.value.anilistId,
     };
     const saved = props.show
-      ? await updateAnime(props.show.id, input)
+      ? await updateAnime(props.show.id, {
+          // fields this form doesn't show (note, rewatches, priority, dates,
+          // countries, the other ratings...) keep their saved values instead
+          // of being reset to empty by the update
+          ...animeToInput(props.show),
+          ...input,
+        })
       : await createAnime(input);
     emit("saved", saved);
   } catch (e) {
