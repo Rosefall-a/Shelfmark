@@ -12,41 +12,39 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
   -subj "/CN=localhost" >/dev/null 2>&1
 
 rendered="$work/http.conf"
-NGINX_TLS_ENABLED=false "$render" "$rendered"
+cp "$base" "$rendered"
 ! grep -q 'listen 443 ssl;' "$rendered"
 nginx -t -c "$rendered"
 
 rendered="$work/https.conf"
-NGINX_TLS_ENABLED=true \
-NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" \
-NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" \
-"$render" "$rendered"
+NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" "$base" "$rendered"
 grep -q 'listen 443 ssl;' "$rendered"
 grep -q "ssl_certificate $work/tls/cert.pem;" "$rendered"
 grep -q "ssl_certificate_key $work/tls/key.pem;" "$rendered"
 nginx -t -c "$rendered"
 
+rendered="$work/https-redirect.conf"
+NGINX_TLS_ENABLED=true NGINX_TLS_REDIRECT_HTTP=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytlsredirect.conf "$rendered"
+grep -q 'listen 443 ssl;' "$rendered"
+grep -q 'return 301 https://$host$request_uri;' "$rendered"
+nginx -t -c "$rendered"
+
 rm -rf /run/unnamed-tracking/tls
-NGINX_TLS_ENABLED=true "$render" "$work/generated.conf"
+NGINX_TLS_ENABLED=true "$render" /etc/nginx/readytls.conf "$work/generated.conf"
 test -s /run/unnamed-tracking/tls/tls.crt
 test -s /run/unnamed-tracking/tls/tls.key
 openssl x509 -in /run/unnamed-tracking/tls/tls.crt -noout -subject >/dev/null
+grep -q 'ssl_certificate /run/unnamed-tracking/tls/tls.crt;' "$work/generated.conf"
 nginx -t -c "$work/generated.conf"
 
-# The conventional mounted certificate location is optional. If the files are
-# absent, TLS must fall back to the generated self-signed pair rather than
-# leaving Nginx pointing at nonexistent /etc/nginx/tls files.
 rm -rf /etc/nginx/tls
-NGINX_TLS_ENABLED=true \
-NGINX_TLS_CERTIFICATE=/etc/nginx/tls/tls.crt \
-NGINX_TLS_PRIVATE_KEY=/etc/nginx/tls/tls.key \
-"$render" "$work/default-path-fallback.conf"
+NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE=/etc/nginx/tls/tls.crt NGINX_TLS_PRIVATE_KEY=/etc/nginx/tls/tls.key "$render" /etc/nginx/readytls.conf "$work/default-path-fallback.conf"
 grep -q 'ssl_certificate /run/unnamed-tracking/tls/tls.crt;' "$work/default-path-fallback.conf"
 grep -q 'ssl_certificate_key /run/unnamed-tracking/tls/tls.key;' "$work/default-path-fallback.conf"
 nginx -t -c "$work/default-path-fallback.conf"
 
-cp /etc/nginx/ready.conf "$work/in-place.conf"
-NGINX_TLS_ENABLED=true "$render" "$work/in-place.conf"
+cp /etc/nginx/readytls.conf "$work/in-place.conf"
+NGINX_TLS_ENABLED=true "$render" "$work/in-place.conf" "$work/in-place.conf"
 grep -q 'listen 443 ssl;' "$work/in-place.conf"
 grep -q 'ssl_certificate /run/unnamed-tracking/tls/tls.crt;' "$work/in-place.conf"
 nginx -t -c "$work/in-place.conf"
