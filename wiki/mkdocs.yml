@@ -15,6 +15,7 @@ theme:
       toggle:
         icon: material/weather-night
         name: Switch to light mode
+
 nav:
   - Home: index.md
   - Setup:
@@ -29,6 +30,7 @@ nav:
       - Data, Exports & Backups: user-guide/data-and-backups.md
       - Games: user-guide/games.md
       - Anime: user-guide/anime.md
+      - AniList Import: user-guide/anilist.md
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
       - Calendar & ICS: user-guide/calendar.md
