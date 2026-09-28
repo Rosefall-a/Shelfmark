@@ -1,4 +1,4 @@
-# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,import-outside-toplevel,too-many-locals,too-many-branches
+# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,import-outside-toplevel,too-many-locals,too-many-branches,duplicate-code
 from __future__ import annotations
 
 import json
