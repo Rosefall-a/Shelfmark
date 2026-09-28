@@ -53,8 +53,8 @@ HTTP-only remains the default. TLS is deployment-only. If TLS is enabled without
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NGINX_TLS_ENABLED` | `false` | Enable the embedded HTTPS listener. |
-| `NGINX_TLS_CERTIFICATE` | `/etc/nginx/tls/tls.crt` | Mounted PEM certificate/chain. |
-| `NGINX_TLS_PRIVATE_KEY` | `/etc/nginx/tls/tls.key` | Mounted PEM private key. |
+| `NGINX_TLS_CERTIFICATE` | empty | Optional PEM certificate/chain path; the conventional `/etc/nginx/tls/tls.crt` is detected automatically when present. |
+| `NGINX_TLS_PRIVATE_KEY` | empty | Optional PEM private-key path; the conventional `/etc/nginx/tls/tls.key` is detected automatically when present. |
 | `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS after readiness. |
 
 When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image.
