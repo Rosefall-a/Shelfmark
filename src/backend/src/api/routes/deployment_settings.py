@@ -106,7 +106,7 @@ _PROVIDER_ENV_NAMES = {
 }
 
 _SMTP_ENV_NAMES = {"smtp_enabled":"SMTP_ENABLED","smtp_host":"SMTP_HOST","smtp_port":"SMTP_PORT","smtp_username":"SMTP_USERNAME","smtp_password":"SMTP_PASSWORD","smtp_from_email":"SMTP_FROM_EMAIL","smtp_security":"SMTP_SECURITY"}
-_SMTP_FIELDS = {"smtp_enabled","smtp_host","smtp_port","smtp_username","smtp_from_email","smtp_security"}
+_SMTP_FIELDS = {"smtp_enabled","smtp_host","smtp_port","smtp_username","smtp_password","smtp_from_email","smtp_security"}
 
 _OIDC_ENV_NAMES = {
     "issuer_url": "OIDC_ISSUER_URL",
