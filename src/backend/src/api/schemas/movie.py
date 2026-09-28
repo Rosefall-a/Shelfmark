@@ -1,3 +1,5 @@
+"""Pydantic schemas for movie metadata."""
+
 # Domain schemas intentionally mirror the corresponding database/provider models.
 
 from datetime import date
