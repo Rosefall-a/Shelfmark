@@ -33,8 +33,6 @@ services:
     build:
       context: /workspace/src/frontend
       dockerfile: Dockerfile
-    environment:
-      VITE_API_BASE_URL: ""
     ports:
       - "127.0.0.1:${DEVCONTAINER_DEV_PORT:-5173}:80"
     depends_on:
@@ -42,4 +40,4 @@ services:
 
 volumes:
   devcontainer_dev_pgdata:
-  devcontainer_dev_data
+  devcontainer_dev_data:
