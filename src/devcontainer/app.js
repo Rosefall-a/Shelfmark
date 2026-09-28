@@ -193,17 +193,6 @@ async function refresh() {
   }
 }
 
-function toggleImageFields() {
-  const prod = value("#instance-env") === "prod";
-  const remote = value("#instance-mode") === "image";
-  document.querySelector("#image-field").hidden = !prod;
-  document.querySelector("#backend-image-field").hidden = prod || !remote;
-  document.querySelector("#frontend-image-field").hidden = prod || !remote;
-  document.querySelector("#instance-image").required = prod && remote;
-  document.querySelector("#instance-backend-image").required = !prod && remote;
-  document.querySelector("#instance-frontend-image").required = !prod && remote;
-}
-
 document.querySelector("#save-env").addEventListener("click", saveEnvironment);
 document.querySelector("#build-images").addEventListener("click", buildImages);
 document.querySelector("#instance-form").addEventListener("submit", saveInstance);
