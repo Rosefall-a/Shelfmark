@@ -2111,10 +2111,10 @@ def test_calendar_projects_no_episode_past_the_season_total():
         )
 
     window = now + 365 * 86400
+
     def numbers(s):
-        return [
-            e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)
-        ]
+        return [e["next_episode_number"] for e in _calendar_entries_for_show(s, "anime", window)]
+
     assert numbers(show(24, 24)) == [24]  # the next episode is the last one
     assert numbers(show(11, 13)) == [11, 12, 13]
     # a count below the next episode is a lagging snapshot, not a ceiling
