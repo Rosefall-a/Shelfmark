@@ -9,4 +9,4 @@ class Base(DeclarativeBase):
     in SQLAlchemy's metadata.
     """
 
-    pass
+    """Declarative SQLAlchemy base; no additional behavior is required."""

@@ -19,7 +19,6 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.job_setting import JobSetting

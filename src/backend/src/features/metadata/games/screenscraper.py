@@ -56,7 +56,7 @@ class ScreenScraperClient:
         except requests.RequestException as exc:
             raise ScreenScraperError(f"Could not reach ScreenScraper: {exc}") from exc
 
-        if response.status_code == 401 or response.status_code == 403:
+        if response.status_code in (401, 403):
             raise ScreenScraperError("ScreenScraper rejected the account credentials.")
         if response.status_code >= 400:
             raise ScreenScraperError(f"ScreenScraper request failed ({response.status_code}).")
