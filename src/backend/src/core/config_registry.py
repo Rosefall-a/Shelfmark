@@ -485,7 +485,7 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
     ),
     ConfigSpec(
         "SMTP_SECURITY",
-        "general",
+        "smtp",
         ConfigSource.BOTH,
         label="SMTP security",
         input_type="choice",
