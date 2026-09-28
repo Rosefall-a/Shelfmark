@@ -55,25 +55,38 @@ async function saveEnvironment() {
   }
 }
 
+async function buildImages() {
+  const b = document.querySelector("#build-images");
+  setBusy(b, true, "Build all 3 images from source");
+  document.querySelector("#last-action").textContent = "Building all 3 images…";
+  document.querySelector("#output").textContent = "Building production, frontend and backend images. This may take several minutes…";
+  try {
+    const result = await api("/api/build-images", {method: "POST", body: JSON.stringify({tag: value("#build-tag") || "main"})});
+    document.querySelector("#last-action").textContent = "All 3 images built and tagged.";
+    document.querySelector("#output").textContent = result.output || "";
+  } catch (error) {
+    document.querySelector("#last-action").textContent = "Image build failed.";
+    document.querySelector("#output").textContent = error.message;
+  } finally { setBusy(b, false, "Build all 3 images from source"); }
+}
+
 function editInstance(instance) {
   document.querySelector("#instance-id").value = instance.id;
   document.querySelector("#instance-name").value = instance.name;
   document.querySelector("#instance-env").value = instance.environment;
   document.querySelector("#instance-project").value = instance.project;
   document.querySelector("#instance-port").value = instance.port;
-  document.querySelector("#instance-mode").value = instance.build_mode;
-  document.querySelector("#instance-image").value = instance.image || "";
-  document.querySelector("#instance-backend-image").value = instance.backend_image || "";
-  document.querySelector("#instance-frontend-image").value = instance.frontend_image || "";
+  document.querySelector("#instance-mode").value = instance.build_mode || "source";
+  document.querySelector("#instance-tag").value = instance.tag || "main";
   document.querySelector("#save-instance").textContent = "Save instance";
-  toggleImageFields();
+  
 }
 
 function clearInstanceForm() {
   document.querySelector("#instance-form").reset();
   document.querySelector("#instance-id").value = "";
+  document.querySelector("#instance-tag").value = "main";
   document.querySelector("#save-instance").textContent = "Add instance";
-  toggleImageFields();
 }
 
 async function saveInstance(event) {
@@ -90,9 +103,7 @@ async function saveInstance(event) {
       project: value("#instance-project"),
       port: Number(value("#instance-port")),
       build_mode: value("#instance-mode"),
-      image: value("#instance-image"),
-      backend_image: value("#instance-backend-image"),
-      frontend_image: value("#instance-frontend-image")
+      tag: value("#instance-tag") || "main"
     };
     const result = await api("/api/instances", {method: editing ? "PUT" : "POST", body: JSON.stringify(payload)});
     document.querySelector("#last-action").textContent = "Instance saved.";
@@ -154,7 +165,8 @@ function render(instances) {
       (instance.environment === "prod" ? "Production-like" : "Development") + " · " + instance.build_mode,
       "Project: " + instance.project,
       "URL: http://localhost:" + instance.port + "/",
-      instance.build_mode === "image" ? "Image: " + (instance.image || instance.backend_image || instance.frontend_image || "(not set)") : "Source: current checkout"
+      "Final tag: " + (instance.tag || "main"),
+      instance.build_mode === "tag" ? "Images: fixed GHCR repositories" : "Images: current checkout"
     ].join("\n");
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -193,14 +205,13 @@ function toggleImageFields() {
 }
 
 document.querySelector("#save-env").addEventListener("click", saveEnvironment);
+document.querySelector("#build-images").addEventListener("click", buildImages);
 document.querySelector("#instance-form").addEventListener("submit", saveInstance);
 document.querySelector("#cancel-instance").addEventListener("click", clearInstanceForm);
 document.querySelector("#instance-env").addEventListener("change", toggleImageFields);
-document.querySelector("#instance-mode").addEventListener("change", toggleImageFields);
 
 Promise.all([api("/api/environment"), api("/api/instances")]).then(([env, instances]) => {
   loadEnvironment(env);
   render(instances);
-  toggleImageFields();
 }).catch(error => { document.querySelector("#output").textContent = error.message; });
 setInterval(refresh, 5000);
