@@ -27,11 +27,13 @@ The repository mount lets the container read the current backend/frontend/wiki s
 
 ## Environments
 
-Development uses a dedicated Compose project and builds from /workspace/src/backend and /workspace/src/frontend.
+Both managed environments use the same shared configuration stored in `src/devcontainer/.env`. The control UI can edit this configuration; restart a stack after saving to apply changes.
 
-Production-like uses ghcr.io/rosefall-a/unnamed_tracking_app:${UNNAMED_TRACKING_APP_VERSION:-latest}. It is intentionally not production: its port is localhost-only, its data volumes are debug-only, and it is controlled by this developer container.
+The shared values include database credentials, the application secret key, initial admin credentials, and cookie security. This is a local developer environment: do not put production secrets in this file.
 
-Set UNNAMED_TRACKING_APP_VERSION before starting the production-like stack if a particular published image should be exercised.
+Development builds the backend/frontend from the current checkout.
+
+Production-like builds the existing `src/docker-container` production image locally, so its backend and Nginx startup path are exercised rather than using a separate debug backend. It uses the same shared environment and dedicated production-like volumes.
 
 ## Reset
 
