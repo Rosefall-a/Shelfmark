@@ -6,7 +6,7 @@ The image contains the compiled Vue frontend, FastAPI, Nginx, and the independen
 
 ## Startup and readiness
 
-PID 1 starts Nginx with the diagnostic configuration before PostgreSQL or FastAPI are ready. It then validates database configuration, waits for PostgreSQL, applies migrations, starts FastAPI, validates the production Nginx configuration, reloads Nginx, and verifies the frontend.
+PID 1 starts Nginx with the diagnostic configuration before PostgreSQL or FastAPI are ready. It then validates database configuration, waits for PostgreSQL, applies migrations, starts FastAPI, selects `ready.conf` (HTTP), `readytls.conf` (HTTPS), or `readytlsredirect.conf` (HTTPS plus HTTP redirect), renders TLS certificate paths when required, copies the selected production configuration to `/etc/nginx/nginx.conf`, validates it, reloads Nginx, and verifies the frontend.
 
 The Docker healthcheck is intentionally stricter than “Nginx is alive”: it is healthy only when the file-backed status reports `overall=ready`. During startup and after controlled startup failures the container can remain alive so operators can inspect the diagnostics, but Docker health remains unhealthy.
 

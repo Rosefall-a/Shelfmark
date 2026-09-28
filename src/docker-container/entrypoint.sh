@@ -144,20 +144,38 @@ done
 log "Backend healthy"
 write_status "STARTING_FRONTEND" "starting" "ready" "ready" "ready" "starting" "Activating the production frontend."
 
-log "Rendering production Nginx configuration"
-render_output="$({ /usr/local/bin/render-production-nginx /etc/nginx/ready.conf; } 2>&1)" || {
-  printf '%s\n' "$render_output" >> "$DETAILS_FILE"
-  fail_startup "FRONTEND_FAILED" "Production Nginx/TLS configuration is invalid. See startup details." "ready" "ready" "ready" "failed"
-}
+log "Selecting production Nginx configuration"
+case "${NGINX_TLS_ENABLED:-false}" in
+  true|TRUE|1|yes|YES)
+    case "${NGINX_TLS_REDIRECT_HTTP:-false}" in
+      true|TRUE|1|yes|YES) selected_config="/etc/nginx/readytlsredirect.conf" ;;
+      false|FALSE|0|no|NO|"") selected_config="/etc/nginx/readytls.conf" ;;
+      *) fail_startup "FRONTEND_FAILED" "Invalid NGINX_TLS_REDIRECT_HTTP value." "ready" "ready" "ready" "failed" ;;
+    esac
+    ;;
+  false|FALSE|0|no|NO|"")
+    selected_config="/etc/nginx/ready.conf"
+    ;;
+  *)
+    fail_startup "FRONTEND_FAILED" "Invalid NGINX_TLS_ENABLED value." "ready" "ready" "ready" "failed"
+    ;;
+esac
 
-log "Testing ready.conf"
-nginx_output="$(nginx -t -c /etc/nginx/ready.conf 2>&1)" || {
+log "Activating $selected_config"
+if [ "$selected_config" = "/etc/nginx/ready.conf" ]; then
+  cp "$selected_config" /etc/nginx/nginx.conf
+else
+  render_output="$({ /usr/local/bin/render-production-nginx "$selected_config" /etc/nginx/nginx.conf; } 2>&1)" || {
+    printf '%s\n' "$render_output" >> "$DETAILS_FILE"
+    fail_startup "FRONTEND_FAILED" "Production Nginx/TLS configuration is invalid. See startup details." "ready" "ready" "ready" "failed"
+  }
+fi
+
+log "Testing active Nginx configuration"
+nginx_output="$(nginx -t 2>&1)" || {
   printf '%s\n' "$nginx_output" >> "$DETAILS_FILE"
   fail_startup "FRONTEND_FAILED" "The production Nginx configuration failed validation." "ready" "ready" "ready" "failed"
 }
-
-log "Overwriting active nginx.conf with ready.conf"
-cp /etc/nginx/ready.conf /etc/nginx/nginx.conf
 
 log "Reloading Nginx to activate production frontend"
 if ! nginx -s reload; then

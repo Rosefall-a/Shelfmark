@@ -19,7 +19,7 @@ FastAPI listens on `127.0.0.1:8000`; it is not exposed directly by the container
 
 ## Startup and health semantics
 
-PID 1 starts the diagnostic Nginx configuration first, then waits for PostgreSQL, runs Alembic migrations, starts FastAPI, validates the production Nginx configuration, reloads Nginx, and verifies the frontend.
+PID 1 starts the diagnostic Nginx configuration first, then waits for PostgreSQL, runs Alembic migrations, starts FastAPI, selects the production Nginx configuration (`ready.conf`, `readytls.conf`, or `readytlsredirect.conf`), validates it, copies the selected/rendered configuration to `/etc/nginx/nginx.conf`, reloads Nginx, and verifies the frontend.
 
 The status model distinguishes starting, database failure, migration failure, backend failure/timeout, frontend/Nginx failure, readiness, and post-start backend crash.
 
@@ -53,8 +53,8 @@ HTTP-only remains the default. TLS is deployment-only. If TLS is enabled without
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NGINX_TLS_ENABLED` | `false` | Enable the embedded HTTPS listener. |
-| `NGINX_TLS_CERTIFICATE` | `/etc/nginx/tls/tls.crt` | Mounted PEM certificate/chain. |
-| `NGINX_TLS_PRIVATE_KEY` | `/etc/nginx/tls/tls.key` | Mounted PEM private key. |
+| `NGINX_TLS_CERTIFICATE` | empty | Optional PEM certificate/chain path; the conventional `/etc/nginx/tls/tls.crt` is detected automatically when present. |
+| `NGINX_TLS_PRIVATE_KEY` | empty | Optional PEM private-key path; the conventional `/etc/nginx/tls/tls.key` is detected automatically when present. |
 | `NGINX_TLS_REDIRECT_HTTP` | `false` | Redirect HTTP to HTTPS after readiness. |
 
 When enabled, publish container port 443 and mount the certificate directory read-only. Do not bake keys into the image.

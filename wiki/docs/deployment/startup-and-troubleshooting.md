@@ -11,8 +11,8 @@ The production container separates startup diagnostics from the normal applicati
 5. Run Alembic migrations.
 6. Start Uvicorn on `127.0.0.1:8000`.
 7. Wait for `/health`.
-8. Render and validate the production Nginx configuration.
-9. Switch Nginx to the ready configuration and reload it.
+8. Select the HTTP, HTTPS, or HTTPS-redirect production Nginx configuration and render TLS certificate paths when required.
+9. Validate the selected configuration, copy it to `nginx.conf`, and reload Nginx.
 10. Verify the compiled frontend.
 11. Monitor the backend process.
 
