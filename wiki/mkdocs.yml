@@ -1,6 +1,5 @@
 site_name: Unnamed Tracking App
 site_description: Documentation for Unnamed Tracking App
-site_url: /docs/
 
 theme:
   name: material
