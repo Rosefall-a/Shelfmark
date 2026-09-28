@@ -3,65 +3,39 @@
 per-user metadata-provider credentials, and read-only server config the
 frontend needs to display (e.g. upload limits)."""
 
+from uuid import UUID
 import asyncio
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-
 from fastapi.responses import FileResponse
-
 from pydantic import BaseModel
-
 from sqlalchemy import func, select
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas.appearance_settings import AppearanceSettingsRead, AppearanceSettingsUpdate
-
 from src.api.schemas.scan_settings import ScanSettingsRead, ScanSettingsUpdate
-
 from src.core.app_integrations import get_or_create_app_integration_settings
-
 from src.core.auth import get_current_admin, get_current_user
-
 from src.core.config import settings
-
 from src.core.crypto import decrypt_secret, encrypt_secret
-
 from src.core.integrations import resolve_integrations
-
 from src.database.models.app_integration_settings import AppIntegrationSettings
-
 from src.database.models.game import Game
-
 from src.database.models.user import User
-
 from src.database.models.user_appearance_settings import UserAppearanceSettings
-
 from src.database.models.user_scan_settings import UserScanSettings
-
 from src.database.session import get_db
-
 from src.features.metadata import refresh_job
-
 from src.features.metadata.games import steam
-
 from src.features.metadata.games.giant_bomb import GiantBombClient, GiantBombError
-
 from src.features.metadata.games.gog import GOGClient, GOGError
-
 from src.features.metadata.games.retroachievements import (
     RetroAchievementsClient,
     RetroAchievementsError,
 )
-
 from src.features.metadata.games.screenscraper import ScreenScraperClient, ScreenScraperError
-
 from src.features.metadata.games.steam import SteamLibraryError
-
 from src.features.metadata.games.xbox import XboxClient, XboxError
-
 from src.helpers.save_badge_image import badge_image_path, delete_badge_image, save_badge_image
 
 router = APIRouter(
