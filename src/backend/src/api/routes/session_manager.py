@@ -116,6 +116,7 @@ async def revoke_my_session(
 
 @router.get("/admin")
 async def list_all_sessions(
+    *,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin),
     user_id: UUID | None = Query(default=None),
@@ -229,9 +230,9 @@ async def upload_geoip(
         raise HTTPException(400, "Invalid GeoIP database size.")
     paths = {"city": geoip.path, "country": geoip.country_path, "network": geoip.asn_path}
     validators = {
-        "city": lambda provider: provider._get_reader(),
-        "country": lambda provider: provider._get_country_reader(),
-        "network": lambda provider: provider._get_asn_reader(),
+        "city": lambda provider: provider.city_configured(),
+        "country": lambda provider: provider.country_configured(),
+        "network": lambda provider: provider.asn_configured(),
     }
     path = paths[kind]
     path.parent.mkdir(parents=True, exist_ok=True)
