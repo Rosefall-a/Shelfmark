@@ -72,22 +72,32 @@ async function buildImages() {
   } finally { setBusy(b, false, "Build all 3 images from source"); }
 }
 
+function syncTagField() {
+  const mode = document.querySelector("#instance-mode").value;
+  const tag = document.querySelector("#instance-tag");
+  const tagLabel = document.querySelector("#instance-tag-label");
+  const enabled = mode === "tag";
+  tag.disabled = !enabled;
+  tagLabel.classList.toggle("hidden", !enabled);
+  if (!enabled) tag.value = "main";
+}
+
 function editInstance(instance) {
   document.querySelector("#instance-id").value = instance.id;
-  document.querySelector("#instance-name").value = instance.name;
   document.querySelector("#instance-env").value = instance.environment;
-  document.querySelector("#instance-project").value = instance.project;
   document.querySelector("#instance-port").value = instance.port;
   document.querySelector("#instance-mode").value = instance.build_mode || "source";
   document.querySelector("#instance-tag").value = instance.tag || "main";
+  syncTagField();
   document.querySelector("#save-instance").textContent = "Save instance";
-  
 }
 
 function clearInstanceForm() {
   document.querySelector("#instance-form").reset();
   document.querySelector("#instance-id").value = "";
+  document.querySelector("#instance-mode").value = "source";
   document.querySelector("#instance-tag").value = "main";
+  syncTagField();
   document.querySelector("#save-instance").textContent = "Add instance";
 }
 
@@ -99,10 +109,8 @@ async function saveInstance(event) {
   setBusy(button, true, originalLabel);
   try {
     const payload = {
-      id: value("#instance-id") || value("#instance-project"),
-      name: value("#instance-name"),
+      id: value("#instance-id") || ("instance-" + Date.now()),
       environment: value("#instance-env"),
-      project: value("#instance-project"),
       port: Number(value("#instance-port")),
       build_mode: value("#instance-mode"),
       tag: value("#instance-tag") || "main"
@@ -128,9 +136,11 @@ async function deleteInstance(id) {
   }
 }
 
-function actionButton(instance, action, label) {
+function actionButton(instance, action, label, className = "") {
   const b = document.createElement("button");
   b.textContent = label;
+  if (className) b.classList.add(className);
+  b.dataset.action = action;
   b.addEventListener("click", async () => {
     if (busy) return;
     busy = true;
@@ -173,8 +183,12 @@ function render(instances) {
     ].join("\n");
     const actions = document.createElement("div");
     actions.className = "actions";
-    [["start","Deploy"],["rebuild","Rebuild"],["stop","Stop"],["reset","Reset volumes"],["logs","Logs"]]
-      .forEach(([action, label]) => actions.appendChild(actionButton(instance, action, label)));
+    const deploy = actionButton(instance, "start", "Deploy", "deploy");
+    const stop = actionButton(instance, "stop", "Stop", "stop");
+    stop.hidden = true;
+    actions.append(deploy, stop, actionButton(instance, "rebuild", "Redeploy", "rebuild"),
+      actionButton(instance, "reset", "Reset volumes", "danger"),
+      actionButton(instance, "logs", "Logs"));
     const edit = document.createElement("button");
     edit.textContent = "Edit";
     edit.addEventListener("click", () => editInstance(instance));
@@ -193,6 +207,7 @@ function render(instances) {
     open.rel = "noreferrer";
     open.textContent = "Open";
     actions.appendChild(open);
+    remove.classList.add("danger");
     actions.appendChild(remove);
     const live = document.createElement("div");
     live.className = "live-status";
@@ -216,6 +231,15 @@ document.querySelector("#close-env").addEventListener("click", () => document.qu
 document.querySelector("#cancel-env").addEventListener("click", () => document.querySelector("#env-modal").close());
 document.querySelector("#build-images").addEventListener("click", buildImages);
 document.querySelector("#instance-form").addEventListener("submit", saveInstance);
+document.querySelector("#instance-mode").addEventListener("change", syncTagField);
+document.querySelector("#instance-tag").addEventListener("input", (event) => {
+  if (event.target.value.trim() && document.querySelector("#instance-mode").value !== "tag") {
+    document.querySelector("#instance-mode").value = "tag";
+    syncTagField();
+    event.target.focus();
+  }
+});
+syncTagField();
 document.querySelector("#cancel-instance").addEventListener("click", clearInstanceForm);
 async function loadPage() {
   try {
@@ -234,12 +258,20 @@ async function refreshStatus() {
     for (const status of statuses) {
       const card = document.querySelector("[data-instance-id='" + CSS.escape(status.id) + "']");
       if (!card) continue;
+      const healthy = status.endpoint.state === "healthy";
       const statusNode = card.querySelector(".live-status");
       if (statusNode) {
-        statusNode.textContent = status.endpoint.state === "healthy"
+        statusNode.textContent = healthy
           ? "Healthy"
-          : "Unavailable: " + (status.endpoint.error || status.endpoint.status || "not responding");
+          : "Stopped / unavailable";
+        statusNode.classList.toggle("healthy", healthy);
+        statusNode.classList.toggle("unhealthy", !healthy);
       }
+      card.classList.toggle("is-healthy", healthy);
+      const deploy = card.querySelector("[data-action='start']");
+      const stop = card.querySelector("[data-action='stop']");
+      if (deploy) deploy.hidden = healthy;
+      if (stop) stop.hidden = !healthy;
     }
   } catch (error) {
     document.querySelector("#output").textContent = "Status check failed: " + error.message;
