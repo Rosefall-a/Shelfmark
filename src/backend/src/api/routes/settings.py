@@ -3,8 +3,8 @@
 per-user metadata-provider credentials, and read-only server config the
 frontend needs to display (e.g. upload limits)."""
 
-from uuid import UUID
 import asyncio
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
