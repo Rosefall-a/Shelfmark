@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long
 """Fallback artwork for games that do not have stored cover art."""
 
 import hashlib

@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring
 from fastapi import APIRouter, Depends
 
 from src.core.auth import get_current_user
