@@ -2,9 +2,9 @@
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+import time
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
-import time
 
 from sqlalchemy import (
     BigInteger,
