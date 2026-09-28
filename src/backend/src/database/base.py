@@ -1,3 +1,4 @@
+# pylint: disable=trailing-newlines,missing-module-docstring,too-few-public-methods
 from sqlalchemy.orm import DeclarativeBase
 
 
