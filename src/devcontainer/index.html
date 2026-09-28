@@ -33,16 +33,14 @@
       </form>
     </dialog>
     <section class="panel">
-      <div class="panel-heading"><h2>Compose instances</h2><span>Each instance has its own project, port and volumes.</span></div>
-      <p>Multiple stacks are supported; each gets its own Compose project, port and volumes.</p>
+      <div class="panel-heading"><h2>Compose instances</h2><span>Each instance gets one shared name/project, an application port and isolated volumes.</span></div>
+      <p>Names are generated from the stack type (`dev`, `prod`) and numbered automatically when needed.</p>
       <form id="instance-form" class="instance-form">
         <input type="hidden" id="instance-id">
-        <label>Name<input id="instance-name" required></label>
         <label>Type<select id="instance-env"><option value="dev">Development</option><option value="prod">Production-like</option></select></label>
-        <label>Project<input id="instance-project" pattern="[a-z0-9][a-z0-9_-]*" required></label>
         <label>Port<input id="instance-port" type="number" min="1" max="65535" required></label>
         <label>Images<select id="instance-mode"><option value="source">Build from source</option><option value="tag">Use GHCR tag</option></select></label>
-        <label>Final tag<input id="instance-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" required></label>
+        <label id="instance-tag-label" class="hidden">Final tag<input id="instance-tag" value="main" pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></label>
         <div class="actions"><button type="submit" id="save-instance">Add instance</button><button type="button" id="cancel-instance">Clear</button></div>
       </form>
     </section>
