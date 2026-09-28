@@ -10,7 +10,12 @@ same migration builds a fresh database and leaves an adopted one alone.
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
+
+# alembic.op is a proxy filled in while a migration runs, so pylint can't
+# see its members
+from alembic import op  # pylint: disable=no-name-in-module
+
+# pylint: disable=no-member
 
 
 def _inspector() -> sa.engine.Inspector:
@@ -20,22 +25,26 @@ def _inspector() -> sa.engine.Inspector:
 
 
 def has_table(table: str) -> bool:
+    """Whether the table exists."""
     return _inspector().has_table(table)
 
 
 def has_column(table: str, column: str) -> bool:
+    """Whether the table exists and has the column."""
     if not has_table(table):
         return False
     return any(col["name"] == column for col in _inspector().get_columns(table))
 
 
 def has_index(table: str, name: str) -> bool:
+    """Whether the table exists and has an index with this name."""
     if not has_table(table):
         return False
     return any(index["name"] == name for index in _inspector().get_indexes(table))
 
 
 def has_constraint(name: str) -> bool:
+    """Whether any constraint in the database has this name."""
     row = op.get_bind().execute(
         sa.text("SELECT 1 FROM pg_constraint WHERE conname = :name"), {"name": name}
     )
@@ -43,11 +52,13 @@ def has_constraint(name: str) -> bool:
 
 
 def create_table_if_missing(table: str, *columns: sa.schema.SchemaItem, **kw: object) -> None:
+    """op.create_table, skipped when the table already exists."""
     if not has_table(table):
         op.create_table(table, *columns, **kw)
 
 
 def add_column_if_missing(table: str, column: sa.Column) -> None:
+    """op.add_column, skipped when the column already exists."""
     if not has_column(table, column.name):
         op.add_column(table, column)
 
@@ -60,16 +71,19 @@ def create_index_if_missing(
     unique: bool = False,
     postgresql_where: sa.TextClause | None = None,
 ) -> None:
+    """op.create_index, skipped when an index with this name exists."""
     if not has_index(table, name):
         op.create_index(name, table, columns, unique=unique, postgresql_where=postgresql_where)
 
 
 def drop_index_if_exists(name: str, table: str) -> None:
+    """op.drop_index, skipped when there is no such index."""
     if has_index(table, name):
         op.drop_index(name, table_name=table)
 
 
 def create_unique_constraint_if_missing(name: str, table: str, columns: list[str]) -> None:
+    """op.create_unique_constraint, skipped when the name is taken."""
     if not has_constraint(name):
         op.create_unique_constraint(name, table, columns)
 
