@@ -10,10 +10,10 @@
 The MAL import never changes a title already on the site (same MAL id, or
 same title) unless the user picks that title, so importing twice is harmless."""
 
-from typing import Any
 import csv
 import io
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
