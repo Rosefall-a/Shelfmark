@@ -158,7 +158,7 @@ def _looks_like_anime(result: dict[str, Any]) -> bool:
     if "animation" not in genres:
         return False
     countries = {str(c).lower() for c in result.get("countries") or []}
-    languages = {str(l).lower() for l in result.get("languages") or []}
+    languages = {str(language).lower() for language in result.get("languages") or []}
     return bool({"jp", "japan"} & countries or {"ja", "japanese"} & languages)
 
 
