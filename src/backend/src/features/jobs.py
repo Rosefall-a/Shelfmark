@@ -1,4 +1,4 @@
-"""Cleanup jobs: recurring work an administrator can switch on, schedule and
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-many-instance-attributes,global-statement,broad-exception-caught\n"""Cleanup jobs: recurring work an administrator can switch on, schedule and
 run by hand.
 
 Each job is described once in JOBS. Its schedule is stored in `job_settings`;

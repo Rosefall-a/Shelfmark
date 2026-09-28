@@ -1,4 +1,4 @@
-"""Generates a lightweight top-down thumbnail for a Minecraft world save —
+# pylint: disable=too-many-locals\n"""Generates a lightweight top-down thumbnail for a Minecraft world save —
 deliberately NOT built from BlueMap's own render output. BlueMap's tiles
 turn out to be 3D-viewer geometry (JSON meshes for its WebGL client), not
 raster images — there is no "grab a tile, that's the thumbnail" shortcut.

@@ -15,7 +15,7 @@ def format_provider_error(name: str, message: str) -> str:
 
 def titles_match(first: str, second: str) -> bool:
     """Compare titles while ignoring case, punctuation, and whitespace."""
-    normalize = lambda value: "".join(char.lower() for char in value if char.isalnum())
+    def normalize(value: str) -> str:\n        return "".join(char.lower() for char in value if char.isalnum())
     normalized_first = normalize(first)
     normalized_second = normalize(second)
     return bool(normalized_first) and normalized_first == normalized_second
