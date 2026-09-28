@@ -176,14 +176,7 @@ def document_view_response(
         headers={
             **headers,
             "X-Document-Format": "html" if is_html else "text",
-            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#    content = _is_utf8_text(path)
-    return PlainTextResponse(
-        content=content,
-        media_type="text/plain",
-        headers={
-            **headers,
-            "Content-Disposition": "inline; filename*=UTF-8''" + quote(original_name, safe="!#$&+-.^_|~"),
-        },
-    )+-.^_|~"),
+            "Content-Disposition": "inline; filename*=UTF-8''"
+            + quote(original_name, safe="!#$&+-.^_|~"),
         },
     )
