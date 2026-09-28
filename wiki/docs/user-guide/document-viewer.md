@@ -7,7 +7,7 @@ Game documents can be opened directly from a game's **Docs** tab.
 The viewer currently supports:
 - **PDF** — opened using the browser's built-in PDF viewer.
 - **HTML/XHTML** — sanitized before rendering.
-- **UTF-8 text — common plain-text formats such as .txt, .log, .csv, .json, .md, .ini, .cfg, .conf, .toml, .yaml/.yml, .xml, and .properties.
+- **UTF-8 text** — common plain-text formats such as .txt, .log, .csv, .json, .md, .ini, .cfg, .conf, .toml, .yaml/.yml, .xml, and .properties.
 
 Other document types remain downloadable through the existing file storage but are not rendered by the viewer.
 
@@ -33,4 +33,4 @@ Document viewing uses the same authenticated game ownership check as the existin
 
 The server rejects path separators in the requested stored filename rather than normalizing them, preventing path-traversal attempts.
 
-Text is sent as text/plain and displayed as text in the frontend; it is never inserted as HTML. HTML and SVG are excluded from supported text formats. Responses also use X-Content-Type-Options: nosniff and private, non-persistent caching.
+All viewer responses use text/plain transport except PDFs. HTML/XHTML are marked with X-Document-Format: html and sanitized with DOMPurify before insertion; raw uploaded HTML is never served as a navigable HTML document. SVG is excluded. Responses also use X-Content-Type-Options: nosniff and private, non-persistent caching.
