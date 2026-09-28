@@ -18,6 +18,7 @@ import AdminSection from "../components/settings/AdminSection.vue";
 import StatsSection from "../components/settings/StatsSection.vue";
 import ExportImportSection from "../components/settings/ExportImportSection.vue";
 import CalendarNotificationsSection from "../components/settings/CalendarNotificationsSection.vue";
+import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import MediaPreferencesSection from "../components/settings/MediaPreferencesSection.vue";
 import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
@@ -99,8 +100,6 @@ watch(activeSection, (section) => {
   void router.replace({ query: { ...route.query, section } });
 });
 
-// on a phone the section list stacks above the content, so a tap would
-// change something far below the fold: bring the content into view
 const card = ref<HTMLElement | null>(null);
 watch(activeSection, async () => {
   if (!window.matchMedia("(max-width: 760px)").matches) return;
@@ -164,7 +163,10 @@ watch(activeSection, async () => {
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
-          <ExportImportSection v-else-if="activeSection === 'export'" />
+          <template v-else-if="activeSection === 'export'">
+            <ExportImportSection />
+            <AniListImportSection />
+          </template>
           <TasksSection
             v-else-if="activeSection === 'tasks' && currentUser?.is_admin"
           />
