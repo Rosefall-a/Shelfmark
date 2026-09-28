@@ -101,7 +101,12 @@ class TVMazeClient:
                     "studios": [network] if network else [],
                     "countries": [],
                     "genres": show.get("genres") or [],
-                    "poster_url": image.get("original") or image.get("medium"),
+                    # Use TVmaze's display-sized image first. The original
+                    # can be several times larger and was causing slow poster
+                    # loads in the add-show flow; both URLs preserve the
+                    # provider's full poster, so this does not bake a crop
+                    # into the saved URL.
+                    "poster_url": image.get("medium") or image.get("original"),
                     "score": rating,
                     "url": show.get("url"),
                 }
