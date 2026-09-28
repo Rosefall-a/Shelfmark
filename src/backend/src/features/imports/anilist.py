@@ -39,8 +39,7 @@ async def import_anilist_library(
                 skipped += 1
                 continue
 
-            def parsed(key: str):
-                value = entry[key]
+            def parsed(value: str | None) -> date | None:
                 return date.fromisoformat(value) if value else None
 
             if show is None:
@@ -49,7 +48,7 @@ async def import_anilist_library(
                     title=entry["title"],
                     sort_title=_derive_sort_title(entry["title"]),
                     description=entry["description"],
-                    first_air_date=parsed("first_air_date"),
+                    first_air_date=parsed(entry["first_air_date"]),
                     episode_runtime_minutes=entry["episode_runtime_minutes"],
                     studios=entry["studios"],
                     countries=entry["countries"],
@@ -66,8 +65,8 @@ async def import_anilist_library(
                     priority=entry["priority"],
                     rewatches=entry["repeat"],
                     note=entry["note"],
-                    start_date=parsed("start_date"),
-                    end_date=parsed("end_date"),
+                    start_date=parsed(entry["start_date"]),
+                    end_date=parsed(entry["end_date"]),
                     rating_overall=entry["rating_overall"],
                 )
                 db.add(show)
@@ -100,7 +99,7 @@ async def import_anilist_library(
                 season.status = entry["status"]
                 updated += 1
             await db.commit()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             await db.rollback()
             skipped += 1
             errors.append(f"{entry.get('title', 'Unknown title')}: {exc}")
