@@ -35,7 +35,6 @@ from src.features.metadata.games.retroachievements import (
 from src.features.metadata.games.screenscraper import ScreenScraperClient, ScreenScraperError
 from src.features.metadata.games.steam import SteamLibraryError
 from src.features.metadata.games.xbox import XboxClient, XboxError
-from src.features.metadata import refresh_job
 from src.helpers.save_badge_image import badge_image_path, delete_badge_image, save_badge_image
 
 router = APIRouter(
