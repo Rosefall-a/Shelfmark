@@ -116,6 +116,8 @@ async def create_session(db: AsyncSession, user: User, request: Request) -> Sess
         geo_longitude=location.longitude,
         geo_network_type=location.network_type,
         geo_network_label=location.network_label,
+        geo_network_number=location.network_number,
+        geo_network_organization=location.network_organization,
     )
     _set_anomaly(previous, session)
     db.add(session)
