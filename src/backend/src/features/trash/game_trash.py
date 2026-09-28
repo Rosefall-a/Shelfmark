@@ -4,6 +4,7 @@ everything) previously had the weakest protection: instant and
 permanent. This moves the entire game folder aside in one shot instead
 of removing it, so features/trash/sweep.py has something to restore
 from for 7 days."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

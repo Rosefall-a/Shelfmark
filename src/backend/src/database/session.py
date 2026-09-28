@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
