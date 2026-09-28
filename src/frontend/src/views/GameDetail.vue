@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDisplayDate } from "../utils/dates";
+import { activePriority, priorityLabel } from "../utils/priority";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -2529,6 +2530,12 @@ function formatPlaytime(minutes: number) {
         <div v-if="game.source" class="detail-row">
           <span class="detail-label">Source</span>
           <span class="detail-value">{{ game.source }}</span>
+        </div>
+        <div v-if="activePriority(game) !== null" class="detail-row">
+          <span class="detail-label">Priority</span>
+          <span class="detail-value">{{
+            priorityLabel(activePriority(game)!)
+          }}</span>
         </div>
         <div v-if="game.ageRating" class="detail-row">
           <span class="detail-label">Age Rating</span>

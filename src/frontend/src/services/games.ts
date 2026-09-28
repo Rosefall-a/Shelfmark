@@ -1304,6 +1304,8 @@ export interface BulkEditFields {
   publisher?: string | null;
   series?: string | null;
   ageRating?: string | null;
+  platform?: string | null;
+  priority?: string | null;
   tags?: string[];
   features?: string[];
 }
@@ -1320,6 +1322,8 @@ export async function bulkUpdateGames(
   if (fields.publisher !== undefined) payload.publisher = fields.publisher;
   if (fields.series !== undefined) payload.series = fields.series;
   if (fields.ageRating !== undefined) payload.age_rating = fields.ageRating;
+  if (fields.platform !== undefined) payload.platform = fields.platform;
+  if (fields.priority !== undefined) payload.priority = fields.priority;
   if (fields.tags !== undefined) payload.tags = fields.tags;
   if (fields.features !== undefined) payload.features = fields.features;
 

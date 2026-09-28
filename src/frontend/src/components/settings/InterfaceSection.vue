@@ -4,7 +4,8 @@ import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
 
 type ViewMode = "cards" | "list" | "detail";
-type SortBy = "name" | "recent" | "rating" | "playtime";
+type SortBy =
+  "name" | "recent" | "rating" | "playtime" | "last_played" | "priority";
 
 const defaultViewMode = ref<ViewMode>(
   (localStorage.getItem("gameLibraryViewMode") as ViewMode) || "cards",
@@ -30,6 +31,8 @@ const sortOptions = [
   { value: "recent", label: "Recently added" },
   { value: "rating", label: "Rating" },
   { value: "playtime", label: "Most played" },
+  { value: "last_played", label: "Recently played" },
+  { value: "priority", label: "Priority" },
 ];
 
 watch(defaultViewMode, (mode) =>

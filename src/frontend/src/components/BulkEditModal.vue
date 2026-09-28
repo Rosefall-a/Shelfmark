@@ -3,6 +3,7 @@ import { reactive, ref } from "vue";
 import { bulkUpdateGames } from "../services/games";
 import type { BulkEditFields } from "../services/games";
 import type { GameStatus } from "../types/game";
+import { PRIORITY_OPTIONS } from "../utils/priority";
 
 const props = defineProps<{
   gameIds: string[];
@@ -33,6 +34,8 @@ const apply = reactive({
   publisher: false,
   series: false,
   ageRating: false,
+  platform: false,
+  priority: false,
   tags: false,
   features: false,
 });
@@ -43,6 +46,8 @@ const developerValue = ref("");
 const publisherValue = ref("");
 const seriesValue = ref("");
 const ageRatingValue = ref("");
+const platformValue = ref("");
+const priorityValue = ref("");
 const tagsValue = ref("");
 const featuresValue = ref("");
 
@@ -66,6 +71,8 @@ async function submit() {
     if (apply.publisher) fields.publisher = publisherValue.value.trim() || null;
     if (apply.series) fields.series = seriesValue.value.trim() || null;
     if (apply.ageRating) fields.ageRating = ageRatingValue.value.trim() || null;
+    if (apply.platform) fields.platform = platformValue.value.trim() || null;
+    if (apply.priority) fields.priority = priorityValue.value || null;
     if (apply.tags)
       fields.tags = tagsValue.value
         .split(",")
@@ -192,6 +199,41 @@ async function submit() {
               :disabled="!apply.ageRating"
               placeholder="e.g. 17+"
             />
+          </div>
+
+          <div class="field-row">
+            <label class="field-check">
+              <input v-model="apply.platform" type="checkbox" />
+              <span>Platform</span>
+            </label>
+            <input
+              v-model="platformValue"
+              type="text"
+              class="field-input"
+              :disabled="!apply.platform"
+              placeholder="e.g. PC, Nintendo Switch (blank clears)"
+            />
+          </div>
+
+          <div class="field-row">
+            <label class="field-check">
+              <input v-model="apply.priority" type="checkbox" />
+              <span>Priority</span>
+            </label>
+            <select
+              v-model="priorityValue"
+              class="field-input"
+              :disabled="!apply.priority"
+            >
+              <option value="">None (clear)</option>
+              <option
+                v-for="option in PRIORITY_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
           </div>
 
           <div class="field-row">
