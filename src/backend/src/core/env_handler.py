@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-class-docstring,missing-function-docstring,too-many-locals,too-many-branches,too-many-statements,unused-variable
 """Central environment/configuration resolution.
 
 The handler is the backend half of the self-building setup UI. It reads the
@@ -17,8 +18,6 @@ from dotenv import dotenv_values
 
 from .config_registry import CONFIG_REGISTRY, CONFIG_SECTIONS, ConfigSource, DefaultMode
 from .fernet_key import persistent_fernet_key
-
-# pylint: disable=line-too-long,missing-class-docstring,missing-function-docstring,too-many-locals,too-many-branches,too-many-statements,unused-variable
 
 
 @dataclass(frozen=True)
