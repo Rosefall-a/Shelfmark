@@ -506,7 +506,6 @@ async def sync_steam_library(
         )
 
     scan_settings = await get_or_create_scan_settings(current_user.id, db)
-    preferences = _scan_settings_to_preferences(scan_settings)
     app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     igdb_client_id = app_integrations.igdb_client_id
     igdb_client_secret = app_integrations.igdb_client_secret
