@@ -73,7 +73,7 @@ const tiles = computed(() => {
       const wrappedX = ((x % scale) + scale) % scale;
       result.push({
         key: `${zoom.value}-${wrappedX}-${y}`,
-        x: wrappedX,
+        x,
         y,
         url: TILE_URL.replace("{z}", String(zoom.value))
           .replace("{x}", String(wrappedX))
