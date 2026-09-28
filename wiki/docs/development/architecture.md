@@ -100,6 +100,14 @@ The container's entrypoint coordinates startup: it prepares the status page, wai
 
 This means the public HTTP endpoint can display startup status while the application is still initializing.
 
+### Logging architecture
+
+Production-container logging intentionally uses the existing stdout/stderr path rather than introducing a second log aggregation system. Entrypoint lifecycle messages go to stdout, Nginx errors go to stderr, backend output is retained in /run/unnamed-tracking/backend.log, and migration output is retained in /run/unnamed-tracking/migration.log.
+
+The structured startup endpoints expose only status and concise details. Raw backend and migration logs are not public HTTP resources. Operators retrieve detailed logs through Docker logging facilities or directly from the retained files inside the container.
+
+The production entrypoint does not print configuration secrets. New logging code must preserve that rule.
+
 ## API
 
 The backend exposes the application's REST API under `/api`.
@@ -117,23 +125,3 @@ Normal application authentication uses server-side sessions and authentication c
 OIDC/SSO is integrated into the same application authentication flow. OIDC provider credentials are kept server-side; client secrets are not exposed to the frontend.
 
 See [OIDC / SSO](../integrations/oidc.md) for provider configuration.
-
-## Production container
-
-The production deployment is packaged separately under `src/docker-container/`.
-
-```text
-compiled Vue -> Nginx -> FastAPI -> PostgreSQL
-                    |
-                    +-> independent startup diagnostics
-```
-
-Nginx starts before FastAPI so the deployment always has a lightweight diagnostic path. PID 1 owns the lifecycle and switches Nginx from `startup.conf` to one of three complete production configurations only after the backend is healthy: `ready.conf` (HTTP), `readytls.conf` (HTTPS), or `readytlsredirect.conf` (HTTPS plus HTTP redirect). The selected TLS configuration is rendered with the certificate paths before being copied to `/etc/nginx/nginx.conf` and validated.
-
-The readiness source of truth is the file-backed status JSON. The Docker healthcheck requires `overall=ready`; merely serving the startup page is not sufficient.
-
-The production Nginx configuration may optionally add an HTTPS listener. TLS configuration is generated from deployment environment variables and externally mounted certificate/key files, not from the application configuration UI. FastAPI receives the forwarded protocol from the local Nginx hop so request-derived URLs can preserve HTTPS.
-
-Nginx workers run as `www-data`. The master retains the privileges required for port binding and lifecycle control. Runtime status and diagnostics are ephemeral under `/run/unnamed-tracking`; persistent application state is mounted separately under `/data`.
-
-For runtime integration behavior, including PostgreSQL, migrations, frontend/API handoff, and shutdown, see production issue #206.
