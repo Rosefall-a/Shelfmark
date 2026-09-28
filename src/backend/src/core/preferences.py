@@ -25,6 +25,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_season_started": True,
     "notify_sequel_announced": True,
     "notify_movie_released": True,
+    "notification_provider_routes": {
+        "smtp": ["episode_aired", "season_started", "sequel_announced", "movie_released"],
+        "discord": ["episode_aired", "season_started", "sequel_announced", "movie_released"],
+    },
     # which titles may notify: by where they sit in the library, and by kind.
     # (Completed and Dropped titles never get episode alerts.)
     "notify_statuses": ["watching", "plan", "hold"],
@@ -49,6 +53,8 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
 
 
 # preferences that hold a set of choices, kept in this order
+_NOTIFICATION_KINDS = ("episode_aired", "season_started", "sequel_announced", "movie_released")
+
 _SET_CHOICES: dict[str, tuple[str, ...]] = {
     "notify_statuses": ("watching", "plan", "hold"),
     "calendar_airing_statuses": ("watching", "plan", "hold"),
@@ -63,6 +69,15 @@ def validate_preference(key: str, value: Any) -> Any:
     if key not in DEFAULTS:
         raise ValueError(f"Unknown preference {key!r}")
     default = DEFAULTS[key]
+    if key == "notification_provider_routes":
+        if not isinstance(value, dict):
+            raise ValueError("notification_provider_routes must be an object")
+        clean: dict[str, list[str]] = {}
+        for provider, kinds in value.items():
+            if not isinstance(provider, str) or not isinstance(kinds, list) or any(kind not in _NOTIFICATION_KINDS for kind in kinds):
+                raise ValueError("notification_provider_routes contains an invalid provider or notification kind")
+            clean[provider] = [kind for kind in _NOTIFICATION_KINDS if kind in kinds]
+        return clean
     if key in _SET_CHOICES:
         allowed = _SET_CHOICES[key]
         if not isinstance(value, list) or any(v not in allowed for v in value):
