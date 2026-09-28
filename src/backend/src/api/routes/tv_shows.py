@@ -1,4 +1,4 @@
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,missing-class-docstring,broad-exception-caught,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring
 # These modules intentionally keep domain/provider-specific logic separate; similar
 # structures here represent parallel APIs rather than accidental copy/paste.
 

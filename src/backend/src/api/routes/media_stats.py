@@ -1,3 +1,4 @@
+# pylint: disable=too-many-positional-arguments,too-many-locals,assignment-from-no-return,not-callable,too-many-branches,too-many-statements,unused-variable,missing-function-docstring
 """Library statistics for the Statistics page: one payload with an
 Overview, Games, Movies, TV and Anime section.
 

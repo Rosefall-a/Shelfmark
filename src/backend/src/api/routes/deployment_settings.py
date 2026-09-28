@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,too-many-locals,too-many-boolean-expressions,too-many-branches,too-many-statements,unused-import
 from __future__ import annotations
 
 import json

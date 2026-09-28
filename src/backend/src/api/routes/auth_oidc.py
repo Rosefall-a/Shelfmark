@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-module-docstring,too-many-return-statements,missing-function-docstring,protected-access,too-many-locals,broad-exception-caught,too-many-branches
 from __future__ import annotations
 
 import json

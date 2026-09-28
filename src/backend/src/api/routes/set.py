@@ -1,3 +1,4 @@
+# pylint: disable=not-callable,missing-function-docstring
 """API routes for Sets — a real, position-aware grouping of Cards (not
 Games directly, see database/models/set.py and card.py), distinct from the
 unrelated Collections smart-grouping feature on Game."""

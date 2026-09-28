@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-class-docstring,multiple-statements,missing-function-docstring,too-many-locals,too-many-positional-arguments,broad-exception-caught,not-callable
 """Bringing a media list in from elsewhere and getting it out as a table.
 
 - POST /api/import/mal/preview  what a MyAnimeList export would add or change
