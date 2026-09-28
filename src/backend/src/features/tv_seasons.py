@@ -1,4 +1,5 @@
-# pylint: disable=missing-function-docstring,broad-exception-caught\n"""Notices when a TV show you follow gets a new season.
+# pylint: disable=missing-function-docstring,broad-exception-caught
+"""Notices when a TV show you follow gets a new season.
 
 TVmaze lists a show's seasons, announced ones included. When it lists a
 season number higher than any we have, that season is added to the show

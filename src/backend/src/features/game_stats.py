@@ -1,4 +1,5 @@
-# pylint: disable=too-many-locals\n"""Game statistics that need more than a count: playtime spread, the unplayed
+# pylint: disable=too-many-locals
+"""Game statistics that need more than a count: playtime spread, the unplayed
 pile, cost per hour, backlog hours, achievement completion.
 
 Everything is exact or reported as missing. "No playtime recorded" means the

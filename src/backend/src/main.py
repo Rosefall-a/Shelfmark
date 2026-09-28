@@ -1,4 +1,5 @@
-# pylint: disable=missing-module-docstring,missing-function-docstring\n# app/main.py
+# pylint: disable=missing-module-docstring,missing-function-docstring
+# app/main.py
 import asyncio
 
 from fastapi import FastAPI
