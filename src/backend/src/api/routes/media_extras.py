@@ -12,17 +12,12 @@ duplicated here as a second export system."""
 # pylint: disable=too-many-arguments,too-many-positional-arguments,missing-function-docstring,too-many-locals,not-callable,unused-import,duplicate-code
 
 from datetime import date, datetime, timedelta, timezone
-
+from typing import Any
+from uuid import UUID
 import time
 
-from typing import Any
-
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-
 from sqlalchemy import func, select
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas.media_extras import (
@@ -33,34 +28,22 @@ from src.api.schemas.media_extras import (
     RewatchCreate,
     RewatchRead,
 )
-
 from src.core.auth import get_current_user
-
 from src.core.preferences import load_preferences
-
 from src.core.titles import display_title
-
 from src.database.models.achievement import Achievement
-
 from src.database.models.anime import Anime, AnimeStatus
-
 from src.database.models.game import Game, GameStatus
-
 from src.database.models.media_extras import (
     ActivityEventType,
     ActivityLog,
     MediaType,
     RewatchLog,
 )
-
 from src.database.models.movies import Movie, MovieStatus
-
 from src.database.models.tv_show import TVShow, TVShowStatus
-
 from src.database.models.user import User
-
 from src.database.session import get_db
-
 from src.features.notifications import tracked_statuses
 
 
