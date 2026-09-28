@@ -1,4 +1,4 @@
-# pylint: disable=missing-class-docstring,too-few-public-methods,unsubcriptable-object
+# pylint: disable=missing-class-docstring,too-few-public-methods,unsubscriptable-object
 """In-app notifications: an episode aired, a season started airing, a
 sequel was announced for something you finished, a movie came out. Rows
 are created from real data (exact air times), never from estimates, and
