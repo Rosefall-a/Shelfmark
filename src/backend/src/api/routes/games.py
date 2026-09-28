@@ -4,7 +4,7 @@ import asyncio
 import re
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -677,7 +677,7 @@ async def update_media_item(
         safe_document_filename(new_filename)
         game = await _get_game_or_404(game_id, db, current_user.id)
         game_dir = _DATA_ROOT / str(game.user_id) / "games" / (game.folder_location or "")
-        source = game_dir / media_subdir(item.kind) / item.filename
+        source = game_dir / media_subdir(cast(MediaKind, item.kind)) / item.filename
         target = source.parent / safe_filename(new_filename)
         if not source.is_file():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media file not found.")
