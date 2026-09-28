@@ -55,7 +55,6 @@ const tiles = computed(() => {
   const width = viewport.clientWidth;
   const height = viewport.clientHeight;
   const scale = 2 ** zoom.value;
-  const world = TILE_SIZE * scale;
   const projected = project(center.value.lat, center.value.lon, zoom.value);
   const minX = Math.floor((projected.x - width / 2) / TILE_SIZE) - 1;
   const maxX = Math.floor((projected.x + width / 2) / TILE_SIZE) + 1;
@@ -126,22 +125,6 @@ function unproject(x: number, y: number, level: number) {
   const n = Math.PI - (2 * Math.PI * y) / scale;
   const lat = (180 / Math.PI) * Math.atan(Math.sinh(n));
   return { lat, lon };
-}
-
-function markerStyle(point: Point) {
-  const projectedCenter = project(
-    center.value.lat,
-    center.value.lon,
-    zoom.value,
-  );
-  let x = point.x - projectedCenter.x + (mapElement.value?.clientWidth ?? 0) / 2;
-  const world = TILE_SIZE * 2 ** zoom.value;
-  if (x < -world / 2) x += world;
-  if (x > world / 2) x -= world;
-  return {
-    left: `${x}px`,
-    top: `${point.y - projectedCenter.y + (mapElement.value?.clientHeight ?? 0) / 2}px`,
-  };
 }
 
 function clusterStyle(cluster: Cluster) {
