@@ -1,6 +1,8 @@
 // Server-side per-user preferences (calendar options, notification
 // toggles). Defaults live on the server; this only carries the shape.
 
+export type NotificationKind = "episode_aired" | "season_started" | "sequel_announced" | "movie_released";
+
 export interface Preferences {
   calendar_game_releases: boolean;
   calendar_game_history: boolean;
@@ -12,6 +14,7 @@ export interface Preferences {
   notify_season_started: boolean;
   notify_sequel_announced: boolean;
   notify_movie_released: boolean;
+  notification_provider_routes: Record<string, NotificationKind[]>;
   notify_statuses: ("watching" | "plan" | "hold")[];
   calendar_airing_statuses: ("watching" | "plan" | "hold")[];
   notify_media_types: ("anime" | "tv" | "movie")[];
@@ -34,6 +37,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notify_season_started: true,
   notify_sequel_announced: true,
   notify_movie_released: true,
+  notification_provider_routes: {
+    smtp: ["episode_aired", "season_started", "sequel_announced", "movie_released"],
+    discord: ["episode_aired", "season_started", "sequel_announced", "movie_released"],
+  },
   notify_statuses: ["watching", "plan", "hold"],
   notify_media_types: ["anime", "tv", "movie"],
   notification_retention_days: 30,
