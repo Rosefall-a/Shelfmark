@@ -663,7 +663,7 @@ async def sync_retroachievements_library(
     newly_created: list[Game] = []
     synced_titles: list[str] = []
     touched_ids: set[UUID] = set()
-    for entry, progress in zip(owned_games, progress_results):
+    for entry, progress in zip(owned_games, progress_results, strict=False):
         title = entry.get("Title")
         if not title:
             continue
