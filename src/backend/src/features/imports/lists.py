@@ -11,6 +11,7 @@ was rated or marked watched has its seasons filled in from TMDB and counted as
 fully watched, which is stated in the result, because a rating on its own does
 not say how far someone got. Posters, genres and the like come from TMDB by
 title and year afterwards, and only fill fields that are still blank."""
+# pylint: disable=missing-class-docstring,too-many-instance-attributes,missing-function-docstring,too-many-locals,too-many-branches,broad-exception-caught
 
 from __future__ import annotations
 

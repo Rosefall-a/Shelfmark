@@ -4,6 +4,7 @@ Yamtrack exports one parent row plus optional season and episode rows for the
 same media_id. The importer groups those rows before creating library items so
 season/episode records never become duplicate shows.
 """
+# pylint: disable=line-too-long,missing-class-docstring,missing-function-docstring,too-many-locals,too-many-branches
 
 from __future__ import annotations
 

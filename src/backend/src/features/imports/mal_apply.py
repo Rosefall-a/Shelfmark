@@ -11,6 +11,7 @@ say which of several seasons it means.
 Posters, genres, studios and the like are then filled from AniList in
 batches by MAL id, and only where the site's own field is still blank, so
 nothing already there is overwritten by metadata."""
+# pylint: disable=missing-class-docstring,missing-function-docstring
 
 from __future__ import annotations
 

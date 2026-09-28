@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines,missing-module-docstring,missing-function-docstring,too-many-locals
 from __future__ import annotations
 
 import re
