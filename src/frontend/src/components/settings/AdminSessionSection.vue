@@ -22,6 +22,11 @@ const error = ref<string | null>(null);
 const busy = ref<string | null>(null);
 const geo = ref<Awaited<ReturnType<typeof fetchGeoIpStatus>> | null>(null);
 const selectedUser = ref("");
+const selectedFiles = ref({
+  city: "",
+  country: "",
+  network: "",
+});
 
 const fmt = (v: number) => new Date(v * 1000).toLocaleString();
 const users = computed(() => {
@@ -106,15 +111,24 @@ async function revokeServer() {
   }
 }
 
+function databaseName(status: { path: string } | undefined): string {
+  if (!status?.path) return "Not configured";
+  return status.path.split(/[\\/]/).pop() || status.path;
+}
+
 async function upload(kind: "city" | "country" | "network", e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
   if (!file) return;
+  selectedFiles.value[kind] = file.name;
   try {
     await uploadGeoIp(file, kind);
     await load();
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to upload GeoIP database";
+  } finally {
+    input.value = "";
   }
 }
 
@@ -146,32 +160,41 @@ onMounted(load);
       </button>
     </div>
 
-    <div class="geo">
-      <div>
-        <strong>GeoIP databases</strong>
-        <p>
-          City adds coordinates, Country adds country fallback data, and Network
-          adds network number/owner data. Each file is optional and persisted
-          under the application data directory.
-        </p>
-        <small>
-          City: {{ geo?.city.configured ? "configured" : "not configured" }} ·
-          Country: {{ geo?.country.configured ? "configured" : "not configured" }} ·
-          Network: {{ geo?.network.configured ? "configured" : "not configured" }}
-        </small>
+    <details class="geo-config">
+      <summary>Configure GeoIP databases</summary>
+      <div class="geo">
+        <div>
+          <strong>GeoIP databases</strong>
+          <p>
+            City adds coordinates, Country adds country fallback data, and Network
+            adds network number/owner data. Each file is optional and persisted
+            under the application data directory.
+          </p>
+          <small>
+            City: {{ databaseName(geo?.city) }} ·
+            Country: {{ databaseName(geo?.country) }} ·
+            Network: {{ databaseName(geo?.network) }}
+          </small>
+        </div>
+        <div class="uploads">
+          <label class="file-picker">
+            <span>City database</span>
+            <strong>{{ selectedFiles.city || databaseName(geo?.city) }}</strong>
+            <input type="file" accept=".mmdb" @change="upload('city', $event)" />
+          </label>
+          <label class="file-picker">
+            <span>Country database</span>
+            <strong>{{ selectedFiles.country || databaseName(geo?.country) }}</strong>
+            <input type="file" accept=".mmdb" @change="upload('country', $event)" />
+          </label>
+          <label class="file-picker">
+            <span>Network / ASN database</span>
+            <strong>{{ selectedFiles.network || databaseName(geo?.network) }}</strong>
+            <input type="file" accept=".mmdb" @change="upload('network', $event)" />
+          </label>
+        </div>
       </div>
-      <div class="uploads">
-        <label>City <input type="file" accept=".mmdb" @change="upload('city', $event)" /></label>
-        <label>
-          Country
-          <input type="file" accept=".mmdb" @change="upload('country', $event)" />
-        </label>
-        <label>
-          Network
-          <input type="file" accept=".mmdb" @change="upload('network', $event)" />
-        </label>
-      </div>
-    </div>
+    </details>
 
     <SessionMap v-if="!loading && !error && geo?.city.configured" :sessions="sessions" admin />
 
@@ -263,6 +286,20 @@ onMounted(load);
   border-radius: 7px;
 }
 
+.geo-config {
+  margin-bottom: 12px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 12px;
+  background: #111;
+}
+
+.geo-config summary {
+  cursor: pointer;
+  color: #ddd;
+  font-weight: 600;
+}
+
 .geo {
   justify-content: space-between;
   align-items: flex-start;
@@ -322,11 +359,33 @@ th {
   flex-wrap: wrap;
 }
 
-.uploads label {
+.file-picker {
+  position: relative;
   display: grid;
+  min-width: 190px;
   gap: 4px;
-  font-size: 12px;
+  padding: 9px 11px;
+  border: 1px solid #333;
+  border-radius: 7px;
+  background: #181818;
   color: #aaa;
+  cursor: pointer;
+}
+
+.file-picker strong {
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .check {
