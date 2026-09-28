@@ -184,7 +184,7 @@ while ! curl -fsS http://127.0.0.1/ >/dev/null 2>&1; do
 done
 
 log "Frontend ready"
-write_status "READY" "ready" "ready" "ready" "ready" "Unnamed Tracking is ready."
+write_status "READY" "ready" "ready" "ready" "ready" "ready" "Unnamed Tracking is ready."
 printf '%s\n' "Production application is ready. Detailed backend and migration diagnostics are retained inside the container and are also available through Docker logs." > "$DETAILS_FILE"
 
 log "Entering backend crash monitor loop"
@@ -197,3 +197,4 @@ while :; do
   fi
   sleep 2
 done
+  
