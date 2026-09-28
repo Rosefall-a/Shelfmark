@@ -10,6 +10,7 @@ the loop, goes through the same code and records the same last-run details.
 
 Adding a job is one entry here plus whatever it does; the Tasks screen lists
 whatever is registered."""
+
 from __future__ import annotations
 
 # pylint: disable=missing-class-docstring,missing-function-docstring,too-many-instance-attributes,global-statement,broad-exception-caught
@@ -52,7 +53,10 @@ class JobSpec:
 
 
 def _summarize_refresh(r: dict[str, Any]) -> str:
-    parts = [f"{r.get('checked') or 0} refreshed", f"{r.get('skipped_up_to_date') or 0} already fine"]
+    parts = [
+        f"{r.get('checked') or 0} refreshed",
+        f"{r.get('skipped_up_to_date') or 0} already fine",
+    ]
     if r.get("counts_fixed"):
         parts.append(f"{r['counts_fixed']} count(s) corrected")
     return ", ".join(parts)
@@ -95,15 +99,29 @@ async def _run_airing(force: bool) -> None:
 
 JOBS: dict[str, JobSpec] = {
     "airing_check": JobSpec(
-        "airing_check", "Airing episode check", "Checks for newly aired episodes.",
-        5, 24 * 60, 30, True, _start_airing, _airing_is_running,
-        _summarize_airing, "all",
+        "airing_check",
+        "Airing episode check",
+        "Checks for newly aired episodes.",
+        5,
+        24 * 60,
+        30,
+        True,
+        _start_airing,
+        _airing_is_running,
+        _summarize_airing,
+        "all",
     ),
     "media_refresh": JobSpec(
-        "media_refresh", "Media refresh",
+        "media_refresh",
+        "Media refresh",
         "Fills missing episode metadata and corrects stale media data.",
-        60, 30 * 24 * 60, 24 * 60, False,
-        refresh_job.start, refresh_job.is_running, _summarize_refresh,
+        60,
+        30 * 24 * 60,
+        24 * 60,
+        False,
+        refresh_job.start,
+        refresh_job.is_running,
+        _summarize_refresh,
     ),
 }
 
@@ -149,7 +167,9 @@ async def record_run(job_id: str, result: dict[str, Any]) -> None:
         spec = JOBS[job_id]
         row = await get_setting(db, spec)
         row.last_run_at = int(time.time())
-        row.last_result = {\n            k: v for k, v in result.items()\n            if isinstance(v, (int, float, str, bool)) or v is None\n        }
+        row.last_result = {
+            k: v for k, v in result.items() if isinstance(v, (int, float, str, bool)) or v is None
+        }
         await db.commit()
 
 
@@ -181,8 +201,8 @@ async def _run_due_anilist_imports(now: int) -> None:
         try:
             async with SessionLocal() as db:
                 result = await import_anilist_library(
-            db, user.id, username, bool(data.get("anilist_import_update_existing"))
-        )
+                    db, user.id, username, bool(data.get("anilist_import_update_existing"))
+                )
                 pref = await db.get(UserPreferences, pref_row.id)
                 if pref is not None:
                     pref.data = {**pref.data, "anilist_import_last_run_at": now}
