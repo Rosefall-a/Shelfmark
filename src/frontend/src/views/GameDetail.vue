@@ -3458,6 +3458,7 @@ function formatPlaytime(minutes: number) {
                 @preview="onPreviewMedia($event.url)"
                 @delete="removeMedia"
                 @save="saveMediaItem"
+                @rename="renameMediaItem"
               />
             </div>
 
