@@ -91,7 +91,8 @@ def _get_archive_kind_from_string(kind_str: str) -> ArchiveKind:
 
 def _archive_dir(
     game_folder: str, kind: str, archive_id: UUID, user_id: UUID
-) -> Path:  # Kind should be ArchiveKind, however its easier to accept type of string and let the caller handle the type checking. This is because the kind is passed in from the route path parameter which is a string.
+) -> Path:
+    """Return the on-disk directory for an archive."""
     kind = _get_archive_kind_from_string(kind)
     return (
         _DATA_ROOT / str(user_id) / "games" / game_folder / _ARCHIVE_SUBDIRS[kind] / str(archive_id)
@@ -161,11 +162,14 @@ def _trash_entry(game_id: UUID, archive: GameArchive) -> dict:
 
 
 class RenameArchiveRequest(BaseModel):
+    """Payload used to rename an archive."""
+
     name: str
 
 
 @router.get("/{game_id}/archives/{kind}")
-async def list_archives(
+async def list_archives(    """List active archives of the requested kind for a game."""
+
     game_id: UUID,
     kind: ArchiveKind,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -298,7 +302,8 @@ async def add_archive_version(
 
 
 @router.patch("/{game_id}/archives/{archive_id}")
-async def rename_archive(
+async def rename_archive(    """Rename an existing archive."""
+
     game_id: UUID,
     archive_id: UUID,
     payload: RenameArchiveRequest,
@@ -337,7 +342,8 @@ async def delete_archive(
 
 
 @router.post("/{game_id}/archives/{archive_id}/restore")
-async def restore_archive(
+async def restore_archive(    """Restore a deleted archive and all of its versions."""
+
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -367,7 +373,8 @@ async def restore_archive(
 
 
 @router.delete("/{game_id}/archives/{archive_id}/versions/{version_id}")
-async def delete_archive_version(
+async def delete_archive_version(    """Soft-delete one version of an archive."""
+
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
@@ -401,7 +408,8 @@ async def delete_archive_version(
 
 
 @router.post("/{game_id}/archives/{archive_id}/versions/{version_id}/restore")
-async def restore_archive_version(
+async def restore_archive_version(    """Restore one deleted archive version."""
+
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
@@ -434,7 +442,8 @@ async def restore_archive_version(
 @router.get(
     "/{game_id}/archives/{archive_id}/versions/{version_id}/download", response_class=FileResponse
 )
-async def download_archive_version(
+async def download_archive_version(    """Download an archived save version."""
+
     game_id: UUID,
     archive_id: UUID,
     version_id: UUID,
@@ -536,7 +545,8 @@ async def render_world_map_route(
 
 
 @router.get("/{game_id}/world-map/{archive_id}/status")
-async def get_world_map_status(
+async def get_world_map_status(    """Return the current render status for a world map."""
+
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -547,7 +557,8 @@ async def get_world_map_status(
 
 
 @router.get("/{game_id}/world-map/{archive_id}/thumbnail", response_class=FileResponse)
-async def get_world_map_thumbnail(
+async def get_world_map_thumbnail(    """Return the rendered world-map thumbnail."""
+
     game_id: UUID,
     archive_id: UUID,
     db: AsyncSession = _DB_DEPENDENCY,

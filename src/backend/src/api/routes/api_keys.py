@@ -1,4 +1,6 @@
 # pylint: disable=duplicate-code
+"""API routes for user API keys."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
@@ -18,6 +20,7 @@ async def list_user_api_keys(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, str | int | list[str] | None]]:
+    """Return the caller's API keys, including revoked keys."""
     keys = await db.scalars(
         select(UserApiKey)
         .where(UserApiKey.user_id == user.id)
