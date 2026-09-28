@@ -1,5 +1,5 @@
 from src.core.geoip import GeoIpProvider, GeoLocation
-from src.core.session_manager import session_state
+from src.core.session_manager import create_session, session_state
 from src.api.routes.session_manager import view
 from src.database.models.auth import UserSession
 
@@ -105,3 +105,51 @@ def test_geoip_reader_failure_returns_unavailable(tmp_path) -> None:
     provider._reader = Reader()
     provider._loaded_path = path
     assert provider.lookup("8.8.8.8") == GeoLocation()
+
+
+def test_create_session_persists_network_metadata(monkeypatch) -> None:
+    from uuid import uuid4
+
+    from starlette.requests import Request
+
+    class FakeDb:
+        def __init__(self) -> None:
+            self.session = None
+
+        async def scalar(self, _statement):
+            return None
+
+        def add(self, session) -> None:
+            self.session = session
+
+        async def flush(self) -> None:
+            return None
+
+    user = type("UserStub", (), {"id": uuid4()})()
+    request = Request(
+        {
+            "type": "http",
+            "headers": [
+                (b"x-real-ip", b"8.8.8.8"),
+                (b"user-agent", b"test-agent"),
+            ],
+            "client": ("127.0.0.1", 1234),
+        }
+    )
+    monkeypatch.setattr(
+        "src.core.session_manager.geoip.lookup",
+        lambda _ip: GeoLocation(
+            country="Australia",
+            network_number=13335,
+            network_organization="Cloudflare",
+        ),
+    )
+    db = FakeDb()
+
+    awaitable = create_session(db, user, request)
+    import asyncio
+
+    await asyncio.wait_for(awaitable, timeout=1)
+    assert db.session is not None
+    assert db.session.geo_network_number == 13335
+    assert db.session.geo_network_organization == "Cloudflare"
