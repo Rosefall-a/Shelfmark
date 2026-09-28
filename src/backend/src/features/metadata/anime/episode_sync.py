@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-many-locals
 """Fetching a show's episode list from whichever provider has it, shared
 between the on-demand route (api/routes/anime.py) and the weekly
 background refresh (features/metadata/refresh.py) — one place for the

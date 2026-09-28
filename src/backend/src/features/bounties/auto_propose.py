@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,not-callable
 """Picks a bounty for the system to propose on its own — either on a
 timer (see `maybe_auto_propose` in api/routes/bounties.py, checked lazily
 whenever the caller lists their bounties, no scheduled job/worker) or

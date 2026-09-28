@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-module-docstring,missing-class-docstring,missing-function-docstring
 from datetime import date
 from decimal import Decimal
 from typing import Literal

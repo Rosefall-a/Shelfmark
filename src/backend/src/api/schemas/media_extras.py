@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring
 """Schemas for the cross-media-type features (rewatch history, custom
 lists, the activity feed) — see api/routes/media_extras.py."""
 

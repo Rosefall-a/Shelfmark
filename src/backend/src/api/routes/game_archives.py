@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,too-many-positional-arguments,too-many-boolean-expressions,missing-class-docstring,missing-function-docstring
 """Named, versioned save archives for a game — "Main World", "Pre-Nether-
 Update Backup", etc. — plus the BlueMap world-map render/view routes for
 archives of kind "world_save". Replaces the old convention (still used by

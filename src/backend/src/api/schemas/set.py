@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-class-docstring
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field

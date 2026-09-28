@@ -1,3 +1,4 @@
+# pylint: disable=use-maxsplit-arg,missing-class-docstring,chained-comparison
 """ani.zip: a free, keyless mapping service that joins AniList ids to
 TheTVDB/AniDB episode data. It is the best source for currently airing
 shows: real episode titles, synopses, screenshots and an exact air time
