@@ -27,9 +27,15 @@ Instance definitions are kept in the ignored src/devcontainer/.instances.json fi
 
 ## Build and image tags
 
-Build from checkout uses the current repository source. Production-like builds use the repository root as the context and src/docker-container/Dockerfile as the Dockerfile; that Dockerfile copies src/backend and src/frontend, so the repository root context is required.
+Every managed instance accepts only one final image tag, defaulting to `main`. The image repositories are fixed to match the repository's CI naming:
 
-Use image/tag skips building and pulls the exact configured tag. This supports testing published releases or another registry image. Compose supports services with both build and image definitions, with pull/build behavior selected by policy.
+- `ghcr.io/rosefall-a/unnamed_tracking_app:<tag>` — production-like image.
+- `ghcr.io/rosefall-a/unnamed_tracking_app-frontend:<tag>` — frontend.
+- `ghcr.io/rosefall-a/unnamed_tracking_app-backend:<tag>` — backend.
+
+**Build from source** builds the current checkout. **Use GHCR tag** pulls the selected final tag. The Images panel also has **Build all 3 images from source**, which locally creates all three fixed repository/tag combinations. It does not push to GHCR.
+
+Production-like source builds use the repository root as the context and `src/docker-container/Dockerfile`; this is required because that Dockerfile copies both backend and frontend source.
 
 ## Shared environment
 
