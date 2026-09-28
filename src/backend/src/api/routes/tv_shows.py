@@ -5,10 +5,10 @@
 """API routes for managing TV shows and their seasons."""
 
 import asyncio
-from datetime import date
 import logging
 import re
 import time
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

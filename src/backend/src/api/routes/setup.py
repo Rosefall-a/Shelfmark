@@ -1,5 +1,6 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,import-outside-toplevel,too-many-locals,too-many-branches,duplicate-code
 from __future__ import annotations
+
 import json
 import secrets
 import time
@@ -12,11 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import (
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
     get_current_admin,
     hash_password,
     hash_token,
-    SESSION_COOKIE,
-    SESSION_TTL_SECONDS,
     validate_password,
 )
 from src.core.config import settings

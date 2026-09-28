@@ -12,10 +12,11 @@ _prune_unaired_episodes), since that only happens from a prior
 miscalculation, never from a real episode disappearing."""
 
 from __future__ import annotations
+
 import asyncio
-from datetime import date
 import logging
 import time
+from datetime import date
 from typing import Any
 
 from sqlalchemy import or_, select

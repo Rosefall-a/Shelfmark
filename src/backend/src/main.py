@@ -7,9 +7,9 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import (
-    app_integrations,
-    api_keys,
     anime,
+    api_keys,
+    app_integrations,
     auth,
     bounties,
     calendar_events,
@@ -37,8 +37,8 @@ from src.api.routes import (
 from src.api.routes import set as set_routes
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
-from src.api.routes.setup import router as setup_router
 from src.api.routes.settings import get_or_create_app_integration_settings
+from src.api.routes.setup import router as setup_router
 from src.api.routes.utils.misc import router as misc_router
 from src.core.auth import ensure_primary_user
 from src.core.config import settings as app_settings

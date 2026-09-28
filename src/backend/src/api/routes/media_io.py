@@ -30,10 +30,10 @@ from src.database.models.movies import Movie
 from src.database.models.tv_show import TVSeason, TVShow
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.imports.list_apply import OmdbLookup, match_titles, new_title
 from src.features.imports.list_apply import apply_tracking as list_apply_tracking
 from src.features.imports.list_apply import differences as list_differences
 from src.features.imports.list_apply import fill_details as list_fill_details
-from src.features.imports.list_apply import OmdbLookup, match_titles, new_title
 from src.features.imports.lists import ImportedTitle, ListImportError, parse_imdb, parse_letterboxd
 from src.features.imports.mal import MAX_BYTES, MalEntry, MalImportError, parse_mal_export
 from src.features.imports.mal_apply import apply_tracking, differences, fill_details, match_entries

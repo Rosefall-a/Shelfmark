@@ -11,8 +11,8 @@ duplicated here as a second export system."""
 # The model fields are intentionally parallel; keep this exception local.
 # pylint: disable=too-many-arguments,too-many-positional-arguments,missing-function-docstring,too-many-locals,not-callable,unused-import,duplicate-code
 
-from datetime import date, datetime, timedelta, timezone
 import time
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -33,7 +33,7 @@ from src.core.preferences import load_preferences
 from src.core.titles import display_title
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeStatus
-from src.database.models.game import Game, GameStatus
+from src.database.models.game import Game
 from src.database.models.media_extras import (
     ActivityEventType,
     ActivityLog,
@@ -45,7 +45,6 @@ from src.database.models.tv_show import TVShow, TVShowStatus
 from src.database.models.user import User
 from src.database.session import get_db
 from src.features.notifications import tracked_statuses
-
 
 # The app shows five statuses (Plan to Watch, On Hold, Watching, Completed,
 # Dropped) over eight stored ones; history text uses the shown names.

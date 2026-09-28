@@ -5,10 +5,10 @@
 """API routes for managing anime and their seasons."""
 
 import asyncio
-from datetime import date
 import logging
 import re
 import time
+from datetime import date
 from typing import Any
 from uuid import UUID
 

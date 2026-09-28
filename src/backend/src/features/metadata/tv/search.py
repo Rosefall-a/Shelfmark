@@ -3,6 +3,7 @@
 # structures here represent parallel APIs rather than accidental copy/paste.
 
 from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
