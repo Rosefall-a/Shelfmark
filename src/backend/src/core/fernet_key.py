@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,chained-comparison,missing-function-docstring
 from __future__ import annotations
 
 import os

@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring
 """The metadata provider keys in effect, from whichever place holds them.
 
 A key entered in Settings (stored encrypted in the database) wins; if there

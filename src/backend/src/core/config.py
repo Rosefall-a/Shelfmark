@@ -1,3 +1,4 @@
+# pylint: disable=invalid-name,missing-function-docstring
 """Application configuration resolved through the central configuration handler."""
 
 from __future__ import annotations

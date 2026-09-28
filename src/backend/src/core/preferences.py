@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring
 """Server-side per-user preferences: defaults live here, the database row
 (UserPreferences.data) only stores what the user changed. Adding an
 option is a one-line change to DEFAULTS, not a migration."""

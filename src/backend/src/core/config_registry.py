@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-class-docstring,too-many-instance-attributes,missing-function-docstring
 """Declarative application configuration metadata.
 
 The registry is intentionally the single source of truth for configuration
