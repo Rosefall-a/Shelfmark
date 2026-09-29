@@ -77,12 +77,16 @@ class PluginRuntimeClient:
     async def save_secret(self, plugin_id: str, key: str, value: str) -> None:
         await self._request("POST", f"/plugins/{plugin_id}/storage", json={"key": key, "value": value})
 
-    async def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+    async def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
         return await self._request(
             "PUT",
             "/plugins/install",
             content=package,
-            headers={"Content-Type": "application/octet-stream", "X-Plugin-Package-Name": filename},
+            headers={
+                "Content-Type": "application/octet-stream",
+                "X-Plugin-Package-Name": filename,
+                "X-Plugin-Replace": "true" if replace else "false",
+            },
         )
 
     async def plugin_health(self, plugin_id: str) -> bool:
