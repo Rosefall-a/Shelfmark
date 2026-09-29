@@ -182,9 +182,9 @@ def test_runtime_rejects_missing_declared_frontend(tmp_path):
     digest = hashlib.sha256()
     for name, data in payload:
         digest.update(name.encode("utf-8"))
-        digest.update(b"\\0")
+        digest.update(b"\0")
         digest.update(data)
-        digest.update(b"\\0")
+        digest.update(b"\0")
     manifest["integrity"]["sha256"] = digest.hexdigest()
     files["manifest.json"] = json.dumps(manifest).encode("utf-8")
     output = io.BytesIO()
