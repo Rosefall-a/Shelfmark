@@ -200,6 +200,7 @@ def test_failed_activation_restores_previous_version(tmp_path: Path) -> None:
                         first_path,
                     ),
                 ),
+            )
         )
     active = store.read_active("example.plugin")
     assert active is not None
