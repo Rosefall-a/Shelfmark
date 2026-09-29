@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import json
 from pathlib import Path
-from typing import Awaitable, Protocol
+from typing import Awaitable, Mapping, Protocol
 from uuid import UUID, uuid4
 
-from .updates import canonical_payload_digest
+from .updates import PluginPackageVerifier, TrustedPublisher, VerifiedPackage, canonical_payload_digest
 from .contracts import (
     CompatibilityStatus,
     IntegrityMetadata,
@@ -90,15 +90,31 @@ class StorageRemover(Protocol):
 class Sha256PackageVerifier:
     """Verify the authoritative v1 package digest for files or directories."""
 
-    def __init__(self, *, require_signature: bool = True) -> None:
+    def __init__(
+        self,
+        publishers: Mapping[str, TrustedPublisher] | None = None,
+        *,
+        require_signature: bool = True,
+    ) -> None:
+        self.publishers = dict(publishers) if publishers is not None else None
         self.require_signature = require_signature
+
+    def inspect(self, package_path: Path) -> VerifiedPackage:
+        """Inspect a signed v1 archive using the host publisher-trust policy."""
+        publishers = self.publishers
+        if publishers is None:
+            from .publisher_trust import load_trusted_publishers
+
+            publishers = load_trusted_publishers()
+        return PluginPackageVerifier(
+            publishers=publishers,
+            require_signature=self.require_signature,
+        ).inspect(package_path)
 
     def verify(self, package_path: Path, expected_sha256: str) -> bool:
         if package_path.is_file():
-            from .updates import PluginPackageVerifier
-
             try:
-                verified = PluginPackageVerifier(require_signature=self.require_signature).inspect(package_path)
+                verified = self.inspect(package_path)
             except (OSError, ValueError):
                 return False
             return verified.payload_digest.lower() == expected_sha256.lower()
@@ -226,6 +242,28 @@ class PluginLifecycleManager:
                 discovered.append(invalid)
                 self._log("error", "invalid_manifest", plugin_id, str(exc))
         return tuple(discovered)
+
+    def discover_package(self, package_path: Path) -> PluginRecord:
+        """Register a verified v1 archive without importing its payload code."""
+        if not isinstance(self.verifier, Sha256PackageVerifier):
+            raise RuntimeError("package discovery requires the production package verifier")
+        verified = self.verifier.inspect(package_path)
+        from .contracts import evaluate_manifest_compatibility
+
+        decision = evaluate_manifest_compatibility(
+            verified.manifest, self.sdk_version, self.application_version
+        )
+        if decision.status == CompatibilityStatus.INVALID:
+            raise ValueError(decision.reason)
+        state = (
+            LifecycleState.INCOMPATIBLE
+            if decision.status == CompatibilityStatus.INCOMPATIBLE
+            else LifecycleState.DISCOVERED
+        )
+        record = PluginRecord(manifest=verified.manifest, package_path=package_path, state=state)
+        self._records[record.manifest.plugin_id] = record
+        self._log("info", "package_discovered", record.manifest.plugin_id, "verified package discovered")
+        return record
 
     def _validate_manifest(self, data: dict, package_path: Path) -> PluginRecord:
         manifest = PluginManifest.model_validate(data)
