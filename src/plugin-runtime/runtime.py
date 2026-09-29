@@ -765,6 +765,9 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin UI document is invalid JSON") from exc
         if document.get("plugin_id") != plugin_id:
             raise RuntimePolicyError("plugin UI document has the wrong plugin_id")
+        frontend = manifest.get("frontend")
+        if isinstance(frontend, dict) and frontend.get("entry"):
+            document["frontend"] = {"entry": str(frontend["entry"])}
         return document
 
     def _command(self, manifest: dict[str, Any]) -> tuple[str, ...]:
