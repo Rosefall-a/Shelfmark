@@ -45,10 +45,20 @@ Container hardening includes a non-root user, read-only root filesystem,
 temporary filesystem only for /tmp, dropped Linux capabilities,
 no-new-privileges, and bounded PID/CPU/memory resources.
 
-The current runtime image is intentionally only a bootstrap health process.
-Authenticated gateway connectivity is not added here: #265 owns core/gateway
-trust and transport, while #288 and #289 extend runtime isolation and network
-policy.
+Inside that container, each plugin is launched by the runtime supervisor in
+its own bubblewrap namespaces and process group with independent CPU, memory,
+file-descriptor and child-process limits. Plugin subprocesses receive a
+fresh environment and cannot receive core secrets.
+
+Outbound plugin networking is default-deny. Declared destinations require
+the network.outbound capability to have been approved by the gateway; the
+plugin sandbox still has no direct network namespace access. Approved
+external traffic must use the runtime's future egress broker/proxy rather
+than enabling unrestricted network sharing.
+
+Authenticated gateway connectivity remains owned by #265, while #266 remains
+the capability authorization boundary. Plugin browser traffic is never
+published directly from the runtime.
 
 ## Startup lifecycle
 

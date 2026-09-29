@@ -57,6 +57,10 @@ jobs:
       - name: Run tests
         run: pytest
 
+      - name: Test plugin runtime policy
+        working-directory: src/plugin-runtime
+        run: PYTHONPATH=. pytest -q tests
+
       - name: Validate Alembic migration graph
         run: |
           python - <<'PY'

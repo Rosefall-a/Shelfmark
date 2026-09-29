@@ -2,7 +2,9 @@
 
 FROM python:3.12-alpine
 
-RUN addgroup -S pluginruntime && adduser -S -G pluginruntime pluginruntime
+RUN apk add --no-cache bubblewrap \
+    && addgroup -S pluginruntime \
+    && adduser -S -G pluginruntime pluginruntime
 
 WORKDIR /opt/plugin-runtime
 COPY src/plugin-runtime/runtime.py ./runtime.py
