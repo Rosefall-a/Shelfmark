@@ -103,9 +103,10 @@ class CredentialStore(Protocol):
 class InMemoryCredentialStore:
     """Reference store for tests/development; not durable across restarts."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: Callable[[], datetime] | None = None) -> None:
         self._credentials: dict[UUID, CredentialRecord] = {}
         self._used_nonces: dict[UUID, datetime] = {}
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def save(self, record: CredentialRecord) -> None:
         self._credentials[record.credential_id] = record
@@ -124,7 +125,9 @@ class InMemoryCredentialStore:
         )
 
     def mark_nonce_used(self, nonce: UUID, expires_at: datetime) -> bool:
-        if nonce in self._used_nonces and self._used_nonces[nonce] > expires_at - timedelta(minutes=10):
+        now = self._clock()
+        self._used_nonces = {k: v for k, v in self._used_nonces.items() if v > now}
+        if nonce in self._used_nonces:
             return False
         self._used_nonces[nonce] = expires_at
         return True
@@ -149,7 +152,7 @@ class GatewayAuthenticator:
             raise ValueError("credential lifetimes must be positive")
         self.application = application
         self.gateway = gateway
-        self._store = store or InMemoryCredentialStore()
+        self._store = store or InMemoryCredentialStore(clock=self._clock)
         self._secret = secret
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._clock_skew = clock_skew
