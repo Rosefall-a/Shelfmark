@@ -193,6 +193,15 @@ class PluginSupervisor:
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
             raise RuntimePolicyError("gateway payload must be an object")
+        if method.startswith("storage."):
+            _, manifest = self.package(plugin_id)
+            permissions = {
+                str(item.get("capability", {}).get("name"))
+                for item in manifest.get("permissions", [])
+                if isinstance(item, dict)
+            }
+            if "plugin.storage" not in permissions:
+                raise RuntimePolicyError("plugin.storage permission is required")
         if method == "lifecycle.ready":
             self._log(
                 plugin_id, f"[lifecycle] ready {json.dumps(payload, sort_keys=True)}"
