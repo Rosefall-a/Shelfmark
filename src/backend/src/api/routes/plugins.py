@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import tempfile
@@ -26,6 +27,7 @@ from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_va
 from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
+logger = logging.getLogger(__name__)
 _client = PluginRuntimeClient()
 
 
@@ -73,16 +75,20 @@ async def install_plugin(
                     raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
                 handle.write(chunk)
 
+        logger.info("Plugin install upload received: filename=%r bytes=%d allow_untrusted=%s", filename, total, allow_untrusted)
         verifier = _plugin_package_verifier()
         try:
             verified = verifier.inspect(Path(temporary_path), verify_signature=not allow_untrusted)
         except PackageVerificationError as exc:
+            logger.warning("Plugin install verification failed: filename=%r allow_untrusted=%s reason=%s", filename, allow_untrusted, exc)
             if allow_untrusted:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail={"code": "package_verification_failed", "message": str(exc)}) from exc
             try:
                 candidate = verifier.inspect(Path(temporary_path), verify_signature=False)
-            except PackageVerificationError:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except PackageVerificationError as candidate_exc:
+                logger.error("Plugin install package integrity validation failed; cannot offer untrusted bypass: filename=%r reason=%s", filename, candidate_exc)
+                raise HTTPException(status_code=400, detail={"code": "package_verification_failed", "message": str(candidate_exc)}) from exc
+            logger.info("Plugin install is structurally valid but publisher is untrusted: plugin_id=%s version=%s key_id=%r", candidate.manifest.plugin_id, candidate.manifest.version, candidate.manifest.integrity.key_id)
             raise HTTPException(status_code=409, detail={
                 "code": "untrusted_plugin",
                 "message": "This plugin has an invalid signature/untrusted publisher. Install it?",
@@ -92,7 +98,8 @@ async def install_plugin(
                 "publisher": candidate.manifest.integrity.key_id,
             }) from exc
         except PackageFormatError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            logger.error("Plugin install package format validation failed: filename=%r reason=%s", filename, exc)
+            raise HTTPException(status_code=400, detail={"code": "package_format_invalid", "message": str(exc)}) from exc
 
         package = Path(temporary_path).read_bytes()
         installation_id = uuid4()

@@ -27,7 +27,11 @@ export const installPlugin = async (file: File, allowUntrusted = false): Promise
     const body = await response.json().catch(() => null);
     if (body?.detail?.code === "untrusted_plugin") throw new UntrustedPluginError(body.detail);
   }
-  if (!response.ok) throw new Error(`Plugin installation failed (${response.status}).`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(detail ? `Plugin installation failed (${response.status}): ${detail}` : `Plugin installation failed (${response.status}).`);
+  }
   return response.json();
 };
 
