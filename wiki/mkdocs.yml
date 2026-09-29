@@ -50,4 +50,5 @@ nav:
       - Architecture: development/architecture.md
       - API: development/api.md
       - API Examples: development/api-examples.md
+      - Plugin API v1: development/plugin-api-v1.md
       - Contributing: development/contributing.md
