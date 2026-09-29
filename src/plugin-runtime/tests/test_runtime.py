@@ -101,7 +101,7 @@ def test_supervisor_can_start_without_bubblewrap_for_development(tmp_path, monke
 
     monkeypatch.setenv("NONBUBBLE_ENV", "true")
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
-    supervisor = PluginSupervisor(root=tmp_path / "work")
+    supervisor = PluginSupervisor(root=tmp_path / "work", storage_root=tmp_path / "storage")
     package = tmp_path / "package"
     package.mkdir()
     supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
@@ -157,7 +157,7 @@ def test_runtime_rejects_tampered_utp(tmp_path):
             if info.filename == "payload/plugin.py":
                 data = b"tampered"
             destination.writestr(info, data)
-    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
     with pytest.raises(RuntimePolicyError, match="archive|integrity"):
         registry.install_package(tampered.getvalue(), "bad.utp")
 
