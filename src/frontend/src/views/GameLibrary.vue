@@ -1214,7 +1214,12 @@ watch(viewMode, (mode) => {
 
     <div ref="contentEl" class="content">
       <div class="header-row">
-        <h1>Games</h1>
+        <div>
+          <h1>Games</h1>
+          <div class="sub">
+            {{ games.length }} {{ games.length === 1 ? "game" : "games" }}
+          </div>
+        </div>
         <div class="header-actions">
           <div class="search-wrap">
             <input
@@ -2325,8 +2330,13 @@ watch(viewMode, (mode) => {
 }
 .header-row h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+.header-row .sub {
+  margin-top: 2px;
+  color: #888;
+  font-size: 0.85rem;
 }
 .header-actions {
   display: flex;

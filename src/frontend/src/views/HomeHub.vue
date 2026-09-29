@@ -949,8 +949,8 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 }
 .home-header h1 {
   margin: 0;
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
   color: #fff;
 }
 .stats-strip {

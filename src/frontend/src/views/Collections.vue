@@ -255,7 +255,15 @@ function smartIdForName(name: string): string | undefined {
 
     <div class="content">
       <div class="header-row">
-        <h1>Collections</h1>
+        <div>
+          <h1>Collections</h1>
+          <div class="sub">
+            {{ collectionSummaries.length }}
+            {{
+              collectionSummaries.length === 1 ? "collection" : "collections"
+            }}
+          </div>
+        </div>
         <div class="header-actions">
           <input
             v-model="searchQuery"
@@ -442,8 +450,13 @@ function smartIdForName(name: string): string | undefined {
 }
 .header-row h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+.header-row .sub {
+  margin-top: 2px;
+  color: #888;
+  font-size: 0.85rem;
 }
 .header-actions {
   display: flex;

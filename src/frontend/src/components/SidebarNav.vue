@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { logout } from "../services/auth";
 import { currentUser } from "../state/auth";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
 import { mediaUnread, refreshMediaNotifications } from "../state/notifications";
+import { sidebarMode } from "../state/sidebarMode";
 import ProfileMenu from "./ProfileMenu.vue";
 
 onMounted(refreshInboxCount);
@@ -41,6 +42,12 @@ const mediaExpanded = ref(
 
 const isMockData = import.meta.env.VITE_USE_MOCK_DATA === "true";
 
+// Pinned and rail modes are always on screen, so "open" only governs the
+// overlay's own show/hide and the backdrop/menu button that go with it.
+const sidebarVisible = computed(
+  () => sidebarMode.value !== "overlay" || open.value,
+);
+
 function close() {
   open.value = false;
 }
@@ -55,7 +62,12 @@ async function handleLogout() {
 </script>
 
 <template>
-  <button type="button" class="menu-toggle" @click="open = true">
+  <button
+    v-if="sidebarMode === 'overlay'"
+    type="button"
+    class="menu-toggle"
+    @click="open = true"
+  >
     <svg
       viewBox="0 0 24 24"
       width="18"
@@ -74,11 +86,22 @@ async function handleLogout() {
   </button>
 
   <Transition name="sidebar-backdrop">
-    <div v-if="open" class="sidebar-backdrop" @click="close"></div>
+    <div
+      v-if="open && sidebarMode === 'overlay'"
+      class="sidebar-backdrop"
+      @click="close"
+    ></div>
   </Transition>
 
   <Transition name="sidebar-slide">
-    <aside v-if="open" class="sidebar">
+    <aside
+      v-if="sidebarVisible"
+      class="sidebar"
+      :class="{
+        'pinned-mode': sidebarMode === 'pinned',
+        'rail-mode': sidebarMode === 'rail',
+      }"
+    >
       <div class="sidebar-brand">
         <div class="brand-icon">🎮</div>
         <span class="brand-name">Archive</span>
@@ -573,6 +596,87 @@ async function handleLogout() {
   padding: 20px 14px;
   font-family: system-ui, sans-serif;
   box-shadow: 12px 0 40px rgba(0, 0, 0, 0.4);
+  /* On a short window the nav list can be taller than the screen — without
+     this it just ran off the bottom edge with no way to reach Settings/Log
+     Out. auto only shows a scrollbar when content actually overflows. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a transparent;
+}
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 999px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+}
+.sidebar.pinned-mode {
+  box-shadow: none;
+}
+.sidebar.rail-mode {
+  width: 56px;
+  padding-left: 8px;
+  padding-right: 8px;
+  transition:
+    width 0.18s ease,
+    padding 0.18s ease;
+}
+.sidebar.rail-mode:hover,
+.sidebar.rail-mode:focus-within {
+  width: 270px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+/* Collapsed rail shows icons only, centered, with no expand chevrons or
+   sub-items. Hovering (or tabbing in) widens the rail back to the full
+   layout, at which point all of this reverts to the normal sidebar look. */
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-group-label,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .brand-name,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .mock-badge,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-profile-name,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-item span,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-link span,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-expand-toggle,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-subitems,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .inbox-badge {
+  display: none;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-item,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-link {
+  justify-content: center;
+  padding: 9px 0;
+  gap: 0;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-row {
+  justify-content: center;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-brand {
+  justify-content: center;
+  padding: 0 0 18px;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-profile {
+  display: flex;
+  justify-content: center;
+  padding: 9px 0;
+}
+/* ProfileMenu's own trigger is styled inside ProfileMenu.vue's scoped
+   CSS (width: 100%, so the avatar sits at the left edge, not centred),
+   which this component's scoped styles can't reach without :deep(). */
+.sidebar.rail-mode:not(:hover):not(:focus-within)
+  .sidebar-profile
+  :deep(.profile-menu-wrap),
+.sidebar.rail-mode:not(:hover):not(:focus-within)
+  .sidebar-profile
+  :deep(.profile-menu-trigger) {
+  width: auto;
+  justify-content: center;
 }
 .sidebar-brand {
   display: flex;

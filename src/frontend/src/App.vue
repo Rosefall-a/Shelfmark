@@ -7,7 +7,8 @@ import CommandPalette from "./components/CommandPalette.vue";
 import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { loadSharedPreferences } from "./state/preferences";
-import { watch } from "vue";
+import { sidebarMode } from "./state/sidebarMode";
+import { computed, watch } from "vue";
 
 const route = useRoute();
 // preferences are per user, so load them once someone is signed in
@@ -18,6 +19,20 @@ watch(
   },
   { immediate: true },
 );
+const sidebarShown = computed(
+  () =>
+    route.path !== "/login" &&
+    route.path !== "/setup" &&
+    route.path !== "/login/oidcstart",
+);
+// Pinned and rail modes sit in the page's own layout, so content needs to
+// make room for them. Overlay floats above everything and reserves nothing.
+const contentClass = computed(() => {
+  if (!sidebarShown.value) return "";
+  if (sidebarMode.value === "pinned") return "content-pinned";
+  if (sidebarMode.value === "rail") return "content-rail";
+  return "";
+});
 const KEPT_ALIVE = [
   "MovieLibrary",
   "TVShowLibrary",
@@ -39,21 +54,17 @@ const KEPT_ALIVE = [
       route.path === '/login/oidcstart'
     "
   >
-    <SidebarNav
-      v-if="
-        route.path !== '/login' &&
-        route.path !== '/setup' &&
-        route.path !== '/login/oidcstart'
-      "
-    />
+    <SidebarNav v-if="sidebarShown" />
     <!-- Library, calendar and list pages stay mounted when you leave them, so
          switching tabs is instant instead of reloading from empty. Detail
          pages are deliberately not kept: they must reload per title. -->
-    <router-view v-slot="{ Component }">
-      <KeepAlive :include="KEPT_ALIVE" :max="8">
-        <component :is="Component" />
-      </KeepAlive>
-    </router-view>
+    <div class="app-content" :class="contentClass">
+      <router-view v-slot="{ Component }">
+        <KeepAlive :include="KEPT_ALIVE" :max="8">
+          <component :is="Component" />
+        </KeepAlive>
+      </router-view>
+    </div>
     <TaskProgressToast
       v-if="route.path !== '/setup' && route.path !== '/login/oidcstart'"
     />
@@ -87,5 +98,14 @@ const KEPT_ALIVE = [
   background: #0d0d0d;
   color: #999;
   font-family: system-ui, sans-serif;
+}
+.app-content {
+  transition: margin-left 0.18s ease;
+}
+.content-pinned {
+  margin-left: 270px;
+}
+.content-rail {
+  margin-left: 56px;
 }
 </style>

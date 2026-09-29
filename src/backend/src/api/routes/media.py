@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.config import settings
 from src.database.models.game import Game
@@ -103,7 +104,7 @@ async def upload_to_inbox(
         limit_mb = (
             settings.MAX_CLIP_SIZE_MB
             if kind in ("clip", "soundtrack")
-            else settings.MAX_UPLOAD_SIZE_MB
+            else await get_max_upload_size_mb(db)
         )
         max_bytes = limit_mb * 1024 * 1024
 

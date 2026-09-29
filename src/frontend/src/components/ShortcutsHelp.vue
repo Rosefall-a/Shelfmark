@@ -45,8 +45,8 @@ const GROUPS = SHORTCUT_GROUPS;
       <div v-for="group in GROUPS" :key="group.title" class="shortcuts-group">
         <h3>{{ group.title }}</h3>
         <div v-for="s in group.shortcuts" :key="s.label" class="shortcut-row">
-          <kbd>{{ s.keys }}</kbd>
           <span>{{ s.label }}</span>
+          <kbd>{{ s.keys }}</kbd>
         </div>
       </div>
     </div>
@@ -68,7 +68,7 @@ const GROUPS = SHORTCUT_GROUPS;
   border: 1px solid #2a2a2a;
   border-radius: 12px;
   padding: 22px 24px;
-  width: 360px;
+  width: 440px;
   max-width: calc(100vw - 40px);
   max-height: 85vh;
   overflow-y: auto;
@@ -112,9 +112,10 @@ const GROUPS = SHORTCUT_GROUPS;
 }
 .shortcut-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 0;
   font-size: 13px;
   color: #ccc;
 }
@@ -126,9 +127,10 @@ const GROUPS = SHORTCUT_GROUPS;
   font-family: ui-monospace, monospace;
   font-size: 12px;
   color: #d68a34;
-  white-space: nowrap;
-  min-width: 90px;
-  text-align: center;
+  white-space: normal;
+  flex-shrink: 0;
+  max-width: 200px;
+  text-align: right;
   box-sizing: border-box;
 }
 </style>

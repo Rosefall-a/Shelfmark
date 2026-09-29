@@ -3,6 +3,9 @@ per-user metadata-provider credentials, and read-only server config the
 frontend needs to display (e.g. upload limits)."""
 
 import asyncio
+import platform
+import sys
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -13,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.schemas.appearance_settings import AppearanceSettingsRead, AppearanceSettingsUpdate
 from src.api.schemas.scan_settings import ScanSettingsRead, ScanSettingsUpdate
-from src.core.app_integrations import get_or_create_app_integration_settings
+from src.core.app_integrations import (
+    get_max_upload_size_mb,
+    get_or_create_app_integration_settings,
+)
 from src.core.auth import get_current_admin, get_current_user
 from src.core.config import settings
 from src.core.crypto import decrypt_secret, encrypt_secret
@@ -42,6 +48,8 @@ router = APIRouter(
     tags=["settings"],
     dependencies=[Depends(get_current_user)],
 )
+
+_PROCESS_STARTED_AT = int(time.time())
 
 # provider key -> [(payload field name, User column name, is Fernet-encrypted)]
 PROVIDER_FIELD_MAP: dict[str, list[tuple[str, str, bool]]] = {
@@ -268,11 +276,54 @@ async def get_badge_image(current_user: User = Depends(get_current_user)) -> Fil
     )
 
 
+@router.get("/system-info")
+async def get_system_info(admin: User = Depends(get_current_admin)) -> dict:
+    """Admin-only, for Settings > Administration > Dev Tools. Never
+    includes secrets or connection strings — just enough to sanity-check
+    which server you're talking to and correlate against timestamps
+    (notifications, activity log, calendar) that are all server time."""
+    del admin
+    now = int(time.time())
+    return {
+        "server_time": now,
+        "uptime_seconds": now - _PROCESS_STARTED_AT,
+        "debug": settings.DEBUG,
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+    }
+
+
 @router.get("/upload-limits")
-async def get_upload_limits() -> dict[str, int]:
-    """Read-only — the effective max upload size, set server-wide via
-    MAX_UPLOAD_SIZE_MB. Not user-editable from Settings."""
-    return {"max_upload_size_mb": settings.MAX_UPLOAD_SIZE_MB}
+async def get_upload_limits(db: AsyncSession = Depends(get_db)) -> dict[str, int]:
+    """The effective max upload size: an admin's override from Settings >
+    Administration > Limits if one's been saved, else the MAX_UPLOAD_SIZE_MB
+    env default. Read-only here — PUT /upload-limit is the admin-only way
+    to change it."""
+    return {"max_upload_size_mb": await get_max_upload_size_mb(db)}
+
+
+class UploadLimitRequest(BaseModel):
+    max_upload_size_mb: int | None = None
+
+
+@router.put("/upload-limit")
+async def update_upload_limit(
+    payload: UploadLimitRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, int]:
+    """Admin-only. `max_upload_size_mb: null` clears the override and goes
+    back to the .env default."""
+    del admin
+    if payload.max_upload_size_mb is not None and payload.max_upload_size_mb < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Max upload size must be at least 1 MB.",
+        )
+    row = await get_or_create_app_integration_settings(db)
+    row.max_upload_size_mb = payload.max_upload_size_mb
+    await db.commit()
+    return {"max_upload_size_mb": await get_max_upload_size_mb(db)}
 
 
 @router.get("/provider-credentials")
