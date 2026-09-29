@@ -6,6 +6,7 @@ this service over an authenticated container-network boundary.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -192,6 +193,15 @@ class PluginSupervisor:
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
             raise RuntimePolicyError("gateway payload must be an object")
+        if method.startswith("storage."):
+            _, manifest = self.package(plugin_id)
+            permissions = {
+                str(item.get("capability", {}).get("name"))
+                for item in manifest.get("permissions", [])
+                if isinstance(item, dict)
+            }
+            if "plugin.storage" not in permissions:
+                raise RuntimePolicyError("plugin.storage permission is required")
         if method == "lifecycle.ready":
             self._log(
                 plugin_id, f"[lifecycle] ready {json.dumps(payload, sort_keys=True)}"
@@ -279,11 +289,10 @@ class PluginSupervisor:
             "1", "true", "yes", "on"
         }
 
-    @classmethod
     def _sandbox_command(
-        cls, spec: PluginSpec, workdir: Path, package_dir: Path
+        self, spec: PluginSpec, workdir: Path, package_dir: Path
     ) -> list[str]:
-        if cls._nonbubble_enabled():
+        if self._nonbubble_enabled():
             # Development escape hatch for hosts where bubblewrap is unavailable.
             # The Docker/container boundary and resource limits still apply, but
             # the per-plugin bwrap namespace/filesystem boundary is intentionally
@@ -317,6 +326,9 @@ class PluginSupervisor:
             "/plugin",
             "--bind",
             str(workdir),
+            "/plugin-work",
+            "--bind",
+            str(self._storage(spec.plugin_id).root),
             "/plugin-data",
             "--chdir",
             "/plugin",
@@ -342,18 +354,20 @@ class PluginSupervisor:
                 raise RuntimePolicyError(
                     "plugin storage is not writable; ensure /var/lib/unnamed-tracking/plugins is owned by the plugin runtime user"
                 ) from exc
+            self._storage(spec.plugin_id)
             environment = {
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
                 "HOME": "/plugin",
                 "TMPDIR": "/tmp",
                 "PYTHONUNBUFFERED": "1",
+                "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                 **spec.environment,
             }
             try:
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
-                    env={**environment, "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
+                    env=environment | {"HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
                     start_new_session=True,
                     # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
@@ -387,12 +401,14 @@ class PluginSupervisor:
         )
         workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
         try:
+            self._storage(spec.plugin_id)
             result = subprocess.run(
                 self._sandbox_command(spec, workdir, package_dir),
                 cwd=package_dir if self._nonbubble_enabled() else workdir,
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
                     "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin",
+                    "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
                     **spec.environment,
@@ -566,7 +582,7 @@ class PluginRegistry:
             ),
         }
 
-    def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+    def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
         if not filename.lower().endswith(".utp"):
             raise RuntimePolicyError("plugin packages must use the .utp extension")
         if not package:
@@ -650,8 +666,11 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin package integrity verification failed")
 
         target = self.root / plugin_id
-        if target.exists():
+        previous_state = self._state().get(plugin_id)
+        if target.exists() and not replace:
             raise RuntimePolicyError("plugin is already installed")
+        if target.exists():
+            self.supervisor.stop(plugin_id)
         staging = (
             self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
         )
@@ -672,15 +691,29 @@ class PluginRegistry:
                 destination.write_bytes(data)
                 destination.chmod(0o700)
             (staging / "manifest.json").write_bytes(manifest_data)
-            staging.rename(target)
+            if target.exists():
+                backup = self.root / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                target.rename(backup)
+                try:
+                    staging.rename(target)
+                except Exception:
+                    backup.rename(target)
+                    raise
+                shutil.rmtree(backup, ignore_errors=True)
+            else:
+                staging.rename(target)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        if replace and isinstance(previous_state, dict):
+            state = self._state()
+            state[plugin_id] = previous_state
+            self._save_state(state)
         return {
             "plugin_id": plugin_id,
             "name": manifest.get("name", plugin_id),
             "version": manifest.get("version", "0.0.0"),
-            "status": "installed",
+            "status": "updated" if replace else "installed",
         }
 
     def list(self) -> list[dict[str, Any]]:
@@ -704,6 +737,22 @@ class PluginRegistry:
                 )
         return result
 
+    def frontend(self, plugin_id: str, relative: str) -> dict[str, Any]:
+        package, manifest = self.package(plugin_id)
+        entry = str(manifest.get("frontend", {}).get("entry", "frontend/index.html"))
+        relative = relative or entry
+        path = package / Path(relative)
+        try:
+            path.resolve(strict=True).relative_to(package.resolve())
+        except (OSError, ValueError) as exc:
+            raise RuntimePolicyError("plugin frontend path escapes the package") from exc
+        if not path.is_file():
+            raise KeyError(relative)
+        data = path.read_bytes()
+        if len(data) > 4 * 1024 * 1024:
+            raise RuntimePolicyError("plugin frontend asset exceeds 4 MiB")
+        return {"path": relative, "content": base64.b64encode(data).decode("ascii")}
+
     def ui(self, plugin_id: str) -> dict[str, Any]:
         package, manifest = self.package(plugin_id)
         ui_path = package / "ui.json"
@@ -725,6 +774,9 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin UI document is invalid JSON") from exc
         if document.get("plugin_id") != plugin_id:
             raise RuntimePolicyError("plugin UI document has the wrong plugin_id")
+        frontend = manifest.get("frontend")
+        if isinstance(frontend, dict) and frontend.get("entry"):
+            document["frontend"] = {"entry": str(frontend["entry"])}
         return document
 
     def _command(self, manifest: dict[str, Any]) -> tuple[str, ...]:
@@ -788,6 +840,14 @@ class PluginRegistry:
     def logs(self, plugin_id: str) -> list[str]:
         self.package(plugin_id)
         return self.supervisor.logs(plugin_id)
+
+    def storage_put(self, plugin_id: str, key: str, value: str) -> None:
+        self.package(plugin_id)
+        self.supervisor._storage(plugin_id).put(key, value.encode())
+
+    def storage_keys(self, plugin_id: str, prefix: str = "") -> list[str]:
+        self.package(plugin_id)
+        return list(self.supervisor._storage(plugin_id).keys(prefix))
 
     def health(self, plugin_id: str) -> bool:
         self.package(plugin_id)
@@ -903,6 +963,17 @@ class PluginRegistry:
                 self._discord_webhook(webhook, content)
         return {"completed": True}
 
+    def delete(self, plugin_id: str) -> None:
+        package, manifest = self.package(plugin_id)
+        self.supervisor.stop(plugin_id)
+        quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
+        self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
+        self.supervisor._storage(plugin_id).uninstall()
+        shutil.rmtree(package, ignore_errors=False)
+        state = self._state()
+        state.pop(plugin_id, None)
+        self._save_state(state)
+
     def restore_enabled(self) -> None:
         state = self._state()
         for package in self.packages():
@@ -962,6 +1033,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":
                 self._json(200, {"logs": self.server.registry.logs(parts[1])})  # type: ignore[attr-defined]
+            elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
+                relative = "/".join(parts[3:])
+                self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]
             else:
                 self._json(404, {"detail": "not found"})
         except KeyError:
@@ -989,6 +1063,12 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 else:
                     self.server.registry.stop(parts[1])  # type: ignore[attr-defined]
                 self._json(200, {"plugin_id": parts[1], "status": parts[2]})
+                return
+            if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length) if length else b"{}")
+                self.server.registry.storage_put(parts[1], str(payload.get("key", "")), str(payload.get("value", "")))  # type: ignore[attr-defined]
+                self._json(200, {"saved": True})
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "actions":
                 length = int(self.headers.get("Content-Length", "0"))
@@ -1020,7 +1100,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     return
                 package = self.rfile.read(length)
                 result = self.server.registry.install_package(  # type: ignore[attr-defined]
-                    package, self.headers.get("X-Plugin-Package-Name", "")
+                    package,
+                    self.headers.get("X-Plugin-Package-Name", ""),
+                    replace=self.headers.get("X-Plugin-Replace", "").lower() == "true",
                 )
                 self._json(201, result)
             except (RuntimePolicyError, ValueError) as exc:
@@ -1042,6 +1124,22 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             self._json(404, {"detail": "plugin not found"})
         except (RuntimePolicyError, ValueError, json.JSONDecodeError) as exc:
             self._json(422, {"detail": str(exc)})
+
+    def do_DELETE(self) -> None:
+        if not self._authorized():
+            self._json(401, {"detail": "runtime authentication required"})
+            return
+        parts = self._parts()
+        if len(parts) == 2 and parts[0] == "plugins":
+            try:
+                self.server.registry.delete(parts[1])  # type: ignore[attr-defined]
+                self._json(204, {})
+            except KeyError:
+                self._json(404, {"detail": "plugin not found"})
+            except (RuntimePolicyError, OSError) as exc:
+                self._json(422, {"detail": str(exc)})
+            return
+        self._json(404, {"detail": "not found"})
 
     def log_message(self, _format: str, *_args: object) -> None:
         return

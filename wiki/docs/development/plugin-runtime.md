@@ -149,3 +149,25 @@ Lifecycle disable and quarantine operations stop running plugin processes throug
 ## Runtime logs and gateway bridge
 
 The runtime exposes `/plugins/{plugin_id}/logs` to the authenticated host. The Plugin Manager displays these logs beside the declarative UI. Plugin stdout is reserved for the request protocol and diagnostics belong on stderr; both streams are drained so noisy plugins cannot deadlock. Core operations are forwarded through the private host gateway and are checked against active plugin permission grants.
+
+## Plugin frontends
+
+A plugin may declare a frontend bundle in its manifest:
+
+    "frontend": {"entry": "frontend/index.html"}
+
+The runtime serves files from that package through the authenticated application route. The Plugin Manager mounts the entry page in a sandboxed iframe with scripts enabled but without allow-same-origin. This lets a plugin ship a real Vue/Vite application while preventing the plugin page from reading or modifying the host Vue application's DOM, cookies, or local storage.
+
+Frontend code communicates with the host through a small validated postMessage bridge. Supported operations are deliberately narrow: save ordinary settings, save a secret into plugin storage, run a declared plugin action, and request basic plugin context. The parent validates the message source against the specific iframe before processing it.
+
+The existing ui.json declarative UI remains supported for lightweight plugins. A plugin with a frontend declaration uses its own frontend instead of the declarative renderer.
+
+## Plugin secrets and persistent data
+
+Frontend secrets must not be placed in ordinary settings or browser storage. The host exposes a plugin-scoped secret write operation that requires the plugin.storage permission. The value is written through the runtime's namespaced PluginStorage implementation under secrets/<key>.
+
+Plugin storage is quota-limited, path-confined, persistent across package updates, and owned by the plugin runtime. Metadata and stored values are written with owner-only file permissions. When a plugin process runs under bubblewrap, only that plugin's storage namespace is bound into /plugin-data; the process receives PLUGIN_DATA_DIR pointing at that namespace. Deleting a plugin removes its package and its persistent storage.
+
+The UI Playground demonstrates this contract with a Discord webhook: the Vue frontend writes secrets/discord_webhook, and its action reads that file from PLUGIN_DATA_DIR instead of receiving the webhook as an ordinary action argument.
+
+NONBUBBLE_ENV=true intentionally weakens this filesystem boundary for development troubleshooting, so it must not be used as a production security mode.

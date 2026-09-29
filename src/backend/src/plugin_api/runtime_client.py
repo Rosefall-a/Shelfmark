@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from typing import Any
 from urllib.parse import quote
@@ -59,6 +60,10 @@ class PluginRuntimeClient:
     async def logs(self, plugin_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/plugins/{plugin_id}/logs")
 
+    async def frontend_asset(self, plugin_id: str, path: str) -> bytes:
+        data = await self._request("GET", f"/plugins/{plugin_id}/frontend/{path}")
+        return base64.b64decode(str(data["content"]))
+
     async def start(self, plugin_id: str, user_id: str | None = None) -> None:
         payload = {"user_id": user_id} if user_id is not None else None
         await self._request("POST", f"/plugins/{plugin_id}/start", json=payload)
@@ -66,12 +71,22 @@ class PluginRuntimeClient:
     async def stop(self, plugin_id: str) -> None:
         await self._request("POST", f"/plugins/{plugin_id}/stop")
 
-    async def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+    async def delete(self, plugin_id: str) -> None:
+        await self._request("DELETE", f"/plugins/{plugin_id}")
+
+    async def save_secret(self, plugin_id: str, key: str, value: str) -> None:
+        await self._request("POST", f"/plugins/{plugin_id}/storage", json={"key": key, "value": value})
+
+    async def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
         return await self._request(
             "PUT",
             "/plugins/install",
             content=package,
-            headers={"Content-Type": "application/octet-stream", "X-Plugin-Package-Name": filename},
+            headers={
+                "Content-Type": "application/octet-stream",
+                "X-Plugin-Package-Name": filename,
+                "X-Plugin-Replace": "true" if replace else "false",
+            },
         )
 
     async def plugin_health(self, plugin_id: str) -> bool:

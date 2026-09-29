@@ -76,6 +76,7 @@ class PluginStorage:
             sort_keys=True,
         )
         temporary.write_text(payload + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
         os.replace(temporary, self._metadata_path)
 
     def metadata(self) -> StorageMetadata:
@@ -121,6 +122,7 @@ class PluginStorage:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         temporary = path.with_name(f".{path.name}.tmp")
         temporary.write_bytes(value)
+        temporary.chmod(0o600)
         os.replace(temporary, path)
 
     def get(self, key: str) -> bytes | None:

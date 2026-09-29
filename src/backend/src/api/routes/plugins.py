@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import tempfile
 import time
@@ -10,7 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,6 +133,21 @@ async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
         raise _runtime_error(exc) from exc
 
 
+
+@router.delete("/{plugin_id}", status_code=204)
+async def delete_plugin(
+    plugin_id: str,
+    admin: User = Depends(get_current_admin),
+) -> Response:
+    del admin
+    try:
+        await _client.delete(quote(plugin_id, safe=""))
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    return Response(status_code=204)
+
 @router.post("/{plugin_id}/enable")
 async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> dict:
     pending = await db.scalar(select(PluginPermissionRequest.id).where(PluginPermissionRequest.plugin_id == plugin_id, PluginPermissionRequest.status == "pending"))
@@ -153,6 +169,75 @@ async def disable_plugin(plugin_id: str, admin: User = Depends(get_current_admin
         raise _runtime_error(exc) from exc
     return {"plugin_id": plugin_id, "enabled": False}
 
+
+
+@router.put("/{plugin_id}/update", status_code=200)
+async def update_plugin(
+    plugin_id: str,
+    file: UploadFile = File(...),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    del admin
+    temporary_path: str | None = None
+    try:
+        filename = file.filename or ""
+        if not filename.lower().endswith(".utp"):
+            raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
+        with tempfile.NamedTemporaryFile(prefix="plugin-update-", suffix=".utp", delete=False) as handle:
+            temporary_path = handle.name
+            total = 0
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > _MAX_PLUGIN_PACKAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
+                handle.write(chunk)
+        try:
+            verified = _plugin_package_verifier().inspect(Path(temporary_path))
+        except (PackageFormatError, PackageVerificationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if verified.manifest.plugin_id != plugin_id:
+            raise HTTPException(status_code=400, detail="Updated package plugin ID does not match the installed plugin.")
+        active_grants = set(
+            await db.scalars(
+                select(PluginPermissionGrant.capability).where(
+                    PluginPermissionGrant.plugin_id == plugin_id,
+                    PluginPermissionGrant.revoked_at.is_(None),
+                )
+            )
+        )
+        permission_requests = [
+            PluginPermissionRequest(
+                plugin_id=plugin_id,
+                installation_id=uuid4(),
+                capability=permission.capability.name.value,
+                capability_version=permission.capability.version,
+                rationale=permission.rationale,
+                status="pending",
+            )
+            for permission in verified.manifest.permissions
+            if permission.capability.name.value not in active_grants
+        ]
+        db.add_all(permission_requests)
+        try:
+            result = await _client.install_package(Path(temporary_path).read_bytes(), filename, replace=True)
+        except PluginRuntimeRequestError as exc:
+            await db.rollback()
+            raise _runtime_request_error(exc) from exc
+        except PluginRuntimeUnavailable as exc:
+            await db.rollback()
+            raise _runtime_error(exc) from exc
+        await db.commit()
+        return {
+            "plugin_id": plugin_id,
+            "version": verified.manifest.version,
+            "permissions_requested": len(permission_requests),
+            "status": result.get("status", "updated"),
+        }
+    finally:
+        if temporary_path:
+            Path(temporary_path).unlink(missing_ok=True)
+        await file.close()
 
 @router.post("/{plugin_id}/retry")
 async def retry_plugin(plugin_id: str, admin: User = Depends(get_current_admin)) -> dict:
@@ -199,6 +284,32 @@ async def plugin_logs(plugin_id: str, user: User = Depends(get_current_user)) ->
         raise _runtime_error(exc) from exc
 
 
+
+@router.get("/{plugin_id}/frontend/{asset_path:path}")
+async def plugin_frontend(
+    plugin_id: str,
+    asset_path: str,
+    user: User = Depends(get_current_user),
+) -> Response:
+    del user
+    if not asset_path or ".." in Path(asset_path).parts:
+        raise HTTPException(status_code=404, detail="Plugin frontend asset not found.")
+    try:
+        content = await _client.frontend_asset(quote(plugin_id, safe=""), asset_path)
+    except PluginRuntimeRequestError as exc:
+        raise HTTPException(status_code=404, detail="Plugin frontend asset not found.") from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 @router.get("/{plugin_id}/ui")
 async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> dict:
     del user
@@ -207,6 +318,36 @@ async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> d
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
 
+
+
+@router.put("/{plugin_id}/secrets/{key}")
+async def save_plugin_secret(
+    plugin_id: str,
+    key: str,
+    payload: dict[str, str] = Body(default_factory=dict),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    del user
+    if not key or len(key) > 128 or "/" in key or ".." in key:
+        raise HTTPException(status_code=400, detail="Invalid plugin secret key.")
+    grant = await db.scalar(
+        select(PluginPermissionGrant.id).where(
+            PluginPermissionGrant.plugin_id == plugin_id,
+            PluginPermissionGrant.capability == "plugin.storage",
+            PluginPermissionGrant.revoked_at.is_(None),
+        )
+    )
+    if grant is None:
+        raise HTTPException(status_code=403, detail="Permission plugin.storage has not been granted.")
+    value = payload.get("value")
+    if not isinstance(value, str) or not value:
+        raise HTTPException(status_code=400, detail="Secret value must be a non-empty string.")
+    try:
+        await _client.save_secret(quote(plugin_id, safe=""), f"secrets/{key}", value)
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    return {"plugin_id": plugin_id, "key": key, "saved": True}
 
 @router.put("/{plugin_id}/settings")
 async def save_plugin_settings(

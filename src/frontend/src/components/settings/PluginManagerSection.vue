@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, retryPlugin, revokePluginPermissions, fetchPluginLogs, type PluginSummary } from "../../services/plugins";
+import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, updatePlugin, deletePlugin, retryPlugin, revokePluginPermissions, fetchPluginLogs, type PluginSummary } from "../../services/plugins";
 import PluginUiHost from "../plugins/PluginUiHost.vue";
 import { fetchPluginUi, type PluginUiDocument, type UiAction, type UiValues } from "../../services/pluginUi";
 const router=useRouter();
@@ -19,6 +19,32 @@ async function openPlugin(plugin: PluginSummary){
 async function refreshPlugin(){ if(selected.value) await openPlugin(selected.value); }
 async function savePlugin(values: UiValues){ if(!selected.value) return; const response=await fetch("/api/plugins/"+encodeURIComponent(selected.value.plugin_id)+"/settings",{method:"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)}); if(!response.ok) throw new Error("Plugin settings could not be saved."); }
 async function runPluginAction(item: UiAction, values: UiValues){ if(!selected.value) return; const response=await fetch("/api/plugins/"+encodeURIComponent(selected.value.plugin_id)+"/actions/"+encodeURIComponent(item.id),{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({values})}); if(!response.ok) throw new Error("Plugin action could not be completed."); await refreshPlugin(); }
+async function updateSelected(plugin: PluginSummary, event: Event){
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  action.value = plugin.plugin_id; error.value = "";
+  try {
+    const result = await updatePlugin(plugin.plugin_id, file);
+    installMessage.value = `Updated ${plugin.name} to v${result.version}. ${result.permissions_requested} new permission request(s) created.`;
+    await load();
+  } catch(err) {
+    error.value = err instanceof Error ? err.message : "Plugin update failed.";
+  } finally {
+    action.value = "";
+    (event.target as HTMLInputElement).value = "";
+  }
+}
+async function removePlugin(plugin: PluginSummary){
+  if (!window.confirm(`Delete ${plugin.name} and its stored plugin data?`)) return;
+  action.value = plugin.plugin_id; error.value = "";
+  try {
+    await deletePlugin(plugin.plugin_id);
+    if (selected.value?.plugin_id === plugin.plugin_id) { selected.value = null; pluginUi.value = null; }
+    await load();
+  } catch(err) {
+    error.value = err instanceof Error ? err.message : "Plugin deletion failed.";
+  } finally { action.value = ""; }
+}
 async function installSelected(){ 
   if(!selectedFile.value) return;
   installing.value=true; error.value=""; installMessage.value="";
@@ -48,7 +74,7 @@ onMounted(load);
 <header><div><h3>{{ plugin.name }}</h3><span>{{ plugin.plugin_id }} · v{{ plugin.version }}</span></div><strong>{{ plugin.status }}</strong></header>
 <p>{{ plugin.compatible ? "Compatible with the current host." : "Incompatible: " + plugin.compatibility_reason }}</p>
 <dl><div><dt>Health</dt><dd>{{ plugin.health }}</dd></div><div><dt>Permissions</dt><dd>{{ plugin.permissions.length }}</dd></div><div><dt>Enabled</dt><dd>{{ plugin.enabled ? "Yes" : "No" }}</dd></div></dl>
-<div class="actions"><button type="button" :disabled="action===plugin.plugin_id" @click="openPlugin(plugin)">Open</button><button v-if="!plugin.enabled" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,enablePlugin)">Enable</button><button v-else type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,disablePlugin)">Disable</button><button v-if="plugin.status==='failed'||plugin.status==='quarantined'" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,retryPlugin)">Retry</button><button type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,revokePluginPermissions)">Revoke permissions</button></div>
+<div class="actions"><button type="button" :disabled="action===plugin.plugin_id" @click="openPlugin(plugin)">Open</button><button v-if="!plugin.enabled" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,enablePlugin)">Enable</button><button v-else type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,disablePlugin)">Disable</button><button v-if="plugin.status==='failed'||plugin.status==='quarantined'" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,retryPlugin)">Retry</button><button type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,revokePluginPermissions)">Revoke permissions</button><label class="file-button">Update<input type="file" accept=".utp,application/zip" :disabled="action===plugin.plugin_id" @change="updateSelected(plugin,$event)" /></label><button type="button" class="danger" :disabled="action===plugin.plugin_id" @click="removePlugin(plugin)">Delete</button></div>
 </article></div>
 <dialog v-if="selected" open class="plugin-dialog">
   <header><div><h2>{{ selected.name }}</h2><span>{{ selected.plugin_id }} · v{{ selected.version }}</span></div><button type="button" @click="selected=null;pluginUi=null;pluginLogs=[]">Close</button></header>
@@ -59,5 +85,5 @@ onMounted(load);
 </dialog></section>
 </template>
 <style scoped>
-.installer{display:grid;gap:8px;margin:16px 0 24px;padding:16px;border:1px solid #2a2a2a;border-radius:10px}.success{color:#8f8}code{font-family:monospace}h2{margin-top:0}.muted{color:#aaa}.error{color:#f77}.list{display:grid;gap:14px}.plugin{border:1px solid #2a2a2a;border-radius:10px;padding:16px}header{display:flex;justify-content:space-between;gap:16px}h3{margin:0 0 4px}header span,dd{color:#aaa}dl{display:flex;flex-wrap:wrap;gap:24px}dt{font-size:12px;color:#777}dd{margin:2px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{cursor:pointer}.plugin-dialog{width:min(960px,90vw);max-height:90vh;overflow:auto;background:var(--ui-bg,#111);color:inherit;border:1px solid #444;border-radius:12px;padding:24px}.plugin-dialog header,.logs header{display:flex;justify-content:space-between;align-items:center;gap:12px}.logs{margin-top:24px}.logs pre{max-height:260px;overflow:auto;white-space:pre-wrap;background:#080808;padding:12px;border-radius:8px}
+.installer{display:grid;gap:8px;margin:16px 0 24px;padding:16px;border:1px solid #2a2a2a;border-radius:10px}.success{color:#8f8}code{font-family:monospace}h2{margin-top:0}.muted{color:#aaa}.error{color:#f77}.list{display:grid;gap:14px}.plugin{border:1px solid #2a2a2a;border-radius:10px;padding:16px}header{display:flex;justify-content:space-between;gap:16px}h3{margin:0 0 4px}header span,dd{color:#aaa}dl{display:flex;flex-wrap:wrap;gap:24px}dt{font-size:12px;color:#777}dd{margin:2px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button,.file-button{cursor:pointer}.file-button{display:inline-flex;align-items:center;padding:2px 8px;border:1px solid #555;border-radius:4px}.file-button input{display:none}.danger{border-color:#a44}.plugin-dialog{width:min(960px,90vw);max-height:90vh;overflow:auto;background:var(--ui-bg,#111);color:inherit;border:1px solid #444;border-radius:12px;padding:24px}.plugin-dialog header,.logs header{display:flex;justify-content:space-between;align-items:center;gap:12px}.logs{margin-top:24px}.logs pre{max-height:260px;overflow:auto;white-space:pre-wrap;background:#080808;padding:12px;border-radius:8px}
 </style>
