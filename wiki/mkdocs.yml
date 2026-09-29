@@ -59,4 +59,5 @@ nav:
       - Plugin Storage: development/plugin-storage.md
       - Plugin UI Protocol: development/plugin-ui.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
+      - Plugin Integration Validation: development/plugin-validation.md
       - Contributing: development/contributing.md

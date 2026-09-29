@@ -266,6 +266,14 @@ class PluginLifecycleManager:
         self._log("info", "installed", plugin_id, "plugin installed")
         return record
 
+    async def uninstall(self, plugin_id: str) -> None:
+        """Stop a plugin and remove its manager record without executing its code."""
+        record = self._get(plugin_id)
+        if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
+            await self.stop(plugin_id)
+        self._records.pop(plugin_id, None)
+        self._log("info", "uninstalled", plugin_id, "plugin removed from lifecycle manager")
+
     def enable(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
         if record.state == LifecycleState.QUARANTINED:
