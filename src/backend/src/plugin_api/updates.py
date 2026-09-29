@@ -19,6 +19,7 @@ import shutil
 import tempfile
 from typing import Protocol
 import zipfile
+import re
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -239,20 +240,8 @@ class UpdateStore:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def _plugin_root(self, plugin_id: str) -> Path:
-        try:
-            parsed = PluginManifest.model_fields["plugin_id"].annotation
-            del parsed
-            PluginManifest.model_validate({
-                "plugin_id": plugin_id,
-                "name": "placeholder",
-                "version": "0.0.0",
-                "entrypoint": "plugin:main",
-                "sdk_version_range": "*",
-                "application_version_range": "*",
-                "integrity": {"sha256": "0" * 64},
-            })
-        except ValueError as exc:
-            raise UpdateActivationError("invalid plugin ID for update store") from exc
+        if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", plugin_id) is None:
+            raise UpdateActivationError("invalid plugin ID for update store")
         path = self.root / plugin_id
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         return path
