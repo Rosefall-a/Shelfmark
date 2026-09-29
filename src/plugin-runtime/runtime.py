@@ -66,6 +66,8 @@ class PluginSpec:
     resources: ResourceLimits = field(default_factory=ResourceLimits)
 
     def validate(self) -> None:
+        if self.cpu_seconds < 1 or self.address_space_bytes < 1 or self.open_files < 1 or self.processes < 1:
+            raise RuntimePolicyError("resource limits must be positive")
         if not _PLUGIN_ID.fullmatch(self.plugin_id):
             raise RuntimePolicyError("invalid plugin id")
         if not self.command or any(not part for part in self.command):
@@ -104,37 +106,6 @@ class PluginSupervisor:
             "--bind", str(workdir), "/plugin-data", "--chdir", "/plugin", "--",
             *spec.command,
         ]
-
-    def start(self, spec: PluginSpec, package_dir: Path) -> None:
-        spec.validate()
-        if not package_dir.is_dir():
-            raise RuntimePolicyError("plugin package directory does not exist")
-        with self._lock:
-            if spec.plugin_id in self._processes and self._processes[spec.plugin_id].poll() is None:
-                raise RuntimePolicyError("plugin is already running")
-            workdir = self.root / spec.plugin_id
-            if workdir.exists():
-                for path in sorted(workdir.rglob("*"), reverse=True):
-                    if path.is_file() or path.is_symlink():
-                        path.unlink(missing_ok=True)
-                    elif path.is_dir():
-                        path.rmdir()
-                workdir.rmdir()
-            workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
-            environment = {
-                "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/plugin-data",
-                "TMPDIR": "/tmp", "PYTHONUNBUFFERED": "1",
-                "PLUGIN_DATA_DIR": "/plugin-data", **spec.environment,
-            }
-            process = subprocess.Popen(
-                self._sandbox_command(spec, workdir, package_dir),
-                cwd=workdir, env=environment, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
-                preexec_fn=lambda: self._limits(spec.resources),
-            )
-            self._processes[spec.plugin_id] = process
-        if spec.plugin_id in self._processes:
-            raise RuntimePolicyError("plugin is already running")
 
         workdir = self.root / spec.plugin_id
         workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
