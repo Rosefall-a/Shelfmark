@@ -29,7 +29,7 @@ class PluginRuntimeClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.request(
-                    method, f"{self.base_url}{path}", headers=self._headers(), **kwargs
+                    method, f"{self.base_url}{path}", headers={**self._headers(), **kwargs.pop("headers", {})}, **kwargs
                 )
         except httpx.HTTPError as exc:
             raise PluginRuntimeUnavailable("plugin runtime is unavailable") from exc
