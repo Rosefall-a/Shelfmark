@@ -73,9 +73,25 @@ async def install_plugin(
                     raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
                 handle.write(chunk)
 
+        verifier = _plugin_package_verifier()
         try:
-            verified = _plugin_package_verifier().inspect(Path(temporary_path))
-        except (PackageFormatError, PackageVerificationError) as exc:
+            verified = verifier.inspect(Path(temporary_path), verify_signature=not allow_untrusted)
+        except PackageVerificationError as exc:
+            if allow_untrusted:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            try:
+                candidate = verifier.inspect(Path(temporary_path), verify_signature=False)
+            except PackageVerificationError:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail={
+                "code": "untrusted_plugin",
+                "message": "This plugin has an invalid signature/untrusted publisher. Install it?",
+                "plugin_id": candidate.manifest.plugin_id,
+                "name": candidate.manifest.name,
+                "version": candidate.manifest.version,
+                "publisher": candidate.manifest.integrity.key_id,
+            }) from exc
+        except PackageFormatError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         package = Path(temporary_path).read_bytes()
