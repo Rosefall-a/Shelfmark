@@ -25,7 +25,7 @@ async function updateSelected(plugin: PluginSummary, event: Event){
   action.value = plugin.plugin_id; error.value = "";
   try {
     const result = await updatePlugin(plugin.plugin_id, file);
-    installMessage.value = `Updated \${plugin.name} to v\${result.version}. \${result.permissions_requested} new permission request(s) created.`;
+    installMessage.value = `Updated ${plugin.name} to v${result.version}. ${result.permissions_requested} new permission request(s) created.`;
     await load();
   } catch(err) {
     error.value = err instanceof Error ? err.message : "Plugin update failed.";
@@ -35,7 +35,7 @@ async function updateSelected(plugin: PluginSummary, event: Event){
   }
 }
 async function removePlugin(plugin: PluginSummary){
-  if (!window.confirm(`Delete \${plugin.name} and its stored plugin data?`)) return;
+  if (!window.confirm(`Delete ${plugin.name} and its stored plugin data?`)) return;
   action.value = plugin.plugin_id; error.value = "";
   try {
     await deletePlugin(plugin.plugin_id);
