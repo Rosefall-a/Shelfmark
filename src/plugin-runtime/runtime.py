@@ -680,6 +680,23 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin manifest has an invalid plugin id")
         if not _ENTRYPOINT.fullmatch(str(manifest.get("entrypoint", ""))):
             raise RuntimePolicyError("plugin manifest has an invalid entrypoint")
+        frontend = manifest.get("frontend")
+        if frontend is not None:
+            if not isinstance(frontend, dict) or not isinstance(frontend.get("entry"), str):
+                raise RuntimePolicyError("plugin manifest has an invalid frontend declaration")
+            entry = str(frontend["entry"])
+            frontend_path = PurePosixPath(entry)
+            if (
+                not entry
+                or frontend_path.is_absolute()
+                or ".." in frontend_path.parts
+                or "." in frontend_path.parts
+                or "\\" in entry
+                or not entry.startswith("frontend/")
+            ):
+                raise RuntimePolicyError("plugin manifest has an invalid frontend entry")
+            if not any(name == entry for name, _ in payload):
+                raise RuntimePolicyError("plugin frontend entry is missing from the package payload")
 
         digest = hashlib.sha256()
         for name, data in sorted(payload):
