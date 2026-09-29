@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -2286,6 +2287,12 @@ function formatPlaytime(minutes: number) {
       </button>
     </nav>
 
+    <PluginExtensionSlot
+      v-if="activeTab === 'Overview'"
+      slot="game.overview.after-header"
+      :context="{ host_page: 'game.overview', game_id: game.id }"
+    />
+
     <section v-if="activeTab === 'Overview'" class="overview">
       <div class="overview-main">
         <div v-if="relatedBounties.length" class="related-bounties">
@@ -2800,7 +2807,13 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
+              {{
+                noteSaving
+                  ? "Saving…"
+                  : editingNoteName
+                    ? "Save changes"
+                    : "Create note"
+              }}
             </button>
           </div>
         </div>

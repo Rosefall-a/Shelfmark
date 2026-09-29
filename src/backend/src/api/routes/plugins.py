@@ -12,17 +12,32 @@ from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, Response, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+)
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
+from src.plugin_api.contracts import PluginUiDocument
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.user import User
 from src.database.session import get_db
-from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeRequestError, PluginRuntimeUnavailable
+from src.plugin_api.runtime_client import (
+    PluginRuntimeClient,
+    PluginRuntimeRequestError,
+    PluginRuntimeUnavailable,
+)
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
 from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
@@ -463,14 +478,20 @@ async def plugin_frontend(
         },
     )
 
+
 @router.get("/{plugin_id}/ui")
 async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> dict:
     del user
     try:
-        return await _client.plugin_ui(quote(plugin_id, safe=""))
+        payload = await _client.plugin_ui(quote(plugin_id, safe=""))
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
-
+    try:
+        document = PluginUiDocument.model_validate(payload)
+    except ValidationError as exc:
+        logger.warning("Rejected invalid plugin UI document: plugin_id=%s", plugin_id)
+        raise HTTPException(status_code=422, detail="Plugin UI document is invalid.") from exc
+    return document.model_dump(mode="json")
 
 
 @router.put("/{plugin_id}/secrets/{key}")

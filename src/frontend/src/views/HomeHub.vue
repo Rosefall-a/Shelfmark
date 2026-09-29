@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import GameCard from "../components/GameCard.vue";
@@ -738,6 +739,11 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
           </div>
         </router-link>
       </section>
+
+      <PluginExtensionSlot
+        slot="home.after-widgets"
+        :context="{ host_page: 'home' }"
+      />
 
       <p v-if="loading">Loading…</p>
       <p v-else-if="error" class="error">{{ error }}</p>

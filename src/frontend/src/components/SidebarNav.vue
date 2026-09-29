@@ -2,6 +2,10 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { logout } from "../services/auth";
+import {
+  pluginNavigation,
+  refreshPluginExtensions,
+} from "../state/pluginExtensions";
 import { currentUser } from "../state/auth";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
 import {
@@ -18,6 +22,7 @@ import {
 
 onMounted(refreshInboxCount);
 onMounted(refreshNotifications);
+onMounted(() => void refreshPluginExtensions());
 // Asking the server for notifications is also what makes it create the
 // newly due ones, so this poll is the whole "delivery" mechanism: cheap,
 // every 5 minutes while the app is open, nothing running when it is not.
@@ -675,6 +680,33 @@ async function handleLogout() {
           <rect x="18" y="3" width="3" height="17" rx="0.5" />
         </svg>
         <span>Statistics</span>
+      </router-link>
+
+      <router-link
+        v-for="item in pluginNavigation"
+        :key="`${item.pluginId}:${item.pageId}`"
+        :to="{
+          name: 'plugin-host',
+          params: { pluginId: item.pluginId, pageId: item.pageId },
+        }"
+        class="sidebar-item plugin-sidebar-item"
+        :class="{ active: isActive(`/plugins/${item.pluginId}`) }"
+        @click="close"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3"
+          />
+          <rect x="8" y="8" width="8" height="8" rx="2" />
+        </svg>
+        <span>{{ item.label }}</span>
       </router-link>
 
       <div class="sidebar-spacer"></div>

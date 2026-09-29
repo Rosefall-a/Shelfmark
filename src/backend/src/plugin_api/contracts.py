@@ -571,8 +571,24 @@ class UiMenuItem(ContractModel):
         return self
 
 
+class HostExtensionSlot(StrEnum):
+    """Host-owned locations that accept declarative plugin contributions."""
+
+    HOME_AFTER_WIDGETS = "home.after-widgets"
+    GAME_OVERVIEW_AFTER_HEADER = "game.overview.after-header"
+
+
+class UiPageNavigation(ContractModel):
+    """Optional host navigation metadata for a native plugin page."""
+
+    sidebar: bool = False
+    label: str | None = Field(default=None, min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+
 class UiPage(ContractModel):
     """A native plugin page composed only from approved declarative primitives."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
     description: str = Field(default="", max_length=2_000)
@@ -580,19 +596,32 @@ class UiPage(ContractModel):
     actions: tuple[str, ...] = ()
     tables: tuple[str, ...] = ()
     dialogs: tuple[str, ...] = ()
+    navigation: UiPageNavigation | None = None
+
+
+class UiExtension(ContractModel):
+    """A native plugin page mounted into one allowlisted host extension slot."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    slot: HostExtensionSlot
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    order: int = Field(default=0, ge=-1_000, le=1_000)
 
 
 class PluginUiDocument(ContractModel):
     """Complete versioned UI document consumed by the native frontend host."""
+
     schema_version: UiSchemaVersion = UiSchemaVersion.V1
     plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
+    frontend: PluginFrontendDeclaration | None = None
     settings: tuple[UiSettingsSection, ...] = ()
     actions: tuple[UiAction, ...] = ()
     tables: tuple[UiTable, ...] = ()
     dialogs: tuple[UiDialog, ...] = ()
     menus: tuple[UiMenuItem, ...] = ()
     pages: tuple[UiPage, ...] = ()
+    extensions: tuple[UiExtension, ...] = ()
 
     @model_validator(mode="after")
     def validate_references(self) -> "PluginUiDocument":
@@ -605,11 +634,13 @@ class PluginUiDocument(ContractModel):
         table_ids = [item.id for item in self.tables]
         dialog_ids = [item.id for item in self.dialogs]
         page_ids = [item.id for item in self.pages]
+        extension_ids = [item.id for item in self.extensions]
         unique(setting_ids, "setting")
         unique(action_ids, "action")
         unique(table_ids, "table")
         unique(dialog_ids, "dialog")
         unique(page_ids, "page")
+        unique(extension_ids, "extension")
 
         action_set = set(action_ids)
         table_set = set(table_ids)
@@ -630,6 +661,13 @@ class PluginUiDocument(ContractModel):
                 raise ValueError(f"page {page.id} references an unknown table")
             if any(value not in dialog_set for value in page.dialogs):
                 raise ValueError(f"page {page.id} references an unknown dialog")
+        for extension in self.extensions:
+            if extension.page_id not in page_set:
+                raise ValueError(
+                    f"extension {extension.id} references an unknown page"
+                )
+        if self.frontend is not None and self.extensions:
+            raise ValueError("custom frontends cannot be mounted into host extension slots")
         return self
 
 

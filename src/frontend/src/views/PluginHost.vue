@@ -74,8 +74,22 @@ function navigate(pageId: string) {
 watch(
   () => route.params.pageId,
   (value) => {
-    if (typeof value === "string") activePageId.value = value;
+    if (!document.value) return;
+    if (
+      typeof value === "string" &&
+      document.value.pages.some((page) => page.id === value)
+    ) {
+      activePageId.value = value;
+      return;
+    }
+    const fallback = document.value.pages[0]?.id;
+    activePageId.value = fallback;
+    if (value && fallback) navigate(fallback);
   },
+);
+watch(
+  () => route.params.pluginId,
+  () => void load(),
 );
 onMounted(load);
 </script>
@@ -87,6 +101,7 @@ onMounted(load);
     <PluginUiHost
       v-else-if="document"
       :document="document"
+      :page-id="activePageId"
       @save="save"
       @action="action"
       @navigate="navigate"

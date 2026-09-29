@@ -8,6 +8,17 @@ The v1 contract covers settings fields, validation, secrets, select options, act
 
 Installed plugins are managed through a per-plugin dialog with Overview, Settings, Permissions, and Diagnostics tabs. The Settings tab renders the plugin's native UI declaration; lifecycle controls, permission review/revocation, and runtime output remain host-owned controls.
 
+## Navigation and host extensions
+
+A native page can opt into the application sidebar with `navigation.sidebar`, plus an optional label and bounded sort order. The host always creates the route under `/plugins/{plugin_id}/{page_id}`; plugins cannot register arbitrary paths or replace core routes.
+
+Plugins can add declarative content at these allowlisted extension slots:
+
+- `home.after-widgets`
+- `game.overview.after-header`
+
+An extension references a page in the same UI document. The host renders that page with the native component set and supplies a small context object (such as the current game ID) to actions. Unknown slots, dangling page references, duplicate extension IDs, and custom-frontend extensions are rejected. Extension slots are additive: they cannot query, replace, or mutate host DOM.
+
 ## Security
 
 UI declarations do not grant capabilities. Actions are sent through the authenticated gateway and are authorized independently. The host never evaluates plugin-supplied JavaScript or HTML.
@@ -19,7 +30,7 @@ See the [Plugin API v1](plugin-api-v1.md) and [Plugin Permissions & Scoped Ident
 
 The native host and management client are designed to address authenticated, gateway-facing plugin operations, but the production `/api/plugins` host/runtime path is not yet wired end-to-end. That integration remains tracked by #320. They must not communicate with plugin processes directly.
 
-The browser treats Plugin UI documents as untrusted data and renders only the native v1 primitives. Custom frontend code is not loaded by this host.
+The browser treats Plugin UI documents as untrusted data and renders only the native v1 primitives. Bundled custom frontends run in a sandboxed iframe on their dedicated plugin page and cannot be mounted into a host-page extension slot.
 
 
 ## Action context
