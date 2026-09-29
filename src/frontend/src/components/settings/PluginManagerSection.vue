@@ -10,7 +10,8 @@ async function installSelected(){
   installing.value=true; error.value=""; installMessage.value="";
   try {
     const result=await installPlugin(selectedFile.value);
-    installMessage.value=`Installed ${result.name} v${result.version} from ${result.publisher}.`;
+    installMessage.value=`Installed ${result.name} v${result.version} from ${result.publisher ?? "unknown publisher"}; ${result.permissions_requested} permission request(s) created.`;
+    if (result.trust_warning) window.alert(result.trust_warning);
     selectedFile.value=null;
     await load();
   } catch(err) {
