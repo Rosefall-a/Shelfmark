@@ -44,3 +44,12 @@ connectivity.
 - #270 owns lifecycle, health, quarantine and safe mode.
 
 The runtime never treats a plugin manifest as a capability grant.
+
+
+## Persistent plugin storage
+
+Persistent data is owned by the runtime under `/var/lib/unnamed-tracking/plugins` and is mounted as a dedicated Docker volume. Each plugin is bound to its own namespace by `PluginStorage`; the plugin cannot choose another namespace.
+
+The storage API provides atomic byte writes, reads, deletion, deterministic key listing, schema-version metadata, quota enforcement, namespace-bound backup/restore and uninstall cleanup. It rejects path traversal and symlinks and never exposes PostgreSQL or core application filesystem paths.
+
+The runtime storage volume is intentionally not mounted into the core application service. Deployment backup procedures must include the plugin storage volume alongside the application data and PostgreSQL backup.

@@ -202,6 +202,22 @@ class JsonValue(ContractModel):
     value: dict[str, Any]
 
 
+class StorageEntry(ContractModel):
+    """Stable metadata for one plugin-owned storage value."""
+
+    key: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(ge=0)
+
+
+class StorageMetadata(ContractModel):
+    """Stable plugin storage namespace metadata."""
+
+    plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    schema_version: int = Field(ge=1)
+    quota_bytes: int = Field(ge=1)
+    used_bytes: int = Field(ge=0)
+
+
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 

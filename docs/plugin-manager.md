@@ -137,14 +137,14 @@ plugins/<plugin-id>/
 
 The exact host/container paths may differ; the plugin must only see its own namespace.
 
-- [ ] Define storage API.
-- [ ] Define quotas.
-- [ ] Define backup/restore semantics.
-- [ ] Define uninstall cleanup semantics.
-- [ ] Define plugin data versioning.
-- [ ] Decide when a plugin needs structured storage versus key/value/JSON storage.
-- [ ] Never expose the core database through the storage API.
-- [ ] Never allow plugin-controlled migrations against core tables.
+- [x] Define storage API.
+- [x] Define quotas.
+- [x] Define backup/restore semantics.
+- [x] Define uninstall cleanup semantics.
+- [x] Define plugin data versioning.
+- [x] Define the initial byte-oriented storage API; structured JSON remains a plugin-owned encoding.
+- [x] Never expose the core database through the storage API.
+- [x] Never allow plugin-controlled migrations against core tables.
 
 ### F. Plugin UI protocol
 
@@ -285,7 +285,7 @@ Denied:
 - [ ] Unit-test manifest validation.
 - [ ] Unit-test compatibility rules.
 - [ ] Unit-test permission evaluation.
-- [ ] Unit-test storage isolation.
+- [x] Unit-test storage isolation.
 - [ ] Unit-test event filtering.
 - [ ] Unit-test gateway authentication.
 - [ ] Unit-test plugin/user identity handling.
@@ -394,7 +394,7 @@ A v1 release requires:
 - [ ] Versioned Plugin API.
 - [ ] Manifest validation.
 - [ ] Capability/permission system.
-- [ ] Namespaced persistent storage.
+- [x] Namespaced persistent storage.
 - [ ] Declarative frontend UI.
 - [ ] Lifecycle and health management.
 - [ ] Automatic quarantine.

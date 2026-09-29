@@ -31,6 +31,8 @@ services:
     cpus: 1.0
     expose:
       - "8000"
+    volumes:
+      - plugin_data:/var/lib/unnamed-tracking/plugins
     networks:
       - plugin_runtime
     healthcheck:
@@ -61,3 +63,4 @@ networks:
 
 volumes:
   pgdata:
+  plugin_data:
