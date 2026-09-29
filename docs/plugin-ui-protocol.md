@@ -30,3 +30,7 @@ Unknown schema versions must be rejected or rendered as an unsupported-plugin st
 ## Future custom UI
 
 Complex UIs have a separate design path in #295. They must not be introduced by adding arbitrary HTML, JavaScript, URLs, or component names to the declarative schema.
+
+## Future custom frontend sandbox
+
+See [Custom plugin frontend sandbox design](plugin-ui-sandbox.md). The design keeps arbitrary code out of the core Vue application and retains the authenticated gateway as the only application boundary.
