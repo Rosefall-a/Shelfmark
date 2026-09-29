@@ -239,13 +239,29 @@ class UpdateStore:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def _plugin_root(self, plugin_id: str) -> Path:
-        if not plugin_id or "/" in plugin_id or "\\" in plugin_id or ".." in PurePosixPath(plugin_id).parts:
-            raise UpdateActivationError("invalid plugin ID for update store")
+        try:
+            parsed = PluginManifest.model_fields["plugin_id"].annotation
+            del parsed
+            PluginManifest.model_validate({
+                "plugin_id": plugin_id,
+                "name": "placeholder",
+                "version": "0.0.0",
+                "entrypoint": "plugin:main",
+                "sdk_version_range": "*",
+                "application_version_range": "*",
+                "integrity": {"sha256": "0" * 64},
+            })
+        except ValueError as exc:
+            raise UpdateActivationError("invalid plugin ID for update store") from exc
         path = self.root / plugin_id
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         return path
 
     def version_path(self, plugin_id: str, version: str) -> Path:
+        try:
+            parse_semver(version)
+        except ValueError as exc:
+            raise UpdateActivationError("invalid plugin version for update store") from exc
         return self._plugin_root(plugin_id) / "versions" / version
 
     def read_active(self, plugin_id: str) -> ActiveVersion | None:
