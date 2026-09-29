@@ -18,3 +18,8 @@ See the [Plugin API v1](plugin-api-v1.md) and [Plugin Permissions & Scoped Ident
 The native host and management client are designed to address authenticated, gateway-facing plugin operations, but the production `/api/plugins` host/runtime path is not yet wired end-to-end. That integration remains tracked by #320. They must not communicate with plugin processes directly.
 
 The browser treats Plugin UI documents as untrusted data and renders only the native v1 primitives. Custom frontend code is not loaded by this host.
+
+
+## Action context
+
+Native plugin actions receive a non-secret `_plugin_context` value containing the current page ID, page title, and browser path. This lets a plugin provide page-aware actions without embedding application-specific frontend code. Secret fields are excluded from ordinary settings saves and are available only to the action submission that uses them.
