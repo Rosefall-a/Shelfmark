@@ -30,12 +30,12 @@ export const fetchPluginLogs = (id: string) => request<{logs:string[]}>(`/api/pl
 export const updatePlugin = async (id: string, file: File): Promise<{plugin_id:string;version:string;permissions_requested:number;status:string}> => {
   const form = new FormData();
   form.append("file", file, file.name);
-  const response = await fetch(\`/api/plugins/\${encodeURIComponent(id)}/update\`, {method:"PUT", credentials:"include", body:form});
-  if (!response.ok) throw new Error(\`Plugin update failed (\${response.status}).\`);
+  const response = await fetch(`/api/plugins/\${encodeURIComponent(id)}/update`, {method:"PUT", credentials:"include", body:form});
+  if (!response.ok) throw new Error(`Plugin update failed (\${response.status}).`);
   return response.json();
 };
 
 export const deletePlugin = async (id: string): Promise<void> => {
-  const response = await fetch(\`/api/plugins/\${encodeURIComponent(id)}\`, {method:"DELETE", credentials:"include"});
-  if (!response.ok && response.status !== 204) throw new Error(\`Plugin deletion failed (\${response.status}).\`);
+  const response = await fetch(`/api/plugins/\${encodeURIComponent(id)}`, {method:"DELETE", credentials:"include"});
+  if (!response.ok && response.status !== 204) throw new Error(`Plugin deletion failed (\${response.status}).`);
 };
