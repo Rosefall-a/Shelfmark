@@ -1,32 +1,46 @@
 # Plugin Runtime
 
-This directory contains the isolated production Plugin Runtime container
-introduced by issue #287.
+This directory contains the production Plugin Runtime container and its
+per-plugin sandbox supervisor.
 
-The runtime is deliberately a separate service from the core application.
-The current process is only a bootstrap/health boundary; plugin execution and
-the authenticated gateway are implemented by later Plugin Manager issues.
+## Runtime contract
 
-## Isolation guarantees
+The runtime is a separate service from the core application. Plugins are
+untrusted extensions and receive neither the core process environment nor core
+credentials. The supervisor launches each plugin as a separate process group
+inside an unprivileged bubblewrap sandbox.
 
-The production Compose service:
-- has its own dedicated Docker network marked internal;
-- is not attached to the core application/database network;
-- receives no core environment, database URL, application secret, or host data volume;
-- does not mount the Docker socket;
-- runs as an unprivileged user;
-- uses a read-only root filesystem with a small temporary filesystem;
-- drops all Linux capabilities and enables no-new-privileges;
-- has bounded PID, CPU, and memory resources;
-- exposes no host port.
+Each sandbox gets:
+- a private PID, IPC, UTS and network namespace;
+- a private writable plugin directory;
+- read-only runtime libraries;
+- a private /tmp;
+- a minimal device/proc view;
+- explicit, non-inherited environment variables;
+- CPU, address-space, open-file and process-count limits.
 
-The absence of a shared core network is intentional. Authenticated
-core-to-gateway transport will be wired by issue #265; this issue does not
-create an unauthenticated network path from plugins into the core application.
+The Docker service additionally has no core network membership, no host port,
+no host filesystem or Docker socket, a read-only root filesystem, dropped
+capabilities, no-new-privileges, and bounded container resources.
 
-## Future work
+## Network policy
 
-Issue #288 defines per-plugin process isolation and crash/resource containment.
-Issue #289 defines declared outbound network access and its approval policy.
-Issue #265 owns authenticated core/gateway trust and transport.
-Issue #266 owns capability authorization.
+Outbound network access is default-deny. A plugin declaration may name
+allowed hosts and ports, but the runtime rejects the declaration unless the
+gateway has granted the network.outbound capability.
+
+The sandbox itself always starts with an isolated network namespace, so a
+plugin cannot bypass the policy with a raw socket or by resolving Docker
+services. An approved egress broker/proxy is a separate integration point; it
+must be the only mechanism used to turn an approved declaration into external
+connectivity.
+
+## Security boundaries
+
+- #265 owns authenticated core/gateway trust and transport.
+- #266 owns capability authorization and revocation.
+- #267 owns the runtime isolation contract.
+- #268 owns persistent per-plugin storage.
+- #270 owns lifecycle, health, quarantine and safe mode.
+
+The runtime never treats a plugin manifest as a capability grant.
