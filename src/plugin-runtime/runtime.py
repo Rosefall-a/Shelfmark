@@ -116,29 +116,41 @@ class PluginSupervisor:
             *spec.command,
         ]
 
+    def start(self, spec: PluginSpec, package_dir: Path) -> subprocess.Popen[bytes]:
+        """Launch one validated plugin in its isolated process group."""
+        spec.validate()
         workdir = self.root / spec.plugin_id
-        workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
-        environment = {
-            "PATH": "/usr/local/bin:/usr/bin:/bin",
-            "HOME": "/plugin",
-            "TMPDIR": "/tmp",
-            "PYTHONUNBUFFERED": "1",
-            **spec.environment,
-        }
-        process = subprocess.Popen(
-            self._sandbox_command(spec, workdir),
-            cwd=workdir,
-            env=environment,
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-            # Plugin output is intentionally discarded here; an undrained PIPE can
-            # deadlock a noisy untrusted process once the OS pipe buffer fills.
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            preexec_fn=lambda: self._limits(spec.resources),
-        )
-        self._processes[spec.plugin_id] = process
-        return process
+        with self._lock:
+            existing = self._processes.get(spec.plugin_id)
+            if existing is not None and existing.poll() is None:
+                raise RuntimePolicyError("plugin is already running")
+            self._processes.pop(spec.plugin_id, None)
+            workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
+            environment = {
+                "PATH": "/usr/local/bin:/usr/bin:/bin",
+                "HOME": "/plugin",
+                "TMPDIR": "/tmp",
+                "PYTHONUNBUFFERED": "1",
+                **spec.environment,
+            }
+            try:
+                process = subprocess.Popen(
+                    self._sandbox_command(spec, workdir, package_dir),
+                    cwd=workdir,
+                    env=environment,
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    # Plugin output is intentionally discarded here; an undrained PIPE can
+                    # deadlock a noisy untrusted process once the OS pipe buffer fills.
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=lambda: self._limits(spec.resources),
+                )
+            except Exception:
+                shutil.rmtree(workdir, ignore_errors=True)
+                raise
+            self._processes[spec.plugin_id] = process
+            return process
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
         with self._lock:
