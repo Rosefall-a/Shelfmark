@@ -46,7 +46,7 @@ nav:
       - Production Docker Image: deployment/production-docker.md
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
   - Development:
-      - Overview: development/architecture.md
+      - Overview: development/index.md
       - Architecture: development/architecture.md
       - API: development/api.md
       - API Examples: development/api-examples.md
