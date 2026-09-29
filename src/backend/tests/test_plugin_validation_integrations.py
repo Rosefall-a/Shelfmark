@@ -8,11 +8,11 @@ import pytest
 from src.plugin_api import (
     Capability,
     CapabilityRef,
-    GameRepresentation,
     PermissionGrant,
     PluginIdentity,
     RequestContext,
 )
+from src.plugin_api.contracts import GameRepresentation
 from src.plugin_api.coordinators import (
     MetadataCandidate,
     MetadataProviderRequest,
