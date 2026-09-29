@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import mimetypes
+import os
 import tempfile
 import time
 from pathlib import Path
