@@ -31,6 +31,7 @@ const ICON_PATHS: Record<string, string> = {
   export: "M12 3v12 M7 8l5-5 5 5 M5 21h14",
   oidc: "M12 2a5 5 0 0 1 5 5c0 2.2-1.4 4.1-3.4 4.7L15 15h4a2 2 0 0 1 2 2v5H3v-5a2 2 0 0 1 2-2h4l1.4-3.3A5 5 0 0 1 7 7a5 5 0 0 1 5-5Z",
   "server-integrations": "M4 7h16 M4 12h16 M4 17h16 M8 7v10 M16 7v10",
+  plugins: "M4 5h16v14H4z M8 9h8 M8 13h5",
   users:
     "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
   stats: "M4 20V10 M11 20V4 M18 20v-7",

@@ -54,4 +54,6 @@ nav:
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Plugin Permissions & Scoped Identities: development/plugin-permissions.md
+      - Plugin UI Protocol: development/plugin-ui.md
+      - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
       - Contributing: development/contributing.md
