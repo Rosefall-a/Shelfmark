@@ -344,6 +344,16 @@ class IntegrityMetadata(ContractModel):
     key_id: str | None = Field(default=None, min_length=1, max_length=256)
 
 
+class PluginFrontendDeclaration(ContractModel):
+    """Static frontend entrypoint bundled inside the plugin package."""
+
+    entry: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
+    )
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -365,6 +375,7 @@ class PluginManifest(ContractModel):
     ui: PluginUiDeclaration = PluginUiDeclaration()
     storage: StorageRequirements = StorageRequirements()
     integrity: IntegrityMetadata
+    frontend: PluginFrontendDeclaration | None = None
 
     @field_validator("version")
     @classmethod
@@ -783,7 +794,7 @@ __all__ = [
     "PluginUiDeclaration", "StorageRequirements", "IntegrityMetadata", "PluginManifest",
     "UiSchemaVersion", "UiFieldType", "UiValidation", "UiOption", "UiField", "UiSettingsSection",
     "UiAction", "UiTableColumn", "UiTable", "UiDialog", "UiMenuItem", "UiPage",
-    "PluginUiDocument", "CompatibilityStatus", "CompatibilityDecision", "evaluate_manifest_compatibility",
+    "PluginUiDocument", "PluginFrontendDeclaration", "CompatibilityStatus", "CompatibilityDecision", "evaluate_manifest_compatibility",
     "migrate_manifest_data", "DependencyResolutionError", "resolve_plugin_dependencies",
     "parse_semver", "validate_version_range", "version_satisfies",
 ]
