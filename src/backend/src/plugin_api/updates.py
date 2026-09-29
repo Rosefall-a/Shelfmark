@@ -209,6 +209,8 @@ class PluginPackageVerifier:
         return VerifiedPackage(manifest=manifest, package_path=package_path, payload_digest=digest)
 
     def extract(self, verified: VerifiedPackage, destination: Path) -> Path:
+        if destination.exists():
+            raise PackageFormatError("plugin extraction destination already exists")
         destination.mkdir(mode=0o700, parents=True, exist_ok=False)
         try:
             with zipfile.ZipFile(verified.package_path) as archive:
@@ -342,7 +344,10 @@ class PluginUpdateManager:
         package_fd, package_name = tempfile.mkstemp(prefix=".package-", dir=target.parent)
         os.close(package_fd)
         package_snapshot = Path(package_name)
-        staging = Path(tempfile.mkdtemp(prefix=".stage-", dir=target.parent))
+        stage_fd, stage_name = tempfile.mkstemp(prefix=".stage-", dir=target.parent)
+        os.close(stage_fd)
+        staging = Path(stage_name)
+        staging.unlink()
         try:
             shutil.copyfile(package_path, package_snapshot)
             snapshot = self.verifier.inspect(package_snapshot)
