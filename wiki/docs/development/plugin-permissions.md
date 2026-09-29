@@ -26,3 +26,12 @@ Authorization decisions can be persisted with the request ID, plugin/installatio
 The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
 
 The permission layer is intentionally independent of transport. Gateway authentication from #265 supplies trusted plugin and installation identity; this layer evaluates whether that identity is permitted to perform the requested capability.
+
+
+## Permission risk display
+The administrator approval view classifies requested capabilities before approval:
+- **High risk:** write capabilities and notification sending.
+- **Medium risk:** read capabilities and event subscriptions.
+- **Low risk:** plugin-owned settings/storage capabilities.
+
+Risk is a presentation aid for administrator review; it never changes authorization. The gateway still requires an explicit grant and applies the same default-deny policy regardless of the displayed risk.

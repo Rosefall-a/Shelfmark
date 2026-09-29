@@ -13,6 +13,16 @@ const loading = ref(true);
 const error = ref("");
 const action = ref("");
 
+function capabilityRisk(capability: string): "high" | "medium" | "low" {
+  if (capability.endsWith(".write") || capability === "notifications.send") return "high";
+  if (capability.endsWith(".read") || capability === "events.subscribe") return "medium";
+  return "low";
+}
+
+function riskLabel(capability: string): string {
+  return capabilityRisk(capability).toUpperCase() + " RISK";
+}
+
 async function load() {
   loading.value = true; error.value = "";
   try {
@@ -40,12 +50,12 @@ onMounted(load);
       <h3>Pending requests</h3>
       <p v-if="!requests.some((item) => item.status === 'pending')" class="muted">No pending permission requests.</p>
       <div v-for="item in requests.filter((entry) => entry.status === 'pending')" :key="item.id" class="row">
-        <div><strong>{{ item.plugin_id }}</strong><span>{{ item.capability }} v{{ item.capability_version }}</span><small>{{ item.rationale }}</small></div>
+        <div><strong>{{ item.plugin_id }}</strong><span>{{ item.capability }} v{{ item.capability_version }}</span><small>Risk: <b>{{ riskLabel(item.capability) }}</b> · {{ item.rationale }}</small></div>
         <div class="actions"><button type="button" :disabled="action === item.id" @click="approve(item.id)">Grant</button><button type="button" :disabled="action === item.id" @click="deny(item.id)">Deny</button></div>
       </div>
       <h3>Permission grants</h3>
       <div v-for="item in grants" :key="item.id" class="row">
-        <div><strong>{{ item.plugin_id }}</strong><span>{{ item.capability }} v{{ item.capability_version }}</span><small>{{ item.user_id ? "User scope: " + item.user_id : "All users" }}{{ item.device_id ? " · Device: " + item.device_id : "" }}</small></div>
+        <div><strong>{{ item.plugin_id }}</strong><span>{{ item.capability }} v{{ item.capability_version }}</span><small>Risk: <b>{{ riskLabel(item.capability) }}</b> · {{ item.user_id ? "User scope: " + item.user_id : "All users" }}{{ item.device_id ? " · Device: " + item.device_id : "" }}</small></div>
         <button v-if="item.active" type="button" :disabled="action === item.id" @click="revoke(item.id)">Revoke</button>
         <span v-else class="muted">Revoked</span>
       </div>
@@ -63,5 +73,5 @@ onMounted(load);
 <style scoped>
 h2 { margin-top: 0; } h3 { margin: 28px 0 10px; } .muted { color: #aaa; } .error { color: #ff7b7b; }
 .row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid #2a2a2a; }
-.row div { display:grid; gap:4px; } .row span,.row small { color:#aaa; } .actions { display:flex; gap:8px; } button { cursor:pointer; }
+.row div { display:grid; gap:4px; } .row span,.row small { color:#aaa; } .actions { display:flex; gap:8px; } button { cursor:pointer; } b { font-weight: 700; }
 </style>
