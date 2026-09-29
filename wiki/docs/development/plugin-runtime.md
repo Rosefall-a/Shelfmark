@@ -8,23 +8,19 @@ runtime supervisor.
 ## Topology
 
 Production Compose keeps the Plugin Runtime on a dedicated Docker network
-marked internal:
+marked internal. The host application is the only core service that also joins
+that network:
 
-    core application + PostgreSQL
-             |
-             | no shared runtime network
-             X
-             |
-       Plugin Runtime
-             |
-             +-- plugin_runtime (internal Docker network)
-                    |
-                    +-- per-plugin bubblewrap sandbox
+    application + PostgreSQL --- core network
+          |
+          +--- plugin_gateway (internal Docker network) --- Plugin Runtime
+                                                            |
+                                                            +-- per-plugin bubblewrap sandbox
 
 Docker's internal network has no default route to external networks, and the
-runtime is not attached to the core application's network. This prevents
-Docker service discovery from becoming an accidental backend/database access
-path.
+runtime is not attached to the core database network. This prevents Docker
+service discovery from becoming an accidental database access path while
+allowing the authenticated host-to-runtime transport.
 
 ## Per-plugin process isolation
 
