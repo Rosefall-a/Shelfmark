@@ -18,6 +18,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Mapping
 
+from storage import PluginStorage
+
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _RESERVED_ENV = {
     "DATABASE_URL",
@@ -99,10 +101,19 @@ class PluginSpec:
 class PluginSupervisor:
     """Launch and stop plugins with independent process/filesystem boundaries."""
 
-    def __init__(self, root: Path = Path("/tmp/plugins")) -> None:
+    def __init__(
+        self,
+        root: Path = Path("/tmp/plugins"),
+        storage_root: Path = Path("/var/lib/unnamed-tracking/plugins"),
+    ) -> None:
         self.root = root
+        self.storage_root = storage_root
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._processes: dict[str, subprocess.Popen[bytes]] = {}
+
+    def storage(self, plugin_id: str, *, quota_bytes: int) -> PluginStorage:
+        """Return storage permanently bound to one plugin identity."""
+        return PluginStorage(self.storage_root, plugin_id, quota_bytes=quota_bytes)
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:

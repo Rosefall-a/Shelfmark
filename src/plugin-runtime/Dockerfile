@@ -8,6 +8,7 @@ RUN apk add --no-cache bubblewrap \
 
 WORKDIR /opt/plugin-runtime
 COPY src/plugin-runtime/runtime.py ./runtime.py
+COPY src/plugin-runtime/storage.py ./storage.py
 
 USER pluginruntime:pluginruntime
 
