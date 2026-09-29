@@ -219,7 +219,7 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
 
 
 def test_runtime_digest_ignores_python_runtime_cache(tmp_path) -> None:
-    from runtime import PluginRegistry, PluginSupervisor
+    from runtime import PluginRegistry
 
     package = tmp_path / "package"
     package.mkdir()
