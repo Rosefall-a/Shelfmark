@@ -152,6 +152,28 @@ class PluginSupervisor:
             self._processes[spec.plugin_id] = process
             return process
 
+    def execute(self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0) -> None:
+        """Run a bounded, one-shot action handler in an isolated sandbox."""
+        spec.validate()
+        if len(payload) > 64 * 1024:
+            raise RuntimePolicyError("plugin action payload exceeds 64 KiB")
+        workdir = self.root / f"{spec.plugin_id}.action-{os.getpid()}-{threading.get_ident()}"
+        workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
+        try:
+            result = subprocess.run(
+                self._sandbox_command(spec, workdir, package_dir), cwd=workdir,
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/plugin", "TMPDIR": "/tmp", "PYTHONUNBUFFERED": "1", **spec.environment},
+                input=payload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True, timeout=timeout, check=False,
+                preexec_fn=lambda: self._limits(spec.resources),
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimePolicyError("plugin action timed out") from exc
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+        if result.returncode:
+            raise RuntimePolicyError("plugin action handler failed")
+
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
         with self._lock:
             process = self._processes.pop(plugin_id, None)
@@ -397,6 +419,21 @@ class PluginRegistry:
         )
         return ("python", "-c", script)
 
+    @staticmethod
+    def _action_command(handler: str) -> tuple[str, ...]:
+        if not _ENTRYPOINT.fullmatch(handler):
+            raise RuntimePolicyError("plugin action has an invalid handler")
+        module, _, function = handler.partition(":")
+        function = function or "main"
+        script = (
+            "import importlib,json,sys; "
+            f"m=importlib.import_module({module!r}); "
+            f"f=getattr(m,{function!r}); "
+            "result=f(json.load(sys.stdin)); "
+            "raise SystemExit(0 if result is not False else 1)"
+        )
+        return ("python", "-c", script)
+
     def start(self, plugin_id: str) -> None:
         package, manifest = self.package(plugin_id)
         item = self._item(package)
@@ -420,6 +457,14 @@ class PluginRegistry:
 
     def settings(self, plugin_id: str, values: dict[str, Any]) -> None:
         package, _ = self.package(plugin_id)
+        secret_ids = {
+            str(field.get("id"))
+            for section in self.ui(plugin_id).get("settings", [])
+            for field in section.get("fields", [])
+            if field.get("secret") is True
+        }
+        if secret_ids.intersection(values):
+            raise RuntimePolicyError("secret settings may only be supplied to a plugin action")
         path = package / ".settings.json"
         current: dict[str, Any] = {}
         if path.exists():
@@ -430,11 +475,21 @@ class PluginRegistry:
         current.update(values)
         path.write_text(json.dumps(current, sort_keys=True), encoding="utf-8")
 
-    def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> None:
+    def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> dict[str, bool]:
         document = self.ui(plugin_id)
-        if action_id not in {action["id"] for action in document.get("actions", [])}:
+        action = next((item for item in document.get("actions", []) if item.get("id") == action_id), None)
+        if action is None:
             raise KeyError(action_id)
-        del values
+        handler = action.get("handler")
+        if not isinstance(handler, str):
+            raise RuntimePolicyError("plugin action does not declare a runtime handler")
+        try:
+            payload = json.dumps(values, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise RuntimePolicyError("plugin action values must be JSON-compatible") from exc
+        package, _ = self.package(plugin_id)
+        self.supervisor.execute(PluginSpec(plugin_id, self._action_command(handler)), package, payload)
+        return {"completed": True}
 
     def restore_enabled(self) -> None:
         state = self._state()
@@ -502,8 +557,8 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "actions":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) if length else b"{}")
-                self.server.registry.action(parts[1], parts[3], payload.get("values", {}))  # type: ignore[attr-defined]
-                self._json(200, {"accepted": True}); return
+                result = self.server.registry.action(parts[1], parts[3], payload.get("values", {}))  # type: ignore[attr-defined]
+                self._json(200, result); return
             self._json(404, {"detail": "not found"})
         except KeyError:
             self._json(404, {"detail": "plugin not found"})

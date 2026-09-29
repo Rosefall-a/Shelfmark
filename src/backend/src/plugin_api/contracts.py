@@ -519,6 +519,7 @@ class UiAction(ContractModel):
     """A declarative action dispatched through the authenticated gateway."""
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=256)
+    handler: str | None = Field(default=None, max_length=255, pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
     capability: CapabilityRef | None = None
     confirmation: str | None = Field(default=None, max_length=512)
 

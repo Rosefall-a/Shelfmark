@@ -27,7 +27,7 @@ export interface UiField {
   validation?: UiValidation;
 }
 export interface UiSettingsSection { id: string; title: string; description: string; fields: UiField[] }
-export interface UiAction { id: string; label: string; capability?: { name: string; version: number }; confirmation?: string }
+export interface UiAction { id: string; label: string; handler?: string; capability?: { name: string; version: number }; confirmation?: string }
 export interface UiTableColumn { id: string; label: string }
 export interface UiTable { id: string; title: string; columns: UiTableColumn[]; empty_message: string }
 export interface UiDialog { id: string; title: string; body: string; actions: string[] }
