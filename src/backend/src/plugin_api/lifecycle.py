@@ -286,8 +286,19 @@ class PluginLifecycleManager:
         self._log("info", "enabled", plugin_id, "plugin enabled")
         return record
 
-    def disable(self, plugin_id: str) -> PluginRecord:
+    async def disable(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
+        was_running = record.state in {
+            LifecycleState.RUNNING,
+            LifecycleState.STARTING,
+            LifecycleState.UNHEALTHY,
+        }
+        if was_running:
+            try:
+                await self.runtime.stop(plugin_id)
+            except Exception as exc:
+                self._record_failure(record, "stop_failed", f"plugin failed to stop during disable: {exc}")
+                return record
         record.enabled = False
         if record.state not in {LifecycleState.INVALID, LifecycleState.INCOMPATIBLE}:
             record.state = LifecycleState.DISABLED
@@ -405,6 +416,12 @@ class PluginLifecycleManager:
             self._log("info", "healthy", plugin_id, "plugin health check passed")
         else:
             self._record_failure(record, "unhealthy", record.last_error or "plugin reported unhealthy")
+            if record.state == LifecycleState.QUARANTINED:
+                try:
+                    await self.runtime.stop(plugin_id)
+                except Exception as exc:
+                    record.last_error = f"plugin quarantine stop failed: {exc}"
+                    self._log("error", "quarantine_stop_failed", plugin_id, record.last_error)
         return self.health(plugin_id)
 
     async def health_check_all(self) -> tuple[PluginHealth, ...]:

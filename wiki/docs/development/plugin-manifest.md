@@ -34,7 +34,7 @@ Manifest version migration is a pure dictionary transformation. Known legacy fie
 
 ## Dependencies
 
-Dependencies identify another plugin and a semantic-version range. Required dependencies must exist and satisfy their range. Optional dependencies may be absent or incompatible without blocking the plugin.
+Permission declarations correspond one-to-one with declared capabilities and must use the same capability version. Dependencies identify another plugin and a semantic-version range. Required dependencies must exist and satisfy their range. Optional dependencies may be absent or incompatible without blocking the plugin.
 
 The resolver:
 

@@ -231,3 +231,13 @@ def test_manual_rollback_health_checks_and_restores_on_failure(tmp_path: Path) -
     active = store.read_active("example.plugin")
     assert active is not None
     assert active.active_version == "2.0.0"
+
+
+def test_update_store_rejects_path_like_plugin_ids_and_versions(tmp_path: Path) -> None:
+    store = UpdateStore(tmp_path / "store")
+    with pytest.raises(UpdateActivationError):
+        store.version_path("../escape", "1.0.0")
+    with pytest.raises(UpdateActivationError):
+        store.version_path("example.plugin", "../escape")
+    with pytest.raises(UpdateActivationError):
+        store.version_path("example.plugin", "not-semver")

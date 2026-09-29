@@ -21,7 +21,7 @@ The authorization function requires exact plugin/installation/capability/version
 
 
 ## Audit and security
-Authorization decisions can be persisted with the request ID, plugin/installation identity, capability/version, user/device scope, decision, reason and timestamp. This gives downstream lifecycle and administration features a stable audit seam without exposing secrets.
+The database model for authorization audit records exists, but persistence-backed authorization/audit is not yet wired into the production gateway; this remains tracked by #336.
 
 The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
 

@@ -15,6 +15,6 @@ See the [Plugin API v1](plugin-api-v1.md) and [Plugin Permissions & Scoped Ident
 
 ## Runtime integration
 
-The native host and management client address authenticated, gateway-facing plugin operations. They do not communicate with plugin processes directly. The runtime/lifecycle work owns the implementation behind those operations, including authoritative health, quarantine and recovery state.
+The native host and management client are designed to address authenticated, gateway-facing plugin operations, but the production `/api/plugins` host/runtime path is not yet wired end-to-end. That integration remains tracked by #320. They must not communicate with plugin processes directly.
 
 The browser treats Plugin UI documents as untrusted data and renders only the native v1 primitives. Custom frontend code is not loaded by this host.
