@@ -21,7 +21,9 @@ from src.features.metadata.games.search import search_game_metadata
 
 def runtime_token_is_valid(token: str | None) -> bool:
     configured = os.getenv("PLUGIN_RUNTIME_TOKEN", "")
-    return bool(configured) and bool(token) and hmac.compare_digest(configured, token)
+    if not configured or not token:
+        return False
+    return hmac.compare_digest(configured, token)
 
 
 async def dispatch_gateway_request(
@@ -79,7 +81,7 @@ async def dispatch_gateway_request(
             "save_logo": scan.save_logo, "save_icon": scan.save_icon,
         }
         integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-        result = await search_game_metadata(query, limit, None, preferences, None, integrations.igdb_client_id, integrations.igdb_client_secret)
+        result = search_game_metadata(query, limit, None, preferences, None, integrations.igdb_client_id, integrations.igdb_client_secret)
         return {"results": result.get("results", [])}
 
     if method == "notifications.send":
