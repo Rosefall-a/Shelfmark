@@ -19,7 +19,7 @@ from src.core.auth import get_current_admin, get_current_user
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
 from src.database.session import get_db
-from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
+from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeRequestError, PluginRuntimeUnavailable
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
 
@@ -43,6 +43,10 @@ def _plugin_package_verifier() -> PluginPackageVerifier:
 
 def _runtime_error(exc: PluginRuntimeUnavailable) -> HTTPException:
     return HTTPException(status_code=503, detail=str(exc))
+
+
+def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
+    return HTTPException(status_code=422, detail=str(exc))
 
 
 @router.post("/install", status_code=201)
@@ -88,6 +92,9 @@ async def install_plugin(
         db.add_all(permission_requests)
         try:
             result = await _client.install_package(package, filename)
+        except PluginRuntimeRequestError as exc:
+            await db.rollback()
+            raise _runtime_request_error(exc) from exc
         except PluginRuntimeUnavailable as exc:
             await db.rollback()
             raise _runtime_error(exc) from exc
@@ -124,8 +131,11 @@ async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
 
 
 @router.post("/{plugin_id}/enable")
-async def enable_plugin(plugin_id: str, admin: User = Depends(get_current_admin)) -> dict:
+async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> dict:
     del admin
+    pending = await db.scalar(select(PluginPermissionRequest.id).where(PluginPermissionRequest.plugin_id == plugin_id, PluginPermissionRequest.status == "pending"))
+    if pending is not None:
+        raise HTTPException(status_code=403, detail="Approve all pending plugin permissions before enabling this plugin.")
     try:
         await _client.start(quote(plugin_id, safe=""))
     except PluginRuntimeUnavailable as exc:
@@ -207,15 +217,32 @@ async def plugin_action(
     plugin_id: str,
     action_id: str,
     payload: PluginSettingsIn,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    del user
+    document = await _client.plugin_ui(quote(plugin_id, safe=""))
+    action = next((item for item in document.get("actions", []) if item.get("id") == action_id), None)
+    if action is None:
+        raise HTTPException(status_code=404, detail="Plugin action not found.")
+    plugin = next((item for item in await _client.plugins() if item.get("plugin_id") == plugin_id), None)
+    if plugin is None:
+        raise HTTPException(status_code=404, detail="Plugin not found.")
+    if not plugin.get("enabled"):
+        raise HTTPException(status_code=409, detail="Enable the plugin before running actions.")
+    capability = (action.get("capability") or {}).get("name")
+    if capability:
+        grant = await db.scalar(select(PluginPermissionGrant.id).where(PluginPermissionGrant.plugin_id == plugin_id, PluginPermissionGrant.capability == capability, PluginPermissionGrant.revoked_at.is_(None)))
+        if grant is None:
+            raise HTTPException(status_code=403, detail=f"Permission {capability} has not been granted.")
+    values = dict(payload.values)
+    values.setdefault("_plugin_context", {"path": f"/plugins/{plugin_id}", "user_id": str(user.id)})
     try:
-        await _client.action(quote(plugin_id, safe=""), quote(action_id, safe=""), payload.values)
+        result = await _client.action(quote(plugin_id, safe=""), quote(action_id, safe=""), values)
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
-    return {"plugin_id": plugin_id, "action": action_id, "accepted": True}
-
+    return {"plugin_id": plugin_id, "action": action_id, **(result or {"completed": True})}
 
 @router.get("/runtime/health")
 async def runtime_health(admin: User = Depends(get_current_admin)) -> dict:
