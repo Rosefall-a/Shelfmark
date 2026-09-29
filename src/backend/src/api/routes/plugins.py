@@ -99,11 +99,6 @@ async def install_plugin(
             await db.rollback()
             raise _runtime_error(exc) from exc
         await db.commit()
-        if not permission_requests:
-            try:
-                await _client.start(verified.manifest.plugin_id, user_id=str(admin.id))
-            except PluginRuntimeUnavailable as exc:
-                raise _runtime_error(exc) from exc
         trust_status = "trusted"
         trust_warning = None
         if verified.manifest.integrity.signature is None:
