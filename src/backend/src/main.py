@@ -37,6 +37,7 @@ from src.api.routes import set as set_routes
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
 from src.api.routes.plugin_permissions import router as plugin_permissions_router
+from src.api.routes.plugins import router as plugins_router
 from src.api.routes.setup import router as setup_router
 from src.api.routes.settings import get_or_create_app_integration_settings
 from src.api.routes.utils.misc import router as misc_router
@@ -76,6 +77,7 @@ app.include_router(setup_router)
 app.include_router(settings.router)
 app.include_router(deployment_settings_router)
 app.include_router(plugin_permissions_router)
+app.include_router(plugins_router)
 app.include_router(app_integrations.router)
 app.include_router(media.router)
 app.include_router(stats.router)
