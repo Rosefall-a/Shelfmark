@@ -10,10 +10,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(`Plugin manager request failed (${response.status}).`);
   return response.json() as Promise<T>;
 }
-export const installPlugin = async (file: File): Promise<{plugin_id:string;version:string;name:string;publisher:string|null;installation_id:string;permissions_requested:number;trust_status:"trusted"|"untrusted";trust_warning:string|null;status:string}> => {
+export class UntrustedPluginError extends Error {
+  details: { plugin_id: string; name: string; version: string; publisher: string | null };
+  constructor(details: { plugin_id: string; name: string; version: string; publisher: string | null }) {
+    super("This plugin has an invalid signature/untrusted publisher. Install it?");
+    this.name = "UntrustedPluginError";
+    this.details = details;
+  }
+}
+
+export const installPlugin = async (file: File, allowUntrusted = false): Promise<{plugin_id:string;version:string;name:string;publisher:string|null;installation_id:string;permissions_requested:number;trust_status:"trusted"|"untrusted";trust_warning:string|null;status:string}> => {
   const form = new FormData();
   form.append("file", file, file.name);
-  const response = await fetch("/api/plugins/install", {method:"POST", credentials:"include", body:form});
+  const response = await fetch(`/api/plugins/install?allow_untrusted=${allowUntrusted ? "true" : "false"}`, {method:"POST", credentials:"include", body:form});
+  if (response.status === 409) {
+    const body = await response.json().catch(() => null);
+    if (body?.detail?.code === "untrusted_plugin") throw new UntrustedPluginError(body.detail);
+  }
   if (!response.ok) throw new Error(`Plugin installation failed (${response.status}).`);
   return response.json();
 };
