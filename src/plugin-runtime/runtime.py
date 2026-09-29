@@ -18,6 +18,8 @@ import stat
 import subprocess
 import threading
 import zipfile
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -152,7 +154,7 @@ class PluginSupervisor:
             self._processes[spec.plugin_id] = process
             return process
 
-    def execute(self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0) -> None:
+    def execute(self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0) -> bytes:
         """Run a bounded, one-shot action handler in an isolated sandbox."""
         spec.validate()
         if len(payload) > 64 * 1024:
@@ -163,7 +165,7 @@ class PluginSupervisor:
             result = subprocess.run(
                 self._sandbox_command(spec, workdir, package_dir), cwd=workdir,
                 env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/plugin", "TMPDIR": "/tmp", "PYTHONUNBUFFERED": "1", **spec.environment},
-                input=payload, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                input=payload, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 start_new_session=True, timeout=timeout, check=False,
                 preexec_fn=lambda: self._limits(spec.resources),
             )
@@ -173,6 +175,10 @@ class PluginSupervisor:
             shutil.rmtree(workdir, ignore_errors=True)
         if result.returncode:
             raise RuntimePolicyError("plugin action handler failed")
+        output = result.stdout or b""
+        if len(output) > 64 * 1024:
+            raise RuntimePolicyError("plugin action output exceeds 64 KiB")
+        return output
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
         with self._lock:
@@ -269,7 +275,7 @@ class PluginRegistry:
         expected = data.get("integrity", {}).get("sha256")
         compatible = bool(expected) and self.digest(package).lower() == str(expected).lower()
         state = self._state()
-        enabled = state.get(plugin_id, bool(data.get("enabled", True)))
+        enabled = state.get(plugin_id, False)
         running = self.supervisor.running(plugin_id)
         return {
             "plugin_id": plugin_id, "name": data.get("name", plugin_id),
@@ -481,6 +487,24 @@ class PluginRegistry:
         current.update(values)
         path.write_text(json.dumps(current, sort_keys=True), encoding="utf-8")
 
+    @staticmethod
+    def _discord_webhook(url: str, content: str) -> None:
+        parts = urlsplit(url)
+        if (
+            parts.scheme != "https"
+            or parts.hostname not in {"discord.com", "discordapp.com"}
+            or not parts.path.startswith("/api/webhooks/")
+        ):
+            raise RuntimePolicyError("Discord webhook must use an HTTPS discord.com or discordapp.com webhook URL")
+        body = json.dumps({"content": content[:2000]}).encode("utf-8")
+        request = Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urlopen(request, timeout=10) as response:
+                if response.status >= 400:
+                    raise RuntimePolicyError(f"Discord webhook returned HTTP {response.status}")
+        except OSError as exc:
+            raise RuntimePolicyError("Discord webhook delivery failed") from exc
+
     def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> dict[str, bool]:
         document = self.ui(plugin_id)
         action = next((item for item in document.get("actions", []) if item.get("id") == action_id), None)
@@ -493,10 +517,25 @@ class PluginRegistry:
             payload = json.dumps(values, separators=(",", ":")).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise RuntimePolicyError("plugin action values must be JSON-compatible") from exc
-        package, _ = self.package(plugin_id)
-        self.supervisor.execute(PluginSpec(plugin_id, self._action_command(handler)), package, payload)
+        package, manifest = self.package(plugin_id)
+        output = self.supervisor.execute(PluginSpec(plugin_id, self._action_command(handler)), package, payload)
+        if output:
+            try:
+                message = json.loads(output.decode("utf-8").strip())
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise RuntimePolicyError("plugin action returned invalid output") from exc
+            webhook = message.get("discord_webhook") if isinstance(message, dict) else None
+            if webhook is not None:
+                capabilities = {item.get("name") for item in manifest.get("capabilities", [])}
+                if "notifications.send" not in capabilities:
+                    raise RuntimePolicyError("plugin action requested Discord delivery without notifications.send")
+                content = message.get("content")
+                if not isinstance(webhook, str) or not isinstance(content, str) or not content.strip():
+                    raise RuntimePolicyError("Discord delivery requires a webhook URL and message")
+                if os.getenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "false").lower() != "true":
+                    raise RuntimePolicyError("Discord egress is disabled in this runtime")
+                self._discord_webhook(webhook, content)
         return {"completed": True}
-
     def restore_enabled(self) -> None:
         state = self._state()
         for package in self.packages():
