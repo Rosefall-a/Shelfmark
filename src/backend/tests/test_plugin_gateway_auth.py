@@ -35,10 +35,10 @@ def test_bootstrap_binds_application_and_gateway_identity() -> None:
 def test_bootstrap_rejects_wrong_identity_and_replay() -> None:
     auth, now = make_auth()
     credential = auth.issue_bootstrap_credential(now=now)
-    request = request_for(auth, credential, now).model_copy(update={"application_id": uuid4()})
+    wrong_identity = request_for(auth, credential, now).model_copy(update={"application_id": uuid4()})
     with pytest.raises(CredentialError):
-        auth.bootstrap(request)
-    valid = request.model_copy(update={"application_id": auth.application.application_id})
+        auth.bootstrap(wrong_identity)
+    valid = request_for(auth, credential, now)
     auth.bootstrap(valid)
     with pytest.raises(ReplayError):
         auth.bootstrap(valid)
