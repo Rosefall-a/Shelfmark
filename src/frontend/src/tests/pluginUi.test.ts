@@ -38,4 +38,16 @@ describe("plugin UI host contract", () => {
   it("validates required fields", () => {
     expect(validateField(document.settings[0].fields[0], "")).toBe("This field is required.");
   });
+
+  it("rejects incorrect select and multiselect value shapes", () => {
+    const select = { ...document.settings[0].fields[0], type: "select" as const, secret: false, required: false, options: [{ value: "one", label: "One" }] };
+    const multiselect = { ...select, type: "multiselect" as const };
+    expect(validateField(select, ["one"])).toBe("Select one permitted option.");
+    expect(validateField(multiselect, "one")).toBe("Select one or more permitted options.");
+  });
+
+  it("does not crash on an invalid regex rule", () => {
+    const field = { ...document.settings[0].fields[0], secret: false, required: false, validation: { pattern: "[" } };
+    expect(validateField(field, "value")).toBe("Value has an invalid format rule.");
+  });
 });
