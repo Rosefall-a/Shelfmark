@@ -10,6 +10,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(`Plugin manager request failed (${response.status}).`);
   return response.json() as Promise<T>;
 }
+export const installPlugin = async (file: File): Promise<{plugin_id:string;version:string;name:string;publisher:string;status:string}> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await fetch("/api/plugins/install", {method:"POST", credentials:"include", body:form});
+  if (!response.ok) throw new Error(`Plugin installation failed (${response.status}).`);
+  return response.json();
+};
+
 export const fetchPlugins = () => request<PluginSummary[]>("/api/plugins");
 export const enablePlugin = (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}/enable`, {method:"POST"});
 export const disablePlugin = (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}/disable`, {method:"POST"});
