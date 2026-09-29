@@ -198,6 +198,14 @@ async def update_plugin(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if verified.manifest.plugin_id != plugin_id:
             raise HTTPException(status_code=400, detail="Updated package plugin ID does not match the installed plugin.")
+        active_grants = set(
+            await db.scalars(
+                select(PluginPermissionGrant.capability).where(
+                    PluginPermissionGrant.plugin_id == plugin_id,
+                    PluginPermissionGrant.revoked_at.is_(None),
+                )
+            )
+        )
         permission_requests = [
             PluginPermissionRequest(
                 plugin_id=plugin_id,
@@ -208,6 +216,7 @@ async def update_plugin(
                 status="pending",
             )
             for permission in verified.manifest.permissions
+            if permission.capability.name.value not in active_grants
         ]
         db.add_all(permission_requests)
         try:
