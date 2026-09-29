@@ -51,6 +51,15 @@ from .updates import (
     PluginPackageVerifier, PluginUpdateManager, TrustedPublisher, UpdateActivationError,
     UpdateDependencyError, UpdatePlan, UpdateStore, VerifiedPackage,
 )
+from .validation import (
+    DiscordValidationPlugin,
+    MetadataValidationPlugin,
+    NotificationValidationPlugin,
+    PlayniteValidationPlugin,
+    ValidationGateway,
+    ValidationGatewayError,
+    validation_event,
+)
 from .coordinators import (
     MetadataProvider,
     MetadataProviderRequest,

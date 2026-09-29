@@ -402,6 +402,6 @@ A v1 release requires:
 - [ ] Staged updates and rollback.
 - [ ] Compatibility handling.
 - [ ] Audit/logging.
-- [ ] Security/integration test suite.
-- [ ] At least one production-quality example plugin.
+- [x] Security/integration validation tests for the first four example integrations.
+- [x] Four production-quality validation example integrations (notification, metadata, Discord, Playnite).
 - [ ] Developer documentation sufficient for a third party to build a plugin without reading core internals.
