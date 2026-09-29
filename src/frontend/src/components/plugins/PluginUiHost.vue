@@ -9,7 +9,7 @@ const values = ref<UiValues>(buildInitialValues(props.document));
 const submitted = ref(false);
 const iframe = ref<HTMLIFrameElement | null>(null);
 const frontend = computed(() => props.document.frontend);
-const frontendUrl = computed(() => frontend.value ? `/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/frontend/\${frontend.value.entry.split("/").map(encodeURIComponent).join("/")}` : "");
+const frontendUrl = computed(() => frontend.value ? `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/frontend/${frontend.value.entry.split("/").map(encodeURIComponent).join("/")}` : "");
 const pages = computed(() => props.document.pages);
 const page = computed(() => pages.value.find((item) => item.id === activePage.value) ?? pages.value[0]);
 const settings = computed(() => props.document.settings.filter((item) => page.value?.settings.includes(item.id)));
@@ -43,13 +43,13 @@ async function handleFrontendMessage(event: MessageEvent) {
     if (method === "plugin.save-secret") {
       const key = String(data.key || "");
       const value = String(data.value || "");
-      const response = await fetch(`/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/secrets/\${encodeURIComponent(key)}`, {
+      const response = await fetch(`/api/plugins/${encodeURIComponent(props.document.plugin_id)}/secrets/${encodeURIComponent(key)}`, {
         method: "PUT", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify({value}),
       });
       if (!response.ok) throw new Error("Plugin secret could not be saved.");
       result = {saved: true};
     } else if (method === "plugin.save-settings") {
-      const response = await fetch(`/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/settings`, {
+      const response = await fetch(`/api/plugins/${encodeURIComponent(props.document.plugin_id)}/settings`, {
         method: "PUT", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data),
       });
       if (!response.ok) throw new Error("Plugin settings could not be saved.");
@@ -57,7 +57,7 @@ async function handleFrontendMessage(event: MessageEvent) {
     } else if (method === "plugin.run-action") {
       const action = props.document.actions.find((item) => item.id === String(data.actionId));
       if (!action) throw new Error("Plugin action not found.");
-      const response = await fetch(`/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/actions/\${encodeURIComponent(action.id)}`, {
+      const response = await fetch(`/api/plugins/${encodeURIComponent(props.document.plugin_id)}/actions/${encodeURIComponent(action.id)}`, {
         method: "POST", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify({values: data.values || {}}),
       });
       if (!response.ok) throw new Error("Plugin action could not be completed.");
