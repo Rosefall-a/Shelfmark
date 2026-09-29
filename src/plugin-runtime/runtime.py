@@ -280,11 +280,10 @@ class PluginSupervisor:
             "1", "true", "yes", "on"
         }
 
-    @classmethod
     def _sandbox_command(
-        cls, spec: PluginSpec, workdir: Path, package_dir: Path
+        self, spec: PluginSpec, workdir: Path, package_dir: Path
     ) -> list[str]:
-        if cls._nonbubble_enabled():
+        if self._nonbubble_enabled():
             # Development escape hatch for hosts where bubblewrap is unavailable.
             # The Docker/container boundary and resource limits still apply, but
             # the per-plugin bwrap namespace/filesystem boundary is intentionally
