@@ -66,7 +66,12 @@ class PluginSpec:
     resources: ResourceLimits = field(default_factory=ResourceLimits)
 
     def validate(self) -> None:
-        if self.cpu_seconds < 1 or self.address_space_bytes < 1 or self.open_files < 1 or self.processes < 1:
+        if (
+            self.resources.cpu_seconds < 1
+            or self.resources.address_space_bytes < 1
+            or self.resources.open_files < 1
+            or self.resources.processes < 1
+        ):
             raise RuntimePolicyError("resource limits must be positive")
         if not _PLUGIN_ID.fullmatch(self.plugin_id):
             raise RuntimePolicyError("invalid plugin id")
