@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import os
 import tempfile
 import time
@@ -21,7 +19,8 @@ from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
-from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier, TrustedPublisher
+from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
+from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 _client = PluginRuntimeClient()
@@ -32,27 +31,12 @@ class PluginSettingsIn(BaseModel):
 
 
 _MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
-_DEFAULT_PUBLISHER_KEYS = {
-    "official-example-2026": "fwPuWEpJnl7NTFw84238zvcO0fAy8OUzyY9mUppIuA4=",
-    "official-example-2026-additional": "WhB68DO1RI9EgdknsvW5s+3QqEvwShxfL0fCcIwR0/s=",
-}
-
-
 def _plugin_package_verifier() -> PluginPackageVerifier:
-    publishers = {
-        key_id: TrustedPublisher(key_id, base64.b64decode(public_key))
-        for key_id, public_key in _DEFAULT_PUBLISHER_KEYS.items()
-    }
-    configured = os.getenv("PLUGIN_TRUSTED_PUBLISHERS", "")
-    if configured:
-        try:
-            for item in configured.split(","):
-                key_id, encoded_key = item.split("=", 1)
-                publishers[key_id.strip()] = TrustedPublisher(
-                    key_id.strip(), base64.b64decode(encoded_key.strip(), validate=True)
-                )
-        except (ValueError, binascii.Error) as exc:
-            raise RuntimeError("PLUGIN_TRUSTED_PUBLISHERS is invalid") from exc
+    configured_path = os.getenv("PLUGIN_TRUSTED_PUBLISHER_REGISTRY")
+    try:
+        publishers = load_trusted_publishers(Path(configured_path) if configured_path else None)
+    except PublisherTrustError as exc:
+        raise RuntimeError("PLUGIN_TRUSTED_PUBLISHER_REGISTRY is invalid") from exc
     return PluginPackageVerifier(publishers=publishers, require_signature=True)
 
 
