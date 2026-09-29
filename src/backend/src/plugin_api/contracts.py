@@ -106,6 +106,7 @@ class RequestContext(ContractModel):
     gateway_id: UUID
     plugin: PluginIdentity
     user: UserContext | None = None
+    device_id: UUID | None = None
     requested_capability: CapabilityRef
 
 

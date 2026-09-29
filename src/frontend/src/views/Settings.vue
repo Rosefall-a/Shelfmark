@@ -24,6 +24,7 @@ import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
+import PluginPermissionsSection from "../components/settings/PluginPermissionsSection.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -71,6 +72,7 @@ const groups = computed<SettingsGroup[]>(() => {
       ? [{ id: "server-integrations", label: "Server Integrations" }]
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
+    ...(currentUser.value?.is_admin ? [{ id: "plugin-permissions", label: "Plugin Permissions" }] : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
       ? [{ id: "tasks", label: "Tasks", comingSoon: true }]
@@ -161,6 +163,9 @@ watch(activeSection, async () => {
           />
           <AdminSection
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
+          />
+          <PluginPermissionsSection
+            v-else-if="activeSection === 'plugin-permissions' && currentUser?.is_admin"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
           <template v-else-if="activeSection === 'export'">

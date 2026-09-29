@@ -35,6 +35,10 @@ from .gateway_auth import (
     ApplicationIdentity, BootstrapRequest, CredentialError, CredentialKind,
     GatewayAuthenticator, GatewayHandshake, GatewayIdentity, ReplayError,
 )
+from .permissions import (
+    AuthorizationDecision, ClientIdentity, IssuedClientCredential, PermissionDecision,
+    PermissionGrant, authorize_request, issue_client_credential,
+)
 from .coordinators import (
     MetadataProvider,
     MetadataProviderRequest,
@@ -54,5 +58,7 @@ __all__ = [
     "VersionNegotiationResponse", "ApplicationIdentity", "BootstrapRequest",
     "CredentialError", "CredentialKind", "GatewayAuthenticator", "GatewayHandshake",
     "GatewayIdentity", "ReplayError", "MetadataProvider", "MetadataProviderRequest",
-    "NotificationProvider", "NotificationRequest",
+    "NotificationProvider", "NotificationRequest", "AuthorizationDecision", "ClientIdentity",
+    "IssuedClientCredential", "PermissionDecision", "PermissionGrant", "authorize_request",
+    "issue_client_credential",
 ]

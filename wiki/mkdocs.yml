@@ -53,4 +53,5 @@ nav:
       - Plugin API v1: development/plugin-api-v1.md
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
+      - Plugin Permissions & Scoped Identities: development/plugin-permissions.md
       - Contributing: development/contributing.md
