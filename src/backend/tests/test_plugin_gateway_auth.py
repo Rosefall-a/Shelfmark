@@ -14,8 +14,10 @@ from src.plugin_api.gateway_auth import (
 
 def make_auth(now: datetime | None = None) -> tuple[GatewayAuthenticator, datetime]:
     current = now or datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
-    return GatewayAuthenticator(ApplicationIdentity(), GatewayIdentity(), store=InMemoryCredentialStore(),
-                                secret=b"x" * 32, clock=lambda: current), current
+    clock = lambda: current
+    return GatewayAuthenticator(ApplicationIdentity(), GatewayIdentity(),
+                                store=InMemoryCredentialStore(clock=clock),
+                                secret=b"x" * 32, clock=clock), current
 
 
 def request_for(auth: GatewayAuthenticator, credential: str, now: datetime, nonce=None) -> BootstrapRequest:
