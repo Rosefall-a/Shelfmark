@@ -17,10 +17,10 @@ class PluginRuntimeClient:
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         self.base_url = (base_url or os.getenv("PLUGIN_RUNTIME_URL", "http://plugin-runtime:8000")).rstrip("/")
         self.token = token or os.getenv("PLUGIN_RUNTIME_TOKEN", "")
-        if len(self.token) < 32:
-            raise ValueError("PLUGIN_RUNTIME_TOKEN must contain at least 256 bits")
 
     def _headers(self) -> dict[str, str]:
+        if len(self.token) < 32:
+            raise PluginRuntimeUnavailable("plugin runtime credentials are not configured")
         return {"X-Plugin-Runtime-Token": self.token}
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
