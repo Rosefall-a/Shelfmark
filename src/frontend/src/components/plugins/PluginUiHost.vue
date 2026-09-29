@@ -51,6 +51,7 @@ function goTo(pageId: string) { activePage.value = pageId; emit("navigate", page
 <select v-else-if="field.type==='multiselect'" v-model="values[field.id]" multiple><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select>
 <textarea v-else-if="field.type==='textarea'" v-model="values[field.id] as string" />
 <input v-else-if="field.type==='boolean'" v-model="values[field.id]" type="checkbox" />
+<input v-else-if="field.type==='number'" v-model.number="values[field.id]" type="number" :autocomplete="field.secret?'new-password':'off'" />
 <input v-else v-model="values[field.id]" :type="field.type==='password'?'password':field.type" :autocomplete="field.secret?'new-password':'off'" />
 <em v-if="errorFor(field)" class="error">{{ errorFor(field) }}</em>
 </label>
