@@ -741,8 +741,14 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         parts = self._parts()
         try:
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] in {"start", "stop"}:
-                if parts[2] == "start": self.server.registry.start(parts[1])  # type: ignore[attr-defined]
-                else: self.server.registry.stop(parts[1])  # type: ignore[attr-defined]
+                payload = {}
+                if parts[2] == "start":
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if length:
+                        payload = json.loads(self.rfile.read(length))
+                    self.server.registry.start(parts[1], user_id=payload.get("user_id"))  # type: ignore[attr-defined]
+                else:
+                    self.server.registry.stop(parts[1])  # type: ignore[attr-defined]
                 self._json(200, {"plugin_id": parts[1], "status": parts[2]}); return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "actions":
                 length = int(self.headers.get("Content-Length", "0"))

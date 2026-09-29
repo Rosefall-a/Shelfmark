@@ -196,6 +196,15 @@ async def revoke_plugin_permissions(
     return {"plugin_id": plugin_id, "status": "revoked", "count": count}
 
 
+@router.get("/{plugin_id}/logs")
+async def plugin_logs(plugin_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    del user
+    try:
+        return await _client.logs(quote(plugin_id, safe=""))
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+
+
 @router.get("/{plugin_id}/ui")
 async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> dict:
     del user
