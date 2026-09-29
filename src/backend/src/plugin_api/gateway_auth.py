@@ -152,9 +152,9 @@ class GatewayAuthenticator:
             raise ValueError("credential lifetimes must be positive")
         self.application = application
         self.gateway = gateway
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._store = store or InMemoryCredentialStore(clock=self._clock)
         self._secret = secret
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._clock_skew = clock_skew
         self._bootstrap_ttl = bootstrap_ttl
         self._session_ttl = session_ttl
