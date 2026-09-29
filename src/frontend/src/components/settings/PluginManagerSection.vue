@@ -49,7 +49,14 @@ onMounted(load);
 <p>{{ plugin.compatible ? "Compatible with the current host." : "Incompatible: " + plugin.compatibility_reason }}</p>
 <dl><div><dt>Health</dt><dd>{{ plugin.health }}</dd></div><div><dt>Permissions</dt><dd>{{ plugin.permissions.length }}</dd></div><div><dt>Enabled</dt><dd>{{ plugin.enabled ? "Yes" : "No" }}</dd></div></dl>
 <div class="actions"><button type="button" :disabled="action===plugin.plugin_id" @click="openPlugin(plugin)">Open</button><button v-if="!plugin.enabled" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,enablePlugin)">Enable</button><button v-else type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,disablePlugin)">Disable</button><button v-if="plugin.status==='failed'||plugin.status==='quarantined'" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,retryPlugin)">Retry</button><button type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,revokePluginPermissions)">Revoke permissions</button></div>
-</article></div></section>
+</article></div>
+<dialog v-if="selected" open class="plugin-dialog">
+  <header><div><h2>{{ selected.name }}</h2><span>{{ selected.plugin_id }} · v{{ selected.version }}</span></div><button type="button" @click="selected=null;pluginUi=null;pluginLogs=[]">Close</button></header>
+  <p v-if="popupLoading">Loading plugin…</p>
+  <PluginUiHost v-else-if="pluginUi" :document="pluginUi" @save="savePlugin" @action="runPluginAction" />
+  <p v-else class="muted">This plugin does not expose a native UI.</p>
+  <section class="logs"><header><h3>Runtime logs</h3><button type="button" @click="refreshPlugin">Refresh</button></header><pre v-if="pluginLogs.length">{{ pluginLogs.join("\n") }}</pre><p v-else class="muted">No runtime logs.</p></section>
+</dialog></section>
 </template>
 <style scoped>
 .installer{display:grid;gap:8px;margin:16px 0 24px;padding:16px;border:1px solid #2a2a2a;border-radius:10px}.success{color:#8f8}code{font-family:monospace}h2{margin-top:0}.muted{color:#aaa}.error{color:#f77}.list{display:grid;gap:14px}.plugin{border:1px solid #2a2a2a;border-radius:10px;padding:16px}header{display:flex;justify-content:space-between;gap:16px}h3{margin:0 0 4px}header span,dd{color:#aaa}dl{display:flex;flex-wrap:wrap;gap:24px}dt{font-size:12px;color:#777}dd{margin:2px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{cursor:pointer}.plugin-dialog{width:min(960px,90vw);max-height:90vh;overflow:auto;background:var(--ui-bg,#111);color:inherit;border:1px solid #444;border-radius:12px;padding:24px}.plugin-dialog header,.logs header{display:flex;justify-content:space-between;align-items:center;gap:12px}.logs{margin-top:24px}.logs pre{max-height:260px;overflow:auto;white-space:pre-wrap;background:#080808;padding:12px;border-radius:8px}
