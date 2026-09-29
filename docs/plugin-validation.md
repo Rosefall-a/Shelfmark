@@ -67,3 +67,7 @@ src/backend/tests/test_plugin_validation_integrations.py covers:
 
 No core provider registry is duplicated and no existing application behavior is
 removed or weakened.
+
+## End-to-end lifecycle validation
+
+The integration suite also exercises the lifecycle boundary through install, declarative configuration, capability grant, run, stop, capability revocation and uninstall. Configuration is represented by the versioned native UI contract; password fields are secret and cannot expose defaults. Revocation is enforced by the gateway before a subsequent operation. Uninstall removes the plugin from the lifecycle manager after it is stopped.

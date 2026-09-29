@@ -20,3 +20,7 @@ contract matrix and security notes.
 
 The test suite also proves default-deny authorization, user-scoped event delivery
 and independent plugin storage namespaces.
+
+## End-to-end flow
+
+The integration suite covers install → declarative configure → capability grant → run → revoke → uninstall. It also verifies that secret UI fields cannot expose defaults, revoked capabilities are denied, and plugin failures remain contained by the lifecycle boundary.
