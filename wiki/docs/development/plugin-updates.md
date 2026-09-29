@@ -32,3 +32,10 @@ Dependency failures reject activation rather than allowing an invalid dependency
 - The source package is re-read into a private snapshot before extraction so verification and staged contents refer to the same package bytes.
 - A package is never activated directly from its archive; activation uses the versioned staged directory.
 - If an activation attempt has no previous known-good version, a failed attempt leaves no active pointer.
+
+
+## End-user `.utp` installation
+
+Administrators install a plugin from **Settings → Plugins → Install plugin** by selecting its `.utp` package. The backend limits uploads to 64 MiB and verifies the v1 archive, canonical payload digest, and Ed25519 publisher signature before sending the package over the authenticated runtime connection. The runtime validates the archive and digest again and atomically creates the plugin directory; it never executes plugin code during installation.
+
+Official reference publisher keys are trusted by default. Additional publisher keys may be supplied through `PLUGIN_TRUSTED_PUBLISHERS` as comma-separated `key_id=base64_public_key` entries.

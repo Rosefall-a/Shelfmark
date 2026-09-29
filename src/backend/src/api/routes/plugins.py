@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import os
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +21,7 @@ from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
+from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier, TrustedPublisher
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 _client = PluginRuntimeClient()
@@ -25,8 +31,77 @@ class PluginSettingsIn(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+_MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
+_DEFAULT_PUBLISHER_KEYS = {
+    "official-example-2026": "fwPuWEpJnl7NTFw84238zvcO0fAy8OUzyY9mUppIuA4=",
+    "official-example-2026-additional": "WhB68DO1RI9EgdknsvW5s+3QqEvwShxfL0fCcIwR0/s=",
+}
+
+
+def _plugin_package_verifier() -> PluginPackageVerifier:
+    publishers = {
+        key_id: TrustedPublisher(key_id, base64.b64decode(public_key))
+        for key_id, public_key in _DEFAULT_PUBLISHER_KEYS.items()
+    }
+    configured = os.getenv("PLUGIN_TRUSTED_PUBLISHERS", "")
+    if configured:
+        try:
+            for item in configured.split(","):
+                key_id, encoded_key = item.split("=", 1)
+                publishers[key_id.strip()] = TrustedPublisher(
+                    key_id.strip(), base64.b64decode(encoded_key.strip(), validate=True)
+                )
+        except (ValueError, binascii.Error) as exc:
+            raise RuntimeError("PLUGIN_TRUSTED_PUBLISHERS is invalid") from exc
+    return PluginPackageVerifier(publishers=publishers, require_signature=True)
+
+
 def _runtime_error(exc: PluginRuntimeUnavailable) -> HTTPException:
     return HTTPException(status_code=503, detail=str(exc))
+
+
+@router.post("/install", status_code=201)
+async def install_plugin(
+    file: UploadFile = File(...),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """Verify a signed .utp package, then transfer it to the isolated runtime."""
+    del admin
+    temporary_path: str | None = None
+    try:
+        filename = file.filename or ""
+        if not filename.lower().endswith(".utp"):
+            raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
+        with tempfile.NamedTemporaryFile(prefix="plugin-upload-", suffix=".utp", delete=False) as handle:
+            temporary_path = handle.name
+            total = 0
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > _MAX_PLUGIN_PACKAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
+                handle.write(chunk)
+
+        try:
+            verified = _plugin_package_verifier().inspect(Path(temporary_path))
+        except (PackageFormatError, PackageVerificationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        package = Path(temporary_path).read_bytes()
+        try:
+            result = await _client.install_package(package, filename)
+        except PluginRuntimeUnavailable as exc:
+            raise _runtime_error(exc) from exc
+        return {
+            "plugin_id": verified.manifest.plugin_id,
+            "version": verified.manifest.version,
+            "name": verified.manifest.name,
+            "publisher": verified.manifest.integrity.key_id,
+            "status": result.get("status", "installed"),
+        }
+    finally:
+        if temporary_path:
+            Path(temporary_path).unlink(missing_ok=True)
+        await file.close()
 
 
 @router.get("", response_model=list[dict])

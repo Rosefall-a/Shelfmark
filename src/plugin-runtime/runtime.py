@@ -7,16 +7,20 @@ this service over an authenticated container-network boundary.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
 import resource
 import signal
+import shutil
+import stat
 import subprocess
 import threading
+import zipfile
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import unquote
 
@@ -242,6 +246,106 @@ class PluginRegistry:
             "health": "healthy" if running else "unknown",
         }
 
+    def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+        if not filename.lower().endswith(".utp"):
+            raise RuntimePolicyError("plugin packages must use the .utp extension")
+        if not package:
+            raise RuntimePolicyError("plugin package is empty")
+        if len(package) > 64 * 1024 * 1024:
+            raise RuntimePolicyError("plugin package exceeds the 64 MiB upload limit")
+
+        try:
+            archive = zipfile.ZipFile(io.BytesIO(package))
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise RuntimePolicyError("invalid plugin package archive") from exc
+
+        try:
+            names: set[str] = set()
+            manifest_data: bytes | None = None
+            payload: list[tuple[str, bytes]] = []
+            for info in archive.infolist():
+                path = PurePosixPath(info.filename)
+                if (
+                    not info.filename
+                    or path.is_absolute()
+                    or ".." in path.parts
+                    or "." in path.parts
+                    or "\\" in info.filename
+                ):
+                    raise RuntimePolicyError("plugin package contains an unsafe path")
+                if info.filename in names:
+                    raise RuntimePolicyError("plugin package contains duplicate paths")
+                names.add(info.filename)
+                mode = (info.external_attr >> 16) & 0o170000
+                if mode == stat.S_IFLNK:
+                    raise RuntimePolicyError("plugin package contains a symbolic link")
+                if info.is_dir():
+                    if info.filename != "payload/" and not info.filename.startswith("payload/"):
+                        raise RuntimePolicyError("plugin package contains an unsupported directory")
+                    continue
+                if info.filename == "manifest.json":
+                    manifest_data = archive.read(info)
+                elif info.filename.startswith("payload/"):
+                    relative = info.filename[len("payload/"):]
+                    if not relative:
+                        raise RuntimePolicyError("payload entry must have a filename")
+                    data = archive.read(info)
+                    payload.append((relative, data))
+                else:
+                    raise RuntimePolicyError("plugin package contains an unexpected file")
+        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise RuntimePolicyError("failed to read plugin package") from exc
+        finally:
+            archive.close()
+
+        if manifest_data is None:
+            raise RuntimePolicyError("plugin package is missing manifest.json")
+        try:
+            manifest = json.loads(manifest_data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RuntimePolicyError("plugin manifest is invalid JSON") from exc
+        plugin_id = str(manifest.get("plugin_id", ""))
+        if not _PLUGIN_ID.fullmatch(plugin_id):
+            raise RuntimePolicyError("plugin manifest has an invalid plugin id")
+        if not _ENTRYPOINT.fullmatch(str(manifest.get("entrypoint", ""))):
+            raise RuntimePolicyError("plugin manifest has an invalid entrypoint")
+
+        digest = hashlib.sha256()
+        for name, data in sorted(payload):
+            digest.update(name.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(data)
+            digest.update(b"\0")
+        expected = str(manifest.get("integrity", {}).get("sha256", ""))
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", expected) or digest.hexdigest().lower() != expected.lower():
+            raise RuntimePolicyError("plugin package integrity verification failed")
+
+        target = self.root / plugin_id
+        if target.exists():
+            raise RuntimePolicyError("plugin is already installed")
+        staging = self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+        if staging.exists():
+            raise RuntimePolicyError("plugin installation is already in progress")
+        staging.mkdir(mode=0o700)
+        try:
+            for name, data in payload:
+                relative = PurePosixPath(name)
+                destination = staging.joinpath(*relative.parts)
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                destination.write_bytes(data)
+                destination.chmod(0o700)
+            (staging / "manifest.json").write_bytes(manifest_data)
+            staging.rename(target)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        return {
+            "plugin_id": plugin_id,
+            "name": manifest.get("name", plugin_id),
+            "version": manifest.get("version", "0.0.0"),
+            "status": "installed",
+        }
+
     def list(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for package in self.packages():
@@ -395,6 +499,22 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             self._json(422, {"detail": str(exc)})
 
     def do_PUT(self) -> None:
+        if not self._authorized():
+            self._json(401, {"detail": "runtime authentication required"}); return
+        parts = self._parts()
+        if parts == ["plugins", "install"]:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 1 or length > 64 * 1024 * 1024:
+                    self._json(413, {"detail": "plugin package exceeds the 64 MiB upload limit"}); return
+                package = self.rfile.read(length)
+                result = self.server.registry.install_package(  # type: ignore[attr-defined]
+                    package, self.headers.get("X-Plugin-Package-Name", "")
+                )
+                self._json(201, result)
+            except (RuntimePolicyError, ValueError) as exc:
+                self._json(422, {"detail": str(exc)})
+            return
         if not self._authorized():
             self._json(401, {"detail": "runtime authentication required"}); return
         parts = self._parts()

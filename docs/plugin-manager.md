@@ -22,6 +22,22 @@ Unnamed Tracking
 
 The plugin runtime owns plugin execution. The core application owns the authoritative data/services. Plugins communicate through a versioned, capability-scoped API.
 
+
+## Installing a `.utp` plugin
+
+The application now exposes the complete end-user installation path through **Settings → Plugins**. Administrators select a `.utp` package, and the backend:
+
+1. enforces the `.utp` format and a 64 MiB upload limit;
+2. verifies the v1 package structure and canonical payload SHA-256 digest;
+3. verifies the Ed25519 publisher signature against the configured trusted-publisher set;
+4. transfers the verified package over the authenticated backend → plugin-runtime connection;
+5. has the isolated runtime validate the archive again and atomically install it under the plugin root;
+6. refreshes the plugin list so the administrator can enable the newly installed plugin.
+
+Official reference publisher keys are trusted by default. Additional publisher public keys can be configured with `PLUGIN_TRUSTED_PUBLISHERS` as comma-separated `key_id=base64_public_key` entries. Installation never executes plugin code during upload or package verification.
+
+The `.utp` package is a ZIP containing `manifest.json` plus `payload/` files. Do not rename arbitrary source files to `.utp`; packages must contain a valid v1 manifest and matching integrity metadata.
+
 ## Non-negotiable requirements
 
 - [ ] Every plugin runs outside the core backend process.
@@ -405,11 +421,3 @@ A v1 release requires:
 - [x] Security/integration validation tests for the first four example integrations.
 - [x] Four production-quality validation example integrations (notification, metadata, Discord, Playnite).
 - [ ] Developer documentation sufficient for a third party to build a plugin without reading core internals.
-
-## Lifecycle integrity hardening
-
-The lifecycle manager uses the same canonical Plugin Package v1 payload digest as the package verifier. The digest covers sorted payload paths and bytes and excludes manifest.json, so installation and package inspection cannot disagree about a valid package.
-
-Complete uninstall is coordinated through an authoritative storage-owner boundary. Storage cleanup runs before the lifecycle record is removed; if cleanup fails, uninstall reports the failure and retains the lifecycle record so the installation is not silently orphaned.
-
-A running plugin is stopped before disable/uninstall completes. Runtime process output is redirected to a sink rather than an undrained pipe so noisy plugins cannot block on stdout/stderr.
