@@ -183,7 +183,7 @@ class PluginPackageVerifier:
                     raise PackageFormatError("plugin payload file exceeds maximum size")
         return bytes(data)
 
-    def inspect(self, package_path: Path) -> VerifiedPackage:
+    def inspect(self, package_path: Path, *, verify_signature: bool = True) -> VerifiedPackage:
         if not package_path.is_file():
             raise PackageFormatError("plugin package must be a file")
         try:
@@ -237,6 +237,9 @@ class PluginPackageVerifier:
         digest = self._payload_digest(payload)
         if digest.lower() != manifest.integrity.sha256.lower():
             raise PackageVerificationError("plugin package integrity verification failed")
+
+        if not verify_signature:
+            return VerifiedPackage(manifest=manifest, package_path=package_path, payload_digest=digest)
 
         signature = manifest.integrity.signature
         if signature is None:
