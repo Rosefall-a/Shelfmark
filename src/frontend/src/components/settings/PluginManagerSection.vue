@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, retryPlugin, revokePluginPermissions, type PluginSummary } from "../../services/plugins";
+const router=useRouter();
 const plugins=ref<PluginSummary[]>([]), loading=ref(true), error=ref(""), action=ref(""), selectedFile=ref<File|null>(null), installing=ref(false), installMessage=ref("");
 async function load(){loading.value=true;error.value="";try{plugins.value=await fetchPlugins()}catch(err){error.value=err instanceof Error?err.message:"Plugin manager is unavailable."}finally{loading.value=false}}
 async function run(id:string,operation:(id:string)=>Promise<void>){action.value=id;try{await operation(id);await load()}catch(err){error.value=err instanceof Error?err.message:"Plugin action failed."}finally{action.value=""}}
@@ -14,6 +16,7 @@ async function installSelected(){
     if (result.trust_warning) window.alert(result.trust_warning);
     selectedFile.value=null;
     await load();
+    if (result.permissions_requested > 0) await router.push({ path: "/settings", query: { section: "plugin-permissions", plugin: result.plugin_id } });
   } catch(err) {
     error.value=err instanceof Error?err.message:"Plugin installation failed.";
   } finally { installing.value=false; }
