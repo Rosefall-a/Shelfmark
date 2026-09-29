@@ -19,7 +19,7 @@ Each sandbox gets:
 - explicit, non-inherited environment variables;
 - CPU, address-space, open-file and process-count limits.
 
-The Docker service additionally has no core network membership, no host port,
+The Docker service additionally has no core database-network membership, no host port,
 no host filesystem or Docker socket, a read-only root filesystem, dropped
 capabilities, no-new-privileges, and bounded container resources.
 

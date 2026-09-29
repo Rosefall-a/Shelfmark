@@ -12,6 +12,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - core
   backend:
     build:
       context: ./src/backend
@@ -21,7 +23,7 @@ services:
       PYTHONUNBUFFERED: 1
       STARTUP_MODE: ${STARTUP_MODE:-} # dev/development skips post-install setup; testing uses testing/development defaults with setup UI; empty/other uses normal defaults with setup UI
       PLUGIN_RUNTIME_URL: http://plugin-runtime:8000
-      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:-dev-only-plugin-runtime-token-change-me-please}
+      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}
     env_file:
       - .env
     volumes:
@@ -32,6 +34,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - core
+      - plugin_gateway
 
   plugin-runtime:
     build:
@@ -39,7 +44,7 @@ services:
       dockerfile: src/plugin-runtime/Dockerfile
     restart: unless-stopped
     environment:
-      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:-dev-only-plugin-runtime-token-change-me-please}
+      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}
       PLUGIN_RUNTIME_HOST: 0.0.0.0
       PLUGIN_RUNTIME_PORT: "8000"
     read_only: true
@@ -56,6 +61,8 @@ services:
       - "8000"
     volumes:
       - plugin_data:/var/lib/unnamed-tracking/plugins
+    networks:
+      - plugin_gateway
     healthcheck:
       test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8000/health" ]
       interval: 10s
@@ -76,6 +83,8 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    networks:
+      - core
   #app:
   #  build:
   #    context: .
@@ -94,3 +103,8 @@ services:
 volumes:
   pgdata:
   plugin_data:
+
+networks:
+  core:
+  plugin_gateway:
+    internal: true

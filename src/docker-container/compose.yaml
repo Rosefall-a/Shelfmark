@@ -11,14 +11,23 @@ services:
       PRIMARY_USER_EMAIL: ${PRIMARY_USER_EMAIL:-admin@example.invalid}
       PRIMARY_USER_PASSWORD: ${PRIMARY_USER_PASSWORD:?Set PRIMARY_USER_PASSWORD in .env}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      PLUGIN_RUNTIME_URL: http://plugin-runtime:8000
+      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}
     volumes:
       - ./data:/data
+    networks:
+      - core
+      - plugin_gateway
 
   plugin-runtime:
     build:
       context: ../..
       dockerfile: src/plugin-runtime/Dockerfile
     restart: unless-stopped
+    environment:
+      PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}
+      PLUGIN_RUNTIME_HOST: 0.0.0.0
+      PLUGIN_RUNTIME_PORT: "8000"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
@@ -34,7 +43,7 @@ services:
     volumes:
       - plugin_data:/var/lib/unnamed-tracking/plugins
     networks:
-      - plugin_runtime
+      - plugin_gateway
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8000/health"]
       interval: 10s
@@ -56,9 +65,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - core
 
 networks:
-  plugin_runtime:
+  core:
+  plugin_gateway:
     internal: true
 
 volumes:
