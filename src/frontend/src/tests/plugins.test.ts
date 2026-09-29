@@ -6,16 +6,18 @@ import {
   retryPlugin,
   revokePluginPermissions,
   installPlugin,
+  previewPluginInstall,
   UntrustedPluginError,
 } from "../services/plugins";
 
 describe("plugin management service", () => {
   it("uses the gateway-facing plugin lifecycle endpoints", async () => {
-    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
-      new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     );
     await fetchPlugins();
     await enablePlugin("example.plugin");
@@ -53,8 +55,69 @@ describe("plugin management service", () => {
         { status: 409 },
       ),
     );
-    const file = new File([new Uint8Array([80, 75, 3, 4])], "example.ui-playground-1.0.0.utp");
-    await expect(installPlugin(file)).rejects.toBeInstanceOf(UntrustedPluginError);
+    const file = new File(
+      [new Uint8Array([80, 75, 3, 4])],
+      "example.ui-playground-1.0.0.utp",
+    );
+    await expect(installPlugin(file, [])).rejects.toBeInstanceOf(
+      UntrustedPluginError,
+    );
+    mock.mockRestore();
+  });
+
+  it("previews package permissions before committing an installation", async () => {
+    const preview = {
+      plugin_id: "example.plugin",
+      name: "Example",
+      description: "Example plugin",
+      version: "1.0.0",
+      publisher: "official-test",
+      digest: "a".repeat(64),
+      trust_status: "trusted" as const,
+      trust_warning: null,
+      sdk_version_range: "^1.0.0",
+      application_version_range: "*",
+      dependencies: [],
+      permissions: [
+        {
+          key: "games.read:v1",
+          capability: "games.read",
+          capability_version: 1,
+          rationale: "Read the game library.",
+        },
+      ],
+      ui: { pages: ["main"], menus: ["main"], has_custom_frontend: false },
+    };
+    const mock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(preview), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...preview,
+            installation_id: "installation",
+            permissions_requested: 1,
+            permissions_granted: 1,
+            permissions_denied: 0,
+            status: "installed",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "example.utp");
+
+    await expect(previewPluginInstall(file)).resolves.toEqual(preview);
+    await installPlugin(file, ["games.read:v1"]);
+
+    expect(String(mock.mock.calls[0][0])).toBe("/api/plugins/install/preview");
+    expect(String(mock.mock.calls[1][0])).toContain(
+      "approved_permissions=games.read%3Av1",
+    );
     mock.mockRestore();
   });
 

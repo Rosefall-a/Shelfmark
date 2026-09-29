@@ -45,9 +45,12 @@ class FakeClient:
         self.package: bytes | None = None
         self.filename = ""
 
-    async def install_package(self, package: bytes, filename: str) -> dict[str, str]:
+    async def install_package(
+        self, package: bytes, filename: str, *, installation_id: str
+    ) -> dict[str, str]:
         self.package = package
         self.filename = filename
+        self.installation_id = installation_id
         return {"status": "installed"}
 
 
@@ -121,7 +124,7 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
     assert client.package == package_bytes()
     assert client.filename == "example-upload.utp"
     assert result["trust_status"] == "untrusted"
-    assert "Untrusted signing key" in result["trust_warning"]
+    assert "signature could not be verified" in result["trust_warning"]
 
 
 def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) -> None:
@@ -142,12 +145,54 @@ def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) ->
         async def commit(self): pass
         async def rollback(self): pass
 
+    db = FakeDb()
     result = asyncio.run(
-        plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb())
+        plugins.install_plugin(
+            upload,
+            allow_untrusted=True,
+            approved_permissions=["notifications.send:v1"],
+            admin=object(),
+            db=db,
+        )
     )
     assert result["plugin_id"] == "example.ui-playground"
     assert result["trust_status"] == "untrusted"
+    assert result["permissions_granted"] == 1
+    assert result["permissions_denied"] == 0
+    assert {type(row).__name__ for row in db.rows} == {
+        "PluginPermissionRequest",
+        "PluginPermissionGrant",
+        "PluginPermissionAudit",
+    }
     assert client.package == frontend_package_bytes()
+
+
+def test_upload_preview_is_static_and_lists_requested_permissions(monkeypatch) -> None:
+    client = FakeClient()
+    monkeypatch.setattr(plugins, "_client", client)
+    monkeypatch.setattr(
+        plugins,
+        "_plugin_package_verifier",
+        lambda: PluginPackageVerifier(require_signature=True),
+    )
+    upload = UploadFile(
+        file=io.BytesIO(frontend_package_bytes()),
+        filename="example.ui-playground-1.0.0.utp",
+    )
+
+    preview = asyncio.run(plugins.preview_plugin_install(upload, admin=object()))
+
+    assert preview["plugin_id"] == "example.ui-playground"
+    assert preview["trust_status"] == "untrusted"
+    assert preview["permissions"] == [
+        {
+            "key": "notifications.send:v1",
+            "capability": "notifications.send",
+            "capability_version": 1,
+            "rationale": "Send page announcements.",
+        }
+    ]
+    assert client.package is None
 
 
 def test_upload_endpoint_rejects_non_utp() -> None:

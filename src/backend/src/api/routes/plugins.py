@@ -12,13 +12,14 @@ from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
+from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeRequestError, PluginRuntimeUnavailable
@@ -36,6 +37,8 @@ class PluginSettingsIn(BaseModel):
 
 
 _MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
+
+
 def _plugin_package_verifier() -> PluginPackageVerifier:
     configured_path = os.getenv("PLUGIN_TRUSTED_PUBLISHER_REGISTRY")
     try:
@@ -53,70 +56,190 @@ def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
+async def _store_plugin_upload(file: UploadFile, prefix: str) -> tuple[Path, str, int]:
+    filename = file.filename or ""
+    if not filename.lower().endswith(".utp"):
+        raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
+    with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".utp", delete=False) as handle:
+        path = Path(handle.name)
+        total = 0
+        too_large = False
+        while chunk := await file.read(1024 * 1024):
+            total += len(chunk)
+            if total > _MAX_PLUGIN_PACKAGE_BYTES:
+                too_large = True
+                break
+            handle.write(chunk)
+    if too_large:
+        path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=413,
+            detail="Plugin package exceeds the 64 MiB upload limit.",
+        )
+    return path, filename, total
+
+
+def _inspect_install_candidate(path: Path) -> tuple[Any, str, str | None]:
+    verifier = _plugin_package_verifier()
+    try:
+        return verifier.inspect(path, verify_signature=True), "trusted", None
+    except PackageVerificationError as signature_error:
+        try:
+            candidate = verifier.inspect(path, verify_signature=False)
+        except (PackageFormatError, PackageVerificationError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "package_verification_failed", "message": str(exc)},
+            ) from signature_error
+        return candidate, "untrusted", "Publisher signature could not be verified."
+    except PackageFormatError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "package_format_invalid", "message": str(exc)},
+        ) from exc
+
+
+def _permission_key(name: str, version: int) -> str:
+    return f"{name}:v{version}"
+
+
+def _install_preview(verified: Any, trust_status: str, trust_warning: str | None) -> dict[str, Any]:
+    manifest = verified.manifest
+    return {
+        "plugin_id": manifest.plugin_id,
+        "name": manifest.name,
+        "description": manifest.description,
+        "version": manifest.version,
+        "publisher": manifest.integrity.key_id,
+        "digest": manifest.integrity.sha256,
+        "trust_status": trust_status,
+        "trust_warning": trust_warning,
+        "sdk_version_range": manifest.sdk_version_range,
+        "application_version_range": manifest.application_version_range,
+        "dependencies": [
+            {
+                "plugin_id": dependency.plugin_id,
+                "version_range": dependency.version_range,
+                "optional": dependency.optional,
+            }
+            for dependency in manifest.dependencies
+        ],
+        "permissions": [
+            {
+                "key": _permission_key(
+                    permission.capability.name.value,
+                    permission.capability.version,
+                ),
+                "capability": permission.capability.name.value,
+                "capability_version": permission.capability.version,
+                "rationale": permission.rationale,
+            }
+            for permission in manifest.permissions
+        ],
+        "ui": {
+            "pages": list(manifest.ui.pages),
+            "menus": list(manifest.ui.menus),
+            "has_custom_frontend": manifest.frontend is not None,
+        },
+    }
+
+
+@router.post("/install/preview")
+async def preview_plugin_install(
+    file: UploadFile = File(...),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """Statically inspect an upload for consent without installing or executing it."""
+    del admin
+    path: Path | None = None
+    try:
+        path, filename, total = await _store_plugin_upload(file, "plugin-preview-")
+        verified, trust_status, trust_warning = _inspect_install_candidate(path)
+        logger.info(
+            "Plugin install preview validated: plugin_id=%s version=%s filename=%r bytes=%d trust=%s",
+            verified.manifest.plugin_id,
+            verified.manifest.version,
+            filename,
+            total,
+            trust_status,
+        )
+        return _install_preview(verified, trust_status, trust_warning)
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
+        await file.close()
+
+
 @router.post("/install", status_code=201)
 async def install_plugin(
     file: UploadFile = File(...),
     allow_untrusted: bool = False,
+    approved_permissions: list[str] | None = Query(default=None),
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Verify a .utp package, request declared permissions, then transfer it to the isolated runtime."""
-    temporary_path: str | None = None
+    """Commit a previewed package and the administrator's explicit permission decisions."""
+    temporary_path: Path | None = None
     try:
-        filename = file.filename or ""
-        if not filename.lower().endswith(".utp"):
-            raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
-        with tempfile.NamedTemporaryFile(prefix="plugin-upload-", suffix=".utp", delete=False) as handle:
-            temporary_path = handle.name
-            total = 0
-            while chunk := await file.read(1024 * 1024):
-                total += len(chunk)
-                if total > _MAX_PLUGIN_PACKAGE_BYTES:
-                    raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
-                handle.write(chunk)
-
-        logger.info("Plugin install upload received: filename=%r bytes=%d allow_untrusted=%s", filename, total, allow_untrusted)
-        verifier = _plugin_package_verifier()
-        try:
-            verified = verifier.inspect(Path(temporary_path), verify_signature=not allow_untrusted)
-        except PackageVerificationError as exc:
-            logger.warning("Plugin install verification failed: filename=%r allow_untrusted=%s reason=%s", filename, allow_untrusted, exc)
-            if allow_untrusted:
-                raise HTTPException(status_code=400, detail={"code": "package_verification_failed", "message": str(exc)}) from exc
-            try:
-                candidate = verifier.inspect(Path(temporary_path), verify_signature=False)
-            except PackageVerificationError as candidate_exc:
-                logger.error("Plugin install package integrity validation failed; cannot offer untrusted bypass: filename=%r reason=%s", filename, candidate_exc)
-                raise HTTPException(status_code=400, detail={"code": "package_verification_failed", "message": str(candidate_exc)}) from exc
-            logger.info("Plugin install is structurally valid but publisher is untrusted: plugin_id=%s version=%s key_id=%r", candidate.manifest.plugin_id, candidate.manifest.version, candidate.manifest.integrity.key_id)
+        temporary_path, filename, total = await _store_plugin_upload(file, "plugin-upload-")
+        verified, trust_status, trust_warning = _inspect_install_candidate(temporary_path)
+        if trust_status == "untrusted" and not allow_untrusted:
             raise HTTPException(status_code=409, detail={
                 "code": "untrusted_plugin",
-                "message": "This plugin has an invalid signature/untrusted publisher. Install it?",
-                "plugin_id": candidate.manifest.plugin_id,
-                "name": candidate.manifest.name,
-                "version": candidate.manifest.version,
-                "publisher": candidate.manifest.integrity.key_id,
-            }) from exc
-        except PackageFormatError as exc:
-            logger.error("Plugin install package format validation failed: filename=%r reason=%s", filename, exc)
-            raise HTTPException(status_code=400, detail={"code": "package_format_invalid", "message": str(exc)}) from exc
+                "message": "The plugin publisher is not trusted. Explicit untrusted consent is required.",
+                **_install_preview(verified, trust_status, trust_warning),
+            })
 
-        package = Path(temporary_path).read_bytes()
+        package = temporary_path.read_bytes()
         installation_id = uuid4()
-        permission_requests = [
-            PluginPermissionRequest(
+        declared_keys = {
+            _permission_key(permission.capability.name.value, permission.capability.version)
+            for permission in verified.manifest.permissions
+        }
+        approved_keys = set(approved_permissions if isinstance(approved_permissions, list) else ())
+        if not approved_keys.issubset(declared_keys):
+            raise HTTPException(status_code=400, detail="Consent contains an undeclared permission.")
+        resolved_at = int(time.time())
+        permission_requests: list[PluginPermissionRequest] = []
+        permission_grants: list[PluginPermissionGrant] = []
+        permission_audits: list[PluginPermissionAudit] = []
+        for permission in verified.manifest.permissions:
+            capability = permission.capability.name.value
+            version = permission.capability.version
+            approved = _permission_key(capability, version) in approved_keys
+            permission_requests.append(PluginPermissionRequest(
                 plugin_id=verified.manifest.plugin_id,
                 installation_id=installation_id,
-                capability=permission.capability.name.value,
-                capability_version=permission.capability.version,
+                capability=capability,
+                capability_version=version,
                 rationale=permission.rationale,
-                status="pending",
-            )
-            for permission in verified.manifest.permissions
-        ]
-        db.add_all(permission_requests)
+                status="approved" if approved else "denied",
+                resolved_at=resolved_at,
+                resolved_by=getattr(admin, "id", None),
+            ))
+            if approved:
+                permission_grants.append(PluginPermissionGrant(
+                    plugin_id=verified.manifest.plugin_id,
+                    installation_id=installation_id,
+                    capability=capability,
+                    capability_version=version,
+                ))
+            permission_audits.append(PluginPermissionAudit(
+                plugin_id=verified.manifest.plugin_id,
+                installation_id=installation_id,
+                capability=capability,
+                capability_version=version,
+                user_id=getattr(admin, "id", None),
+                decision="allowed" if approved else "denied",
+                reason="administrator install consent",
+            ))
+        db.add_all([*permission_requests, *permission_grants, *permission_audits])
         try:
-            result = await _client.install_package(package, filename)
+            result = await _client.install_package(
+                package,
+                filename,
+                installation_id=str(installation_id),
+            )
         except PluginRuntimeRequestError as exc:
             await db.rollback()
             raise _runtime_request_error(exc) from exc
@@ -124,11 +247,15 @@ async def install_plugin(
             await db.rollback()
             raise _runtime_error(exc) from exc
         await db.commit()
-        trust_status = "trusted"
-        trust_warning = None
-        if verified.manifest.integrity.signature is None:
-            trust_status = "untrusted"
-            trust_warning = "Untrusted signing key: this plugin is unsigned."
+        logger.info(
+            "Plugin install committed: plugin_id=%s installation_id=%s bytes=%d granted=%d denied=%d trust=%s",
+            verified.manifest.plugin_id,
+            installation_id,
+            total,
+            len(permission_grants),
+            len(permission_requests) - len(permission_grants),
+            trust_status,
+        )
         return {
             "plugin_id": verified.manifest.plugin_id,
             "version": verified.manifest.version,
@@ -136,13 +263,15 @@ async def install_plugin(
             "publisher": verified.manifest.integrity.key_id,
             "installation_id": str(installation_id),
             "permissions_requested": len(permission_requests),
+            "permissions_granted": len(permission_grants),
+            "permissions_denied": len(permission_requests) - len(permission_grants),
             "trust_status": trust_status,
             "trust_warning": trust_warning,
             "status": result.get("status", "installed"),
         }
     finally:
-        if temporary_path:
-            Path(temporary_path).unlink(missing_ok=True)
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
         await file.close()
 
 

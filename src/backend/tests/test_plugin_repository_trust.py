@@ -82,10 +82,23 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     class RuntimeClient:
         package_bytes: bytes | None = None
 
-        async def install_package(self, package_bytes: bytes, filename: str) -> dict[str, str]:
+        async def install_package(
+            self, package_bytes: bytes, filename: str, *, installation_id: str
+        ) -> dict[str, str]:
+            del installation_id
             self.package_bytes = package_bytes
             assert filename.endswith(".utp")
             return {"status": "installed"}
+
+    class FakeDb:
+        def add_all(self, rows):
+            self.rows = rows
+
+        async def commit(self):
+            pass
+
+        async def rollback(self):
+            pass
 
     runtime_client = RuntimeClient()
     monkeypatch.setattr(plugins, "_client", runtime_client)
@@ -93,7 +106,7 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
 
     source = package.read_bytes()
     upload = UploadFile(file=io.BytesIO(source), filename=package.name)
-    result = asyncio.run(plugins.install_plugin(upload, object()))
+    result = asyncio.run(plugins.install_plugin(upload, admin=object(), db=FakeDb()))
     assert result["status"] == "installed"
     assert runtime_client.package_bytes == source
 
@@ -101,6 +114,6 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     _write_modified_package(package, tampered)
     upload = UploadFile(file=io.BytesIO(tampered.read_bytes()), filename=tampered.name)
     with pytest.raises(Exception) as error:
-        asyncio.run(plugins.install_plugin(upload, object()))
+        asyncio.run(plugins.install_plugin(upload, admin=object(), db=FakeDb()))
     assert getattr(error.value, "status_code", None) == 400
     assert runtime_client.package_bytes == source

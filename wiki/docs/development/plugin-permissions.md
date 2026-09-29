@@ -3,11 +3,12 @@
 The permission gateway is default-deny and is enforced at the gateway rather than by plugin UI.
 
 ## Administrator workflow
-1. A plugin submits a capability/version request with a human-readable rationale.
-2. An administrator reviews it in **Settings → Plugin Permissions**.
-3. The administrator approves or denies the request.
-4. Active grants can be revoked at any time.
-5. Grants are scoped to the plugin installation and may be narrowed to a user or device.
+1. The Plugin Manager statically verifies an uploaded package and displays its identity, publisher trust, dependencies, UI contribution summary, and every requested capability before installation.
+2. An administrator explicitly allows or denies each capability in the contextual install dialog. Permissions default to denied.
+3. The package is uploaded again for installation, re-verified, and rejected if the approved capability keys do not match its manifest.
+4. Later requests (for example, permissions introduced by an update) are reviewed in that plugin's **Settings → Permissions** tab.
+5. Active grants can be revoked at any time from the same dialog.
+6. Grants are scoped to the plugin installation and may be narrowed to a user or device.
 
 Manifest declarations never grant access by themselves.
 
@@ -39,4 +40,6 @@ Risk is a presentation aid for administrator review; it never changes authorizat
 
 ## Installation review
 
-When an installation declares permissions, the Plugin Manager sends the administrator directly to **Settings → Plugin Permissions**, focused on the newly installed plugin. Pending requests must be approved before the plugin can be enabled, and actions requiring a capability are rejected until an active grant exists.
+Installation is a preview-and-commit flow. Preview never installs or executes the package. The administrator's choices are persisted as resolved permission requests during installation, with grants created only for explicitly allowed capabilities. Unsigned or untrusted packages require a separate warning acknowledgement in the same dialog.
+
+Permission management is contextual to each plugin; there is no separate global permission-review page. Pending requests must be approved before actions requiring those capabilities can succeed.

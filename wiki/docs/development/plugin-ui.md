@@ -6,6 +6,8 @@ The frontend host consumes the versioned PluginUiDocument contract and renders a
 
 The v1 contract covers settings fields, validation, secrets, select options, actions, tables, dialogs, menus, and pages. Secret values are write-only and never included in schema defaults.
 
+Installed plugins are managed through a per-plugin dialog with Overview, Settings, Permissions, and Diagnostics tabs. The Settings tab renders the plugin's native UI declaration; lifecycle controls, permission review/revocation, and runtime output remain host-owned controls.
+
 ## Security
 
 UI declarations do not grant capabilities. Actions are sent through the authenticated gateway and are authorized independently. The host never evaluates plugin-supplied JavaScript or HTML.

@@ -1,0 +1,398 @@
+<script setup lang="ts">
+import { nextTick, ref, watch } from "vue";
+import type {
+  PluginPermissionGrant,
+  PluginPermissionRequest,
+} from "../../services/pluginPermissions";
+import type { PluginSummary } from "../../services/plugins";
+import type {
+  PluginUiDocument,
+  UiAction,
+  UiValues,
+} from "../../services/pluginUi";
+import PluginUiHost from "./PluginUiHost.vue";
+
+const props = defineProps<{
+  plugin: PluginSummary;
+  document: PluginUiDocument | null;
+  grants: PluginPermissionGrant[];
+  requests: PluginPermissionRequest[];
+  logs: string[];
+  loading: boolean;
+  busy: boolean;
+}>();
+const emit = defineEmits<{
+  close: [];
+  save: [values: UiValues];
+  action: [action: UiAction, values: UiValues];
+  enable: [];
+  disable: [];
+  retry: [];
+  revoke: [grantId: string];
+  approve: [requestId: string];
+  deny: [requestId: string];
+  refresh: [];
+}>();
+
+type Tab = "overview" | "settings" | "permissions" | "diagnostics";
+const tab = ref<Tab>("overview");
+const closeButton = ref<HTMLButtonElement | null>(null);
+
+watch(
+  () => props.plugin.plugin_id,
+  async () => {
+    tab.value = "overview";
+    await nextTick();
+    closeButton.value?.focus();
+  },
+  { immediate: true },
+);
+</script>
+
+<template>
+  <Teleport to="body">
+    <div
+      class="modal-backdrop"
+      @click.self="emit('close')"
+      @keydown.esc="emit('close')"
+    >
+      <section
+        class="plugin-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plugin-dialog-title"
+      >
+        <header class="dialog-header">
+          <div>
+            <p class="eyebrow">Plugin settings</p>
+            <h2 id="plugin-dialog-title">{{ plugin.name }}</h2>
+            <p>{{ plugin.plugin_id }} · v{{ plugin.version }}</p>
+          </div>
+          <button
+            ref="closeButton"
+            type="button"
+            aria-label="Close plugin settings"
+            @click="emit('close')"
+          >
+            Close
+          </button>
+        </header>
+
+        <nav aria-label="Plugin settings sections">
+          <button
+            v-for="item in [
+              'overview',
+              'settings',
+              'permissions',
+              'diagnostics',
+            ] as Tab[]"
+            :key="item"
+            type="button"
+            :class="{ active: tab === item }"
+            @click="tab = item"
+          >
+            {{ item[0].toUpperCase() + item.slice(1) }}
+          </button>
+        </nav>
+
+        <p v-if="loading" class="state">Loading plugin details…</p>
+        <template v-else>
+          <section v-if="tab === 'overview'" class="panel">
+            <dl class="overview-grid">
+              <div>
+                <dt>Status</dt>
+                <dd>{{ plugin.status }}</dd>
+              </div>
+              <div>
+                <dt>Health</dt>
+                <dd>{{ plugin.health }}</dd>
+              </div>
+              <div>
+                <dt>Enabled</dt>
+                <dd>{{ plugin.enabled ? "Yes" : "No" }}</dd>
+              </div>
+              <div>
+                <dt>Compatibility</dt>
+                <dd>
+                  {{
+                    plugin.compatible
+                      ? "Compatible"
+                      : plugin.compatibility_reason
+                  }}
+                </dd>
+              </div>
+            </dl>
+            <div class="actions">
+              <button
+                v-if="plugin.enabled"
+                type="button"
+                :disabled="busy"
+                @click="emit('disable')"
+              >
+                Disable
+              </button>
+              <button
+                v-else
+                type="button"
+                :disabled="busy || !plugin.compatible"
+                class="primary"
+                @click="emit('enable')"
+              >
+                Enable
+              </button>
+              <button
+                v-if="
+                  plugin.status === 'failed' || plugin.status === 'quarantined'
+                "
+                type="button"
+                :disabled="busy"
+                @click="emit('retry')"
+              >
+                Retry
+              </button>
+            </div>
+          </section>
+
+          <section v-else-if="tab === 'settings'" class="panel">
+            <PluginUiHost
+              v-if="document"
+              :document="document"
+              @save="emit('save', $event)"
+              @action="(item, values) => emit('action', item, values)"
+            />
+            <p v-else class="state">
+              This plugin does not expose configurable settings or actions.
+            </p>
+          </section>
+
+          <section v-else-if="tab === 'permissions'" class="panel">
+            <p class="state">
+              Permissions are enforced by the gateway and can be revoked
+              immediately.
+            </p>
+            <article
+              v-for="request in requests"
+              :key="request.id"
+              class="grant pending"
+            >
+              <div>
+                <strong>{{ request.capability }}</strong>
+                <small
+                  >v{{ request.capability_version }} · Pending request</small
+                >
+                <p>{{ request.rationale }}</p>
+              </div>
+              <div class="request-actions">
+                <button
+                  type="button"
+                  :disabled="busy"
+                  @click="emit('deny', request.id)"
+                >
+                  Deny
+                </button>
+                <button
+                  type="button"
+                  :disabled="busy"
+                  class="primary"
+                  @click="emit('approve', request.id)"
+                >
+                  Allow
+                </button>
+              </div>
+            </article>
+            <p v-if="!grants.length" class="state">
+              No permission grants are recorded for this plugin.
+            </p>
+            <article v-for="grant in grants" :key="grant.id" class="grant">
+              <div>
+                <strong>{{ grant.capability }}</strong>
+                <small
+                  >v{{ grant.capability_version }} ·
+                  {{
+                    grant.user_id
+                      ? `User ${grant.user_id}`
+                      : "All authenticated users"
+                  }}</small
+                >
+              </div>
+              <button
+                v-if="grant.active"
+                type="button"
+                :disabled="busy"
+                class="danger"
+                @click="emit('revoke', grant.id)"
+              >
+                Revoke
+              </button>
+              <span v-else>Revoked</span>
+            </article>
+          </section>
+
+          <section v-else class="panel diagnostics">
+            <div class="diagnostic-heading">
+              <h3>Runtime diagnostics</h3>
+              <button type="button" :disabled="busy" @click="emit('refresh')">
+                Refresh
+              </button>
+            </div>
+            <pre v-if="logs.length">{{ logs.join("\n") }}</pre>
+            <p v-else class="state">No runtime diagnostics are available.</p>
+          </section>
+        </template>
+      </section>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ui-z-dialog);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.plugin-dialog {
+  width: min(980px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 24px;
+  background: #151515;
+  color: #f4f4f4;
+  border: 1px solid #3b3b3b;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+}
+.dialog-header,
+.diagnostic-heading,
+.actions,
+.grant,
+.request-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.pending {
+  border-color: #76512a;
+}
+.pending p {
+  margin: 6px 0 0;
+  color: #c9c9c9;
+}
+.dialog-header h2,
+.dialog-header p,
+h3 {
+  margin: 0;
+}
+.eyebrow {
+  color: #d68a34 !important;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.dialog-header p,
+.state,
+small,
+dt,
+.grant > span {
+  color: #aaa;
+}
+.dialog-header > button,
+nav button,
+.actions button,
+.grant button,
+.diagnostic-heading button {
+  padding: 8px 12px;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #242424;
+  color: #eee;
+  cursor: pointer;
+}
+nav {
+  display: flex;
+  gap: 6px;
+  overflow: auto;
+  margin: 20px 0;
+  border-bottom: 1px solid #303030;
+}
+nav button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+}
+nav button.active {
+  color: #f3a657;
+  border-bottom-color: #d68a34;
+}
+.panel {
+  min-height: 220px;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.overview-grid div {
+  padding: 14px;
+  background: #0d0d0d;
+  border-radius: 9px;
+}
+.overview-grid dd {
+  margin: 5px 0 0;
+}
+.actions {
+  justify-content: flex-start;
+  margin-top: 18px;
+}
+.actions .primary {
+  background: #d68a34;
+  color: #111;
+  border-color: #d68a34;
+  font-weight: 700;
+}
+.grant {
+  padding: 13px 0;
+  border-bottom: 1px solid #303030;
+}
+.grant > div {
+  display: grid;
+  gap: 4px;
+}
+.grant .danger {
+  border-color: #8b3434;
+  color: #fecaca;
+}
+.diagnostics pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: 14px;
+  background: #080808;
+  border-radius: 9px;
+  color: #d9e6d9;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (max-width: 620px) {
+  .modal-backdrop {
+    padding: 0;
+  }
+  .plugin-dialog {
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

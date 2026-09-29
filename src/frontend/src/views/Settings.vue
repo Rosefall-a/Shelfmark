@@ -24,7 +24,6 @@ import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
-import PluginPermissionsSection from "../components/settings/PluginPermissionsSection.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
 
 const router = useRouter();
@@ -73,8 +72,9 @@ const groups = computed<SettingsGroup[]>(() => {
       ? [{ id: "server-integrations", label: "Server Integrations" }]
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
-    ...(currentUser.value?.is_admin ? [{ id: "plugins", label: "Plugins" }] : []),
-    ...(currentUser.value?.is_admin ? [{ id: "plugin-permissions", label: "Plugin Permissions" }] : []),
+    ...(currentUser.value?.is_admin
+      ? [{ id: "plugins", label: "Plugins" }]
+      : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
       ? [{ id: "tasks", label: "Tasks", comingSoon: true }]
@@ -91,8 +91,7 @@ const activeSection = ref((route.query.section as string) || "profile");
 watch(
   () => route.query.section,
   (section) => {
-    const next =
-      typeof section === "string" && section ? section : "profile";
+    const next = typeof section === "string" && section ? section : "profile";
     if (activeSection.value !== next) activeSection.value = next;
   },
 );
@@ -168,9 +167,6 @@ watch(activeSection, async () => {
           />
           <PluginManagerSection
             v-else-if="activeSection === 'plugins' && currentUser?.is_admin"
-          />
-          <PluginPermissionsSection
-            v-else-if="activeSection === 'plugin-permissions' && currentUser?.is_admin"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
           <template v-else-if="activeSection === 'export'">
