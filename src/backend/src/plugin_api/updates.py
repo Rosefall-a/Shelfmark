@@ -273,8 +273,11 @@ class UpdateStore:
         pointer = root / self.POINTER
         if pointer.is_file():
             pointer.unlink()
-            with root.open("rb") as handle:
-                os.fsync(handle.fileno())
+            directory_fd = os.open(root, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def atomically_set_active(
         self,
@@ -293,8 +296,11 @@ class UpdateStore:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, pointer)
-        with root.open("rb") as handle:
-            os.fsync(handle.fileno())
+        directory_fd = os.open(root, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     def versions(self, plugin_id: str) -> tuple[str, ...]:
         versions = self._plugin_root(plugin_id) / "versions"
