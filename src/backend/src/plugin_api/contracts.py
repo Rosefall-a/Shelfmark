@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from enum import StrEnum
 import re
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -487,11 +487,15 @@ class UiField(ContractModel):
                     raise ValueError(f"default value does not match field type {self.type.value}")
             elif not isinstance(self.default, expected):
                 raise ValueError(f"default value does not match field type {self.type.value}")
-            if self.type is UiFieldType.MULTISELECT and not all(isinstance(value, str) for value in self.default):
-                raise ValueError("multiselect defaults must contain only strings")
-            if self.type in {UiFieldType.SELECT, UiFieldType.MULTISELECT}:
-                values = (self.default,) if self.type is UiFieldType.SELECT else self.default
-                if any(value not in option_values for value in values):
+            if self.type is UiFieldType.MULTISELECT:
+                default_values = cast(tuple[str, ...], self.default)
+                if not all(isinstance(value, str) for value in default_values):
+                    raise ValueError("multiselect defaults must contain only strings")
+                if any(value not in option_values for value in default_values):
+                    raise ValueError("default value must use declared options")
+            elif self.type is UiFieldType.SELECT:
+                default_value = cast(str, self.default)
+                if default_value not in option_values:
                     raise ValueError("default value must use declared options")
         return self
 
