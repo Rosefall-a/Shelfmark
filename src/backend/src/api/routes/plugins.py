@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -261,8 +261,12 @@ class PluginGatewayIn(BaseModel):
 
 
 @router.post("/runtime/gateway")
-async def plugin_gateway(payload: PluginGatewayIn, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    if not runtime_token_is_valid(os.getenv("PLUGIN_RUNTIME_TOKEN")):
+async def plugin_gateway(
+    payload: PluginGatewayIn,
+    db: AsyncSession = Depends(get_db),
+    runtime_token: str | None = Header(default=None, alias="X-Plugin-Runtime-Token"),
+) -> dict[str, Any]:
+    if not runtime_token_is_valid(runtime_token):
         raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
     try:
         result = await dispatch_gateway_request(
