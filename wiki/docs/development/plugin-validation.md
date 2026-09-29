@@ -32,30 +32,25 @@ The test suite proves default-deny authorization, user-scoped event delivery,
 secret-field handling and independent plugin storage namespaces at the
 contract/harness boundary.
 
-## What is currently verified
+## Current cross-layer verification
 
-- Static manifest/API contracts can be validated without executing plugin code.
-- Capability authorization is default-deny and installation/user/device scoped.
-- Package integrity/signature verification has dedicated unit coverage.
-- Lifecycle failure, quarantine and safe-mode behavior have unit coverage.
-- Runtime policy validation has unit coverage for secret environment rejection,
-  default-deny network declarations and resource limits.
-- Declarative plugin UI validation has frontend unit coverage.
+The plugin-manager branch now has explicit coverage at each package boundary:
 
-## What is not yet verified
+- The host manifest contract accepts the optional `frontend.entry` declaration.
+- The host upload path has a regression fixture using the UI Playground manifest shape.
+- The plugin runtime rejects unsafe or missing declared frontend entries and serves a
+  complete bundled frontend through its namespaced frontend endpoint.
+- The frontend service covers the HTTP 409 untrusted-package response that drives the
+  explicit confirmation flow.
+- The plugin repository smoke-tests every real demo plugin's main logic, validates the
+  UI Playground frontend entry, and checks that its webhook secret is never emitted by
+  plugin code.
+- Plugin CI builds fresh unsigned demo packages, verifies payload integrity, and checks
+  every declared frontend entry against the package payload.
+- The runner keeps Discord webhook secrets inside private plugin storage and performs
+  host-side delivery only after the plugin requests it.
 
-The following require the production integration tracked by #320/#321:
-
-- real external plugin package installation;
-- authenticated application-to-runtime gateway transport;
-- execution of an external plugin process through the production lifecycle;
-- real enable/disable/re-enable behavior through application APIs;
-- restart/reconciliation of persisted plugin state;
-- production UI/settings/API routing;
-- permission enforcement over the real gateway transport;
-- staged update and rollback through the running runtime;
-- complete uninstall and plugin-owned storage cleanup;
-- cross-repository end-to-end execution of the example plugins.
-
-Until those checks pass, #272 should be considered contract-level validation
-rather than proof of production readiness.
+These are deterministic CI/unit/smoke checks; they are stronger than the former
+contract-only fixtures but are not a claim that a particular user's running Docker
+deployment has already been rebuilt and manually exercised. A deployment must use a
+plugin-manager image containing these changes and a newly generated plugin package.
