@@ -26,7 +26,7 @@ const errors = computed(() => {
 });
 function errorFor(field: UiField): string | undefined { return errors.value.find((item) => item.field === field.id)?.message; }
 function submit() { submitted.value = true; if (!errors.value.length) { const saved = Object.fromEntries(settings.value.flatMap((section) => section.fields.filter((field) => !field.secret).map((field) => [field.id, values.value[field.id]]))); emit("save", saved); } }
-function runAction(action: UiAction) { if (action.confirmation && !window.confirm(action.confirmation)) return; emit("action", action, { ...values.value, _plugin_context: { page_id: page.value?.id ?? "", page_title: page.value?.title ?? "", path: window.location.pathname } }); }
+function runAction(action: UiAction) { if (action.confirmation && !window.confirm(action.confirmation)) return; emit("action", action, { ...values.value, _plugin_context: JSON.stringify({ page_id: page.value?.id ?? "", page_title: page.value?.title ?? "", path: window.location.pathname }) }); }
 function goTo(pageId: string) { activePage.value = pageId; emit("navigate", pageId); }
 </script>
 
