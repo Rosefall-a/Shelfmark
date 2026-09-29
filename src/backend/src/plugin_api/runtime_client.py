@@ -77,8 +77,8 @@ class PluginRuntimeClient:
     async def save_settings(self, plugin_id: str, values: dict[str, Any]) -> None:
         await self._request("PUT", f"/plugins/{plugin_id}/settings", json=values)
 
-    async def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> None:
-        await self._request(
+    async def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(
             "POST", f"/plugins/{quote(plugin_id, safe='')}/actions/{quote(action_id, safe='')}",
             json={"values": values},
         )
