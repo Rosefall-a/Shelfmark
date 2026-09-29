@@ -66,7 +66,16 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
         async def commit(self): pass
         async def rollback(self): pass
 
-    result = asyncio.run(plugins.install_plugin(upload, object(), FakeDb()))
+    try:
+        asyncio.run(plugins.install_plugin(upload, object(), FakeDb()))
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 409
+        assert exc.detail["code"] == "untrusted_plugin"
+    else:
+        raise AssertionError("untrusted package was installed without confirmation")
+
+    upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example-upload.utp")
+    result = asyncio.run(plugins.install_plugin(upload, False, object(), FakeDb()))
 
     assert result["plugin_id"] == "example.upload"
     assert result["version"] == "1.0.0"
