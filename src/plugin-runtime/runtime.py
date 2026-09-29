@@ -146,9 +146,10 @@ class PluginSupervisor:
                 break
 
     def _serve_stderr(self, plugin_id: str, process: subprocess.Popen[bytes]) -> None:
-        if process.stderr is None:
+        stderr = getattr(process, "stderr", None)
+        if stderr is None:
             return
-        for raw in iter(process.stderr.readline, b""):
+        for raw in iter(stderr.readline, b""):
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
                 self._log(plugin_id, f"[stderr] {line}")
@@ -653,10 +654,6 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin action values must be JSON-compatible") from exc
         package, manifest = self.package(plugin_id)
         output = self.supervisor.execute(PluginSpec(plugin_id, self._action_command(handler)), package, payload)
-        if result.stderr:
-            for line in result.stderr.decode("utf-8", errors="replace").splitlines():
-                if line.strip():
-                    self._log(spec.plugin_id, f"[stderr] {line}")
         if output:
             try:
                 message = json.loads(output.decode("utf-8").strip())
