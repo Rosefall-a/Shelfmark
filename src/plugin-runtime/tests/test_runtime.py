@@ -197,3 +197,37 @@ def test_frontend_asset_is_namespaced(tmp_path) -> None:
     asset = registry.frontend("example.frontend", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "PG" in asset["content"]
+
+
+def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
+    from runtime import PluginSupervisor
+
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / ".settings.json").write_text(json.dumps({"display_mode": "dark"}), encoding="utf-8")
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work",
+        storage_root=tmp_path / "storage",
+        gateway_url="http://gateway",
+        gateway_token="x" * 32,
+    )
+    supervisor._package_paths["example.ui-api"] = package
+    assert supervisor._handle_gateway_request(
+        "example.ui-api",
+        {"method": "settings.get", "capability": "plugin.settings", "payload": {"key": "display_mode"}},
+    ) == {"payload": {"value": "dark"}}
+
+
+def test_runtime_digest_ignores_python_runtime_cache(tmp_path) -> None:
+    from runtime import PluginRegistry
+
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "plugin.py").write_text("def main(): pass\n", encoding="utf-8")
+    digest = PluginRegistry.digest(package)
+    cache = package / "__pycache__"
+    cache.mkdir()
+    (cache / "plugin.cpython-312.pyc").write_bytes(b"runtime-generated")
+    assert PluginRegistry.digest(package) == digest
+    (package / "plugin.py").write_text("def main(): return 1\n", encoding="utf-8")
+    assert PluginRegistry.digest(package) != digest
