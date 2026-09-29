@@ -252,6 +252,62 @@ def test_frontend_asset_is_namespaced(tmp_path) -> None:
     assert "PG" in asset["content"]
 
 
+def test_runtime_discord_action_reads_secret_from_private_storage(tmp_path, monkeypatch) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.discord"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(json.dumps({
+        "plugin_id": "example.discord",
+        "entrypoint": "plugin:main",
+        "capabilities": [{"name": "notifications.send", "version": 1}],
+        "permissions": [{
+            "capability": {"name": "notifications.send", "version": 1},
+            "rationale": "send notifications",
+        }],
+        "integrity": {"sha256": "0" * 64},
+    }), encoding="utf-8")
+    (package / "ui.json").write_text(json.dumps({
+        "plugin_id": "example.discord",
+        "actions": [{
+            "id": "announce",
+            "handler": "plugin:announce",
+            "capability": {"name": "notifications.send", "version": 1},
+        }],
+    }), encoding="utf-8")
+    (package / "plugin.py").write_text("", encoding="utf-8")
+    registry.supervisor._storage_quotas["example.discord"] = 1024
+    registry.supervisor._storage("example.discord").put(
+        "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
+    )
+
+    class FakeSupervisor:
+        def execute(self, spec, package_dir, payload):
+            return json.dumps({
+                "discord": True,
+                "content": "hello",
+            }).encode()
+
+    registry.supervisor.execute = FakeSupervisor().execute
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    delivered = []
+    monkeypatch.setattr(
+        registry,
+        "_discord_webhook",
+        lambda url, content: delivered.append((url, content)),
+    )
+    result = registry.action("example.discord", "announce", {})
+    assert result == {"completed": True}
+    assert delivered == [(
+        "https://discord.com/api/webhooks/test/secret",
+        "hello",
+    )]
+
+
 def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
     from runtime import PluginSupervisor
 
