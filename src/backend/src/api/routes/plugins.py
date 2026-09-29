@@ -126,6 +126,8 @@ async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
     del user
     try:
         return sorted(await _client.plugins(), key=lambda value: value["plugin_id"])
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
 
