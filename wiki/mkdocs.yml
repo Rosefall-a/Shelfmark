@@ -46,7 +46,7 @@ nav:
       - Production Docker Image: deployment/production-docker.md
       - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
   - Development:
-      - Overview: development/index.md
+      - Overview: development/architecture.md
       - Architecture: development/architecture.md
       - API: development/api.md
       - API Examples: development/api-examples.md
@@ -54,4 +54,5 @@ nav:
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Plugin Permissions & Scoped Identities: development/plugin-permissions.md
+      - Plugin Runtime Isolation: development/plugin-runtime.md
       - Contributing: development/contributing.md
