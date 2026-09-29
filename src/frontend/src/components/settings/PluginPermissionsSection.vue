@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
 import {
   fetchPluginClientIdentities, fetchPluginPermissionGrants, fetchPluginPermissionRequests,
   approvePluginPermission, denyPluginPermission, revokePluginClientIdentity, revokePluginPermission,
   type PluginClientIdentity, type PluginPermissionGrant, type PluginPermissionRequest,
 } from "../../services/pluginPermissions";
 
+const route = useRoute();
 const requests = ref<PluginPermissionRequest[]>([]);
 const grants = ref<PluginPermissionGrant[]>([]);
 const clients = ref<PluginClientIdentity[]>([]);
@@ -47,9 +49,9 @@ onMounted(load);
     <p v-if="loading">Loading plugin permissions…</p>
     <p v-else-if="error" class="error">{{ error }}</p>
     <template v-else>
-      <h3>Pending requests</h3>
-      <p v-if="!requests.some((item) => item.status === 'pending')" class="muted">No pending permission requests.</p>
-      <div v-for="item in requests.filter((entry) => entry.status === 'pending')" :key="item.id" class="row">
+      <h3>Pending requests<span v-if="route.query.plugin" class="focus"> for {{ route.query.plugin }}</span></h3>
+      <p v-if="!requests.some((item) => item.status === 'pending' && (!route.query.plugin || item.plugin_id === route.query.plugin))" class="muted">No pending permission requests for this plugin.</p>
+      <div v-for="item in requests.filter((entry) => entry.status === 'pending' && (!route.query.plugin || entry.plugin_id === route.query.plugin))" :key="item.id" class="row">
         <div><strong>{{ item.plugin_id }}</strong><span>{{ item.capability }} v{{ item.capability_version }}</span><small>Risk: <b>{{ riskLabel(item.capability) }}</b> · {{ item.rationale }}</small></div>
         <div class="actions"><button type="button" :disabled="action === item.id" @click="approve(item.id)">Grant</button><button type="button" :disabled="action === item.id" @click="deny(item.id)">Deny</button></div>
       </div>
@@ -71,6 +73,7 @@ onMounted(load);
 </template>
 
 <style scoped>
+.focus { color: #d68a34; }
 h2 { margin-top: 0; } h3 { margin: 28px 0 10px; } .muted { color: #aaa; } .error { color: #ff7b7b; }
 .row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 0; border-bottom:1px solid #2a2a2a; }
 .row div { display:grid; gap:4px; } .row span,.row small { color:#aaa; } .actions { display:flex; gap:8px; } button { cursor:pointer; } b { font-weight: 700; }
