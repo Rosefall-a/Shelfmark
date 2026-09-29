@@ -3,16 +3,16 @@
 FROM python:3.12-alpine
 
 RUN apk add --no-cache bubblewrap \
-    && addgroup -S pluginruntime \
-    && adduser -S -G pluginruntime pluginruntime
-    && mkdir -p /var/lib/unnamed-tracking/plugins
-    && chown -R pluginruntime:pluginruntime /var/lib/unnamed-tracking
+    && addgroup -S -g 10001 pluginruntime \
+    && adduser -S -D -u 10001 -G pluginruntime pluginruntime \
+    && mkdir -p /var/lib/unnamed-tracking/plugins \
+    && chown -R 10001:10001 /var/lib/unnamed-tracking
 
 WORKDIR /opt/plugin-runtime
 COPY src/plugin-runtime/runtime.py ./runtime.py
 COPY src/plugin-runtime/storage.py ./storage.py
 
-USER pluginruntime:pluginruntime
+USER 10001:10001
 
 ENV PLUGIN_RUNTIME_HOST=0.0.0.0
 ENV PLUGIN_RUNTIME_PORT=8000
