@@ -116,5 +116,6 @@ def issue_client_credential(
 
 __all__ = [
     "AuthorizationDecision", "ClientIdentity", "IssuedClientCredential",
-    "PermissionDecision", "PermissionGrant", "authorize_request", "authorize_request_with_audit",\n    "issue_client_credential",
+    "PermissionDecision", "PermissionGrant", "authorize_request", "authorize_request_with_audit",
+    "issue_client_credential",
 ]
