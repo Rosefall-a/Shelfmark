@@ -54,6 +54,7 @@ def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
 @router.post("/install", status_code=201)
 async def install_plugin(
     file: UploadFile = File(...),
+    allow_untrusted: bool = False,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
