@@ -388,6 +388,16 @@ class PluginManifest(ContractModel):
         permission_names = [permission.capability.name for permission in self.permissions]
         if len(permission_names) != len(set(permission_names)):
             raise ValueError("manifest contains duplicate permission declarations")
+        capability_versions = {
+            capability.name: capability.version for capability in self.capabilities
+        }
+        for permission in self.permissions:
+            declared_version = capability_versions.get(permission.capability.name)
+            if declared_version is None or declared_version != permission.capability.version:
+                raise ValueError(
+                    f"permission {permission.capability.name.value} v{permission.capability.version} "
+                    "is not declared by the plugin"
+                )
         return self
 
 
