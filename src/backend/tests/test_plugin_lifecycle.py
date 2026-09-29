@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from pathlib import Path
+import zipfile
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from src.plugin_api.contracts import PluginManifest
-from src.plugin_api.lifecycle import LifecycleState, NoopPackageInstaller, PluginLifecycleManager, Sha256PackageVerifier
-from src.plugin_api.updates import canonical_payload_digest
+from src.plugin_api.lifecycle import (
+    LifecycleState,
+    NoopPackageInstaller,
+    PluginLifecycleManager,
+    Sha256PackageVerifier,
+)
+from src.plugin_api.updates import TrustedPublisher, canonical_payload_digest
 
 
 def manifest_data(plugin_id: str = "example.plugin", app_range: str = "*") -> dict:
@@ -284,3 +293,46 @@ def test_default_verifier_ignores_manifest_bytes(tmp_path: Path) -> None:
     expected = canonical_payload_digest([("plugin.py", b"payload")])
     (package / "manifest.json").write_text("different", encoding="utf-8")
     assert Sha256PackageVerifier().verify(package, expected)
+
+
+def test_lifecycle_verifier_accepts_signed_v1_package_and_rejects_tampering(tmp_path: Path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    files = {"plugin.py": b"print('safe')"}
+    digest = canonical_payload_digest(list(files.items()))
+    signature = base64.b64encode(
+        private_key.sign(b"plugin-package-v1:" + digest.encode("ascii"))
+    ).decode("ascii")
+    manifest = manifest_data()
+    manifest["integrity"] = {
+        "sha256": digest,
+        "key_id": "test-publisher",
+        "signature": signature,
+    }
+    package = tmp_path / "signed.utp"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("payload/plugin.py", files["plugin.py"])
+
+    publishers = {
+        "test-publisher": TrustedPublisher(
+            "test-publisher", private_key.public_key().public_bytes_raw()
+        )
+    }
+    verifier = Sha256PackageVerifier(publishers)
+    assert verifier.verify(package, digest)
+
+    lifecycle = PluginLifecycleManager(
+        sdk_version="1.0.0",
+        application_version="1.0.0",
+        runtime=FakeRuntime(),
+        installer=NoopPackageInstaller(),
+        verifier=verifier,
+    )
+    record = lifecycle.discover_package(package)
+    assert asyncio.run(lifecycle.install(record.manifest.plugin_id)).state == LifecycleState.INSTALLED
+
+    tampered = tmp_path / "tampered.utp"
+    with zipfile.ZipFile(tampered, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("payload/plugin.py", b"print('tampered')")
+    assert not verifier.verify(tampered, digest)
