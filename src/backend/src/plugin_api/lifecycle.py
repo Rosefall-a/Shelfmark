@@ -12,10 +12,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
-import hashlib
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import Awaitable, Protocol
 from uuid import UUID, uuid4
 
 from .updates import canonical_payload_digest
@@ -62,6 +61,12 @@ class PackageInstaller(Protocol):
     """Installation boundary; package extraction never executes plugin code."""
 
     async def install(self, package_path: Path, manifest: PluginManifest) -> Path: ...
+
+
+class PluginStorageCleanup(Protocol):
+    """Authoritative owner of a plugin installation namespace."""
+
+    def uninstall(self, plugin_id: str) -> None | Awaitable[None]: ...
 
 
 class PackageVerifier(Protocol):
@@ -147,7 +152,7 @@ class PluginLifecycleManager:
         verifier: PackageVerifier | None = None,
         quarantine_after: int = 3,
         max_logs: int = 200,
-        storage_cleanup: object | None = None,
+        storage_cleanup: PluginStorageCleanup | None = None,
     ) -> None:
         if quarantine_after < 1:
             raise ValueError("quarantine_after must be positive")
@@ -271,7 +276,7 @@ class PluginLifecycleManager:
         if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
             await self.stop(plugin_id)
         if self.storage_cleanup is not None:
-            cleanup = getattr(self.storage_cleanup, "uninstall")
+            cleanup = self.storage_cleanup.uninstall
             try:
                 result = cleanup(plugin_id)
                 if hasattr(result, "__await__"):
