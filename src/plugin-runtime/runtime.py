@@ -214,7 +214,7 @@ class PluginRegistry:
     @staticmethod
     def digest(package: Path) -> str:
         digest = hashlib.sha256()
-        for path in sorted(p for p in package.rglob("*") if p.is_file() and not p.name.startswith(".runtime-state")):
+        for path in sorted(p for p in package.rglob("*") if p.is_file() and p.name not in {"manifest.json", ".settings.json"} and not p.name.startswith(".runtime-state")):
             digest.update(path.relative_to(package).as_posix().encode())
             digest.update(b"\0")
             with path.open("rb") as handle:
