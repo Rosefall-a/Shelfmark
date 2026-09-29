@@ -64,10 +64,17 @@ export function validateField(field: UiField, value: UiValue | undefined): strin
   if (value === undefined || value === "") return null;
   if (field.type === "number" && typeof value !== "number") return "Enter a number.";
   if (field.type === "boolean" && typeof value !== "boolean") return "Enter a boolean value.";
-  if ((field.type === "select" || field.type === "multiselect") &&
-      (Array.isArray(value) ? value.some((item) => !field.options.some((option) => option.value === item)) :
-        typeof value === "string" && !field.options.some((option) => option.value === value))) {
-    return "Select a permitted option.";
+  if (field.type === "select") {
+    if (typeof value !== "string") return "Select one permitted option.";
+    if (!field.options.some((option) => option.value === value)) return "Select a permitted option.";
+  }
+  if (field.type === "multiselect") {
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+      return "Select one or more permitted options.";
+    }
+    if (value.some((item) => !field.options.some((option) => option.value === item))) {
+      return "Select a permitted option.";
+    }
   }
   if (field.validation?.min_length !== undefined && typeof value === "string" && value.length < field.validation.min_length) {
     return "Value is too short.";
@@ -81,8 +88,12 @@ export function validateField(field: UiField, value: UiValue | undefined): strin
   if (field.validation?.maximum !== undefined && typeof value === "number" && value > field.validation.maximum) {
     return "Value is too large.";
   }
-  if (field.validation?.pattern !== undefined && typeof value === "string" && !new RegExp(field.validation.pattern).test(value)) {
-    return "Value has an invalid format.";
+  if (field.validation?.pattern !== undefined && typeof value === "string") {
+    try {
+      if (!new RegExp(field.validation.pattern).test(value)) return "Value has an invalid format.";
+    } catch {
+      return "Value has an invalid format rule.";
+    }
   }
   return null;
 }
