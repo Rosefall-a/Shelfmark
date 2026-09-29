@@ -70,7 +70,7 @@ def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypat
         return FakeProcess()
 
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
-    supervisor = PluginSupervisor(root=tmp_path / "work")
+    supervisor = PluginSupervisor(root=tmp_path / "work", storage_root=tmp_path / "storage")
     package = tmp_path / "package"
     package.mkdir()
     process = supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
@@ -139,7 +139,7 @@ def _package_bytes(plugin_id: str = "example.upload") -> bytes:
 def test_runtime_installs_verified_utp_atomically(tmp_path):
     from runtime import PluginRegistry, PluginSupervisor
 
-    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
     result = registry.install_package(_package_bytes(), "example-upload.utp")
     assert result["plugin_id"] == "example.upload"
     assert (tmp_path / "plugins" / "example.upload" / "manifest.json").is_file()
@@ -169,3 +169,31 @@ def test_runtime_rejects_duplicate_plugin_install(tmp_path):
     registry.install_package(_package_bytes(), "first.utp")
     with pytest.raises(RuntimePolicyError, match="already installed"):
         registry.install_package(_package_bytes(), "second.utp")
+
+
+def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
+    from storage import PluginStorage
+
+    storage = PluginStorage(tmp_path / "storage", "example", quota_bytes=1024)
+    storage.put("secrets/webhook", b"secret")
+    assert (storage.root / "secrets" / "webhook").stat().st_mode & 0o777 == 0o600
+    assert (storage.root / ".storage.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_frontend_asset_is_namespaced(tmp_path) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
+    package = tmp_path / "plugins" / "example.frontend"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(json.dumps({
+        "plugin_id": "example.frontend",
+        "entrypoint": "plugin:main",
+        "frontend": {"entry": "frontend/index.html"},
+    }), encoding="utf-8")
+    frontend = package / "frontend"
+    frontend.mkdir()
+    (frontend / "index.html").write_text("<div>ok</div>", encoding="utf-8")
+    asset = registry.frontend("example.frontend", "frontend/index.html")
+    assert asset["path"] == "frontend/index.html"
+    assert "PG" in asset["content"]
