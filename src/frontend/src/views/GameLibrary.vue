@@ -1298,6 +1298,7 @@ watch(viewMode, (mode) => {
               type="text"
               class="search-input"
               placeholder="Search games… (/)"
+              aria-label="Search games"
               @focus="showRecentSearches = true"
               @blur="
                 showRecentSearches = false;
@@ -1330,7 +1331,11 @@ watch(viewMode, (mode) => {
               </button>
             </div>
           </div>
-          <select v-model="statusFilter" class="filter-select">
+          <select
+            v-model="statusFilter"
+            class="filter-select"
+            aria-label="Filter by status"
+          >
             <option v-for="s in statusOptions" :key="s" :value="s">
               {{ s === "all" ? "All statuses" : s }}
             </option>
@@ -1349,7 +1354,7 @@ watch(viewMode, (mode) => {
             placeholder="Genre"
             all-label="All genres"
           />
-          <select v-model="sortBy" class="filter-select">
+          <select v-model="sortBy" class="filter-select" aria-label="Sort by">
             <option value="name">Name (A–Z)</option>
             <option value="name_desc">Name (Z–A)</option>
             <option value="recent">Recently added</option>
@@ -1671,7 +1676,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>Achievements</label>
-          <select v-model="achievementsFilter" class="filter-select">
+          <select
+            v-model="achievementsFilter"
+            class="filter-select"
+            aria-label="Achievements"
+          >
             <option value="all">All games</option>
             <option value="has">Has achievements</option>
             <option value="none">No achievements</option>
@@ -1679,7 +1688,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>What's missing</label>
-          <select v-model="missingFilter" class="filter-select">
+          <select
+            v-model="missingFilter"
+            class="filter-select"
+            aria-label="What's missing"
+          >
             <option value="none">Nothing, show everything</option>
             <option value="playtime">No playtime logged</option>
             <option value="rating">No rating</option>
@@ -2724,6 +2737,18 @@ watch(viewMode, (mode) => {
 }
 .first-use-hint-dismiss:hover {
   background: rgba(214, 138, 52, 0.24);
+}
+/* on a phone the Select button can sit near the right edge, where a tip
+   hanging off it ran off the screen: show it along the bottom instead */
+@media (max-width: 600px) {
+  .first-use-hint {
+    position: fixed;
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
 }
 .density-toggle {
   display: flex;

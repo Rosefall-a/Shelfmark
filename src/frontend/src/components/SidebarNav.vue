@@ -71,7 +71,13 @@ async function handleLogout() {
 </script>
 
 <template>
-  <button type="button" class="menu-toggle" @click="open = true">
+  <button
+    type="button"
+    class="menu-toggle"
+    aria-label="Open menu"
+    :aria-expanded="open"
+    @click="open = true"
+  >
     <svg
       viewBox="0 0 24 24"
       width="18"

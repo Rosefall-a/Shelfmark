@@ -2,7 +2,14 @@
 // "Can't decide what to play?" (#33): narrow the library by status,
 // platform, genre, length and priority, then pick one. Filters are
 // remembered between visits.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRouter } from "vue-router";
 
 import type { Game, GameStatus } from "../types/game";
@@ -102,6 +109,7 @@ const maxPriorityInput = computed({
 
 const picked = ref<Game | null>(null);
 const nothingMatched = ref(false);
+const dialogEl = ref<HTMLElement | null>(null);
 
 function pick() {
   picked.value = pickRandomGame(
@@ -111,6 +119,11 @@ function pick() {
     picked.value?.id,
   );
   nothingMatched.value = picked.value === null;
+  // on a phone the filters fill the dialog and the pick, which sits just
+  // above the buttons, lands below them: scroll down to it
+  void nextTick(() => {
+    if (dialogEl.value) dialogEl.value.scrollTop = dialogEl.value.scrollHeight;
+  });
 }
 
 function resetFilters() {
@@ -138,6 +151,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 <template>
   <div class="ui-backdrop" @click.self="emit('close')">
     <div
+      ref="dialogEl"
       class="ui-modal picker"
       role="dialog"
       aria-modal="true"
@@ -227,36 +241,39 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         Favour higher-priority games
       </label>
 
-      <div v-if="picked" class="picked" aria-live="polite">
-        <img :src="picked.coverImageUrl" alt="" class="picked-cover" />
-        <div class="picked-info">
-          <strong class="picked-title">{{ picked.title }}</strong>
-          <span class="picked-meta">
-            {{ picked.status }}
-            <template v-if="picked.platforms[0]">
-              · {{ picked.platforms[0].platform }}</template
+      <!-- the live region stays in the page so each new pick is announced -->
+      <div aria-live="polite">
+        <div v-if="picked" class="picked">
+          <img :src="picked.coverImageUrl" alt="" class="picked-cover" />
+          <div class="picked-info">
+            <strong class="picked-title">{{ picked.title }}</strong>
+            <span class="picked-meta">
+              {{ picked.status }}
+              <template v-if="picked.platforms[0]">
+                · {{ picked.platforms[0].platform }}</template
+              >
+              <template v-if="picked.timeToBeatHours !== null">
+                · ~{{ picked.timeToBeatHours }}h</template
+              >
+              <template v-if="pickedPriority !== null">
+                · priority {{ priorityLabel(pickedPriority) }}</template
+              >
+            </span>
+            <button
+              type="button"
+              class="ui-btn ui-btn-primary ui-btn-sm"
+              @click="openPicked"
             >
-            <template v-if="picked.timeToBeatHours !== null">
-              · ~{{ picked.timeToBeatHours }}h</template
-            >
-            <template v-if="pickedPriority !== null">
-              · priority {{ priorityLabel(pickedPriority) }}</template
-            >
-          </span>
-          <button
-            type="button"
-            class="ui-btn ui-btn-primary ui-btn-sm"
-            @click="openPicked"
-          >
-            Open game
-          </button>
+              Open game
+            </button>
+          </div>
         </div>
+        <p v-else-if="nothingMatched" class="ui-state error">
+          No games match these filters. Loosen one and try again.
+        </p>
       </div>
-      <p v-else-if="nothingMatched" class="ui-state error" aria-live="polite">
-        No games match these filters. Loosen one and try again.
-      </p>
 
-      <div class="ui-modal-actions">
+      <div class="ui-modal-actions picker-actions">
         <button type="button" class="ui-btn ui-btn-ghost" @click="resetFilters">
           Reset
         </button>
@@ -372,6 +389,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   color: var(--ui-dim);
   font-size: 0.8rem;
   text-transform: capitalize;
+}
+/* the buttons stay in view while the filters scroll on a short screen */
+.picker-actions {
+  position: sticky;
+  bottom: -22px;
+  margin: 6px -22px -22px;
+  padding: 12px 22px 22px;
+  background: var(--ui-popover);
 }
 @media (max-width: 520px) {
   .picker-row {

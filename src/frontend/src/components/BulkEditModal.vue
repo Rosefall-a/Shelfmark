@@ -125,6 +125,7 @@ async function submit() {
               v-model="statusValue"
               class="field-input"
               :disabled="!apply.status"
+              aria-label="New status"
             >
               <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
             </select>
@@ -139,6 +140,7 @@ async function submit() {
               v-model="favoriteValue"
               class="field-input"
               :disabled="!apply.favorite"
+              aria-label="Favorite"
             >
               <option :value="true">Mark as favorite</option>
               <option :value="false">Remove from favorites</option>
@@ -155,6 +157,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.developer"
+              aria-label="New developer"
               placeholder="Developer name"
             />
           </div>
@@ -169,6 +172,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.publisher"
+              aria-label="New publisher"
               placeholder="Publisher name"
             />
           </div>
@@ -183,6 +187,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.series"
+              aria-label="New series"
               placeholder="Franchise name"
             />
           </div>
@@ -197,6 +202,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.ageRating"
+              aria-label="New age rating"
               placeholder="e.g. 17+"
             />
           </div>
@@ -211,6 +217,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.platform"
+              aria-label="New platform"
               placeholder="e.g. PC, Nintendo Switch (blank clears)"
             />
           </div>
@@ -224,6 +231,7 @@ async function submit() {
               v-model="priorityValue"
               class="field-input"
               :disabled="!apply.priority"
+              aria-label="New priority"
             >
               <option value="">None (clear)</option>
               <option
@@ -246,6 +254,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.tags"
+              aria-label="New tags"
               placeholder="Comma-separated: replaces existing tags"
             />
           </div>
@@ -260,6 +269,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.features"
+              aria-label="New features"
               placeholder="Comma-separated: replaces existing features"
             />
           </div>

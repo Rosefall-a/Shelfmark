@@ -1224,6 +1224,10 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   color: #a3703c;
   cursor: pointer;
   font-size: 12px;
+  min-width: 28px;
+  min-height: 28px;
+  margin-top: -5px;
+  margin-bottom: -5px;
   padding: 2px 4px;
 }
 .onboarding-dismiss:hover {
@@ -1290,12 +1294,14 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   border-color: #3a3a3a;
   transform: translateY(-2px);
 }
-.bounty-widget {
+.bounty-widget,
+.goals-widget {
   max-width: 340px;
   text-decoration: none;
   color: inherit;
 }
-.bounty-widget:hover {
+.bounty-widget:hover,
+.goals-widget:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: #3a3a3a;
   transform: translateY(-2px);

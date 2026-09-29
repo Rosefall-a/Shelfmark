@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import {
   attachGameAssetFromUrl,
   createGame,
@@ -124,6 +124,17 @@ const activeTab = ref<Tab>(isEditing.value ? "General" : "Find");
 const stepIndex = computed(() => tabs.value.indexOf(activeTab.value));
 const isLastStep = computed(() => stepIndex.value === tabs.value.length - 1);
 const metadataApplied = ref(false);
+
+// on a phone the tabs scroll sideways: keep the current step's tab in view
+// as Next and Back move through them
+const tabsEl = ref<HTMLElement | null>(null);
+watch(activeTab, () =>
+  nextTick(() =>
+    tabsEl.value
+      ?.querySelector(".modal-tab.active")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+  ),
+);
 
 function validateGeneral(): boolean {
   if (!title.value.trim()) {
@@ -453,7 +464,7 @@ async function submit() {
         </button>
       </div>
 
-      <nav class="modal-tabs">
+      <nav ref="tabsEl" class="modal-tabs">
         <button
           v-for="tab in tabs"
           :key="tab"
@@ -498,6 +509,7 @@ async function submit() {
                   v-model="metadataQuery"
                   type="search"
                   placeholder="Search by game title"
+                  aria-label="Search game metadata by title"
                   @keydown.enter.prevent="searchMetadata"
                 />
                 <button
@@ -1186,6 +1198,16 @@ async function submit() {
 .search-row input {
   flex: 1;
   min-width: 0;
+  background: #111;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 11px;
+  font: inherit;
+}
+.search-row input:focus {
+  outline: none;
+  border-color: #d68a34;
 }
 .metadata-results {
   display: grid;
@@ -1217,6 +1239,15 @@ async function submit() {
   font-size: 0.85rem;
   color: #ccc;
   flex: 1;
+  /* lets a row's fields share a narrow modal instead of each insisting on
+     its input's default width and pushing the row off the right edge */
+  min-width: 0;
+}
+/* a field on its own in a tab is as tall as its content: flex: 1 above is
+   for sharing a row, in the tab's column it stretched Format on
+   Ownership down the whole panel */
+.tab-panel > .field {
+  flex: none;
 }
 .checkbox-field {
   display: flex;
@@ -1263,13 +1294,22 @@ async function submit() {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
-.ratings-row .field {
-  min-width: 0;
+/* up to four fields side by side, wrapping to two a row on a phone */
+.field-row > .field {
+  flex: 1 1 150px;
+}
+.ratings-row > .field {
+  flex-basis: 90px;
 }
 .link-row {
+  flex-wrap: nowrap;
   align-items: flex-end;
+}
+.link-row > .field {
+  flex-basis: 0;
 }
 .remove-button {
   background: rgba(220, 38, 38, 0.15);
@@ -1367,6 +1407,10 @@ async function submit() {
 .step-count {
   color: #888;
   font-size: 0.8rem;
+  white-space: nowrap;
+}
+.modal-actions button {
+  white-space: nowrap;
 }
 .danger-button {
   background: rgba(220, 38, 38, 0.15);
@@ -1414,5 +1458,29 @@ async function submit() {
 }
 .secondary-button:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+@media (max-width: 480px) {
+  .modal-header,
+  .modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .modal-tabs {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  /* the step count gets its own line so the buttons fit on the next */
+  .modal-actions {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+  .step-count {
+    flex-basis: 100%;
+  }
+  .modal-actions .primary-button,
+  .modal-actions .secondary-button,
+  .modal-actions .danger-button {
+    padding: 10px 14px;
+  }
 }
 </style>

@@ -162,7 +162,10 @@ function save() {
 .btn-text {
   background: none;
   border: none;
-  padding: 0;
+  /* a bigger tap target than the text alone, without moving it: the
+     negative margin gives back the padding's room */
+  padding: 6px 4px;
+  margin: -6px -4px;
   color: #d68a34;
   font-family: inherit;
   font-size: 0.82rem;

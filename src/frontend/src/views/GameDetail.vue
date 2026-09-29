@@ -4237,7 +4237,9 @@ function formatPlaytime(minutes: number) {
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
-  padding: 0 24px 28px;
+  /* the top padding keeps a title long enough to grow the hero clear of
+     the menu and back buttons floating over its top edge */
+  padding: 72px 24px 28px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -4246,7 +4248,15 @@ function formatPlaytime(minutes: number) {
 .hero-inner h1 {
   margin: 0;
   font-size: 2.4rem;
+  /* the page's inherited line height is a fixed 23px (16px/145% on
+     :root), so a long title's wrapped lines were drawn over each other */
+  line-height: 1.15;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+@media (max-width: 600px) {
+  .hero-inner h1 {
+    font-size: 1.8rem;
+  }
 }
 .parent-breadcrumb {
   display: flex;
@@ -4550,7 +4560,10 @@ function formatPlaytime(minutes: number) {
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  /* a bigger tap target than the text alone, without moving it: the
+     negative margin gives back the padding's room */
+  padding: 6px 4px;
+  margin: -6px -4px;
 }
 .text-button:hover {
   text-decoration: underline;
@@ -4566,7 +4579,7 @@ function formatPlaytime(minutes: number) {
 }
 .log-playtime-button {
   display: block;
-  margin-top: 10px;
+  margin-top: 4px;
 }
 .related-bounties {
   display: flex;
