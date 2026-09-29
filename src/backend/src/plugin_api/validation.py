@@ -42,6 +42,7 @@ class ValidationGateway:
         default_factory=lambda: defaultdict(dict)
     )
     subscriptions: dict[str, EventSubscription] = field(default_factory=dict)
+    settings: dict[str, dict[str, str]] = field(default_factory=lambda: defaultdict(dict))
     events: dict[str, list[EventEnvelope[dict[str, Any]]]] = field(
         default_factory=lambda: defaultdict(list)
     )
@@ -96,6 +97,26 @@ class ValidationGateway:
     def storage_put(self, context: RequestContext, key: str, value: bytes) -> None:
         self._authorize(context, Capability.PLUGIN_STORAGE)
         self.storage[context.plugin.plugin_id][key] = bytes(value)
+
+    def revoke(self, context: RequestContext) -> None:
+        self.grants = tuple(
+            grant
+            for grant in self.grants
+            if not (
+                grant.plugin_id == context.plugin.plugin_id
+                and grant.installation_id == context.plugin.installation_id
+                and grant.capability.name is context.requested_capability.name
+                and (grant.user_id is None or context.user is not None and grant.user_id == context.user.user_id)
+            )
+        )
+
+    def settings_put(self, context: RequestContext, key: str, value: str) -> None:
+        self._authorize(context, Capability.PLUGIN_SETTINGS)
+        self.settings[context.plugin.plugin_id][key] = value
+
+    def settings_get(self, context: RequestContext, key: str) -> str | None:
+        self._authorize(context, Capability.PLUGIN_SETTINGS)
+        return self.settings[context.plugin.plugin_id].get(key)
 
     def storage_get(self, context: RequestContext, key: str) -> bytes | None:
         self._authorize(context, Capability.PLUGIN_STORAGE)
