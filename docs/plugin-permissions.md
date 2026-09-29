@@ -13,3 +13,10 @@ A supported client can create an identity bound to one plugin installation, appl
 
 ## Security boundary
 The policy engine consumes authenticated RequestContext plus active grants and does not inspect ORM objects, database sessions, application secrets or broad API tokens.
+
+
+## Audit trail
+Authorization decisions include a stable request ID and can be recorded with plugin/installation identity, capability/version, user/device scope, decision, reason and timestamp. The policy remains default-deny and requires authenticated user context.
+
+### Compatibility
+The permission contract is additive to Plugin API v1: existing request DTOs retain their fields, with `device_id` optional. Manifest capability declarations remain requests, not grants. No existing application API token is expanded or repurposed.

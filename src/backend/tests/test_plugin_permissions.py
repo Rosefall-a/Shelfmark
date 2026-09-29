@@ -63,3 +63,19 @@ def test_client_credential_is_high_entropy_and_bound_to_identity():
     assert issued.client.device_id == device_id
     assert issued.token.startswith("pmc1.")
     assert len(issued.token) > 64
+
+
+def test_unauthenticated_context_is_denied_even_with_global_grant():
+    context = make_context()
+    grant = make_grant(context)
+    context = context.model_copy(update={"user": None})
+    assert authorize_request(context, (grant,)).decision is PermissionDecision.DENIED
+
+
+def test_plugin_installation_mismatch_is_denied():
+    context = make_context(user_id=uuid4())
+    grant = make_grant(context)
+    other = context.model_copy(
+        update={"plugin": context.plugin.model_copy(update={"installation_id": uuid4()})}
+    )
+    assert authorize_request(other, (grant,)).decision is PermissionDecision.DENIED

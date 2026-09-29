@@ -6,11 +6,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 import secrets
 
 from pydantic import Field
 
 from .contracts import Capability, CapabilityRef, ContractModel, RequestContext
+from src.database.models.plugin_permission_audit import PluginPermissionAudit
+from src.database.models.plugin_permissions import PluginPermissionGrant
 
 
 class PermissionDecision(StrEnum):
@@ -45,6 +50,11 @@ class AuthorizationDecision(ContractModel):
 
 def authorize_request(context: RequestContext, grants: tuple[PermissionGrant, ...]) -> AuthorizationDecision:
     """Apply default-deny authorization to an authenticated request."""
+    if context.user is None or not context.user.authenticated:
+        return AuthorizationDecision(
+            decision=PermissionDecision.DENIED,
+            reason="authenticated user context is required",
+        )
     requested = context.requested_capability
     for grant in grants:
         if not grant.active:

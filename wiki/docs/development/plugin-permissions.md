@@ -18,3 +18,11 @@ The client identity is deliberately separate from plugin installation identity (
 
 ## Policy
 The authorization function requires exact plugin/installation/capability/version matches and enforces optional user/device scope. No matching grant means denial.
+
+
+## Audit and security
+Authorization decisions can be persisted with the request ID, plugin/installation identity, capability/version, user/device scope, decision, reason and timestamp. This gives downstream lifecycle and administration features a stable audit seam without exposing secrets.
+
+The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
+
+The permission layer is intentionally independent of transport. Gateway authentication from #265 supplies trusted plugin and installation identity; this layer evaluates whether that identity is permitted to perform the requested capability.

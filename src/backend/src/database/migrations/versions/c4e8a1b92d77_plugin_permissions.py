@@ -50,6 +50,24 @@ def upgrade() -> None:
         op.create_index("ix_plugin_permission_grants_" + column, "plugin_permission_grants", [column])
 
     op.create_table(
+        "plugin_permission_audit",
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("request_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("plugin_id", sa.String(128), nullable=False),
+        sa.Column("installation_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("capability", sa.String(128), nullable=False),
+        sa.Column("capability_version", sa.Integer(), nullable=False),
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("device_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("decision", sa.String(16), nullable=False),
+        sa.Column("reason", sa.String(512), nullable=False),
+        sa.Column("occurred_at", sa.BigInteger(), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    for column in ("request_id", "plugin_id", "installation_id", "user_id", "device_id"):
+        op.create_index("ix_plugin_permission_audit_" + column, "plugin_permission_audit", [column])
+
+    op.create_table(
         "plugin_client_identities",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("plugin_id", sa.String(128), nullable=False),
@@ -70,6 +88,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    for column in ("device_id", "user_id", "installation_id", "plugin_id", "request_id"):
+        op.drop_index("ix_plugin_permission_audit_" + column, table_name="plugin_permission_audit")
+    op.drop_table("plugin_permission_audit")
     for column in ("device_id", "user_id", "installation_id", "plugin_id"):
         op.drop_index("ix_plugin_client_identities_" + column, table_name="plugin_client_identities")
     op.drop_table("plugin_client_identities")
