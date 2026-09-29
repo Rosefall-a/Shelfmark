@@ -5,6 +5,8 @@ import {
   fetchPlugins,
   retryPlugin,
   revokePluginPermissions,
+  installPlugin,
+  UntrustedPluginError,
 } from "../services/plugins";
 
 describe("plugin management service", () => {
@@ -33,6 +35,26 @@ describe("plugin management service", () => {
       ["/api/plugins/example.plugin/retry", "POST"],
       ["/api/plugins/example.plugin/permissions/revoke", "POST"],
     ]);
+    mock.mockRestore();
+  });
+
+  it("turns an untrusted install response into the explicit confirmation error", async () => {
+    const mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: {
+            code: "untrusted_plugin",
+            plugin_id: "example.ui-playground",
+            name: "Plugin UI Playground",
+            version: "1.0.0",
+            publisher: null,
+          },
+        }),
+        { status: 409 },
+      ),
+    );
+    const file = new File([new Uint8Array([80, 75, 3, 4])], "example.ui-playground-1.0.0.utp");
+    await expect(installPlugin(file)).rejects.toBeInstanceOf(UntrustedPluginError);
     mock.mockRestore();
   });
 
