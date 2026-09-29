@@ -12,12 +12,12 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
-import hashlib
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import Awaitable, Protocol
 from uuid import UUID, uuid4
 
+from .updates import canonical_payload_digest
 from .contracts import (
     CompatibilityStatus,
     IntegrityMetadata,
@@ -63,32 +63,58 @@ class PackageInstaller(Protocol):
     async def install(self, package_path: Path, manifest: PluginManifest) -> Path: ...
 
 
+class PluginStorageCleanup(Protocol):
+    """Authoritative owner of a plugin installation namespace."""
+
+    def uninstall(self, plugin_id: str) -> None | Awaitable[None]: ...
+
+
 class PackageVerifier(Protocol):
     """Integrity boundary for plugin artifacts."""
 
     def verify(self, package_path: Path, expected_sha256: str) -> bool: ...
 
 
-class Sha256PackageVerifier:
-    """Verify a file or deterministic directory digest without executing it."""
+class PackageRemover(Protocol):
+    """Removal boundary for installed plugin artifacts."""
 
-    def verify(self, package_path: Path, expected_sha256: str) -> bool:  # type: ignore[no-redef]
-        digest = hashlib.sha256()
-        if package_path.is_file():
-            with package_path.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        elif package_path.is_dir():
-            for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
-                digest.update(path.relative_to(package_path).as_posix().encode())
-                digest.update(b"\0")
-                with path.open("rb") as handle:
-                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                        digest.update(chunk)
-                digest.update(b"\0")
-        else:
+    async def remove(self, package_path: Path) -> None: ...
+
+
+class StorageRemover(Protocol):
+    """Removal boundary for plugin-owned persistent storage."""
+
+    async def remove(self, plugin_id: str) -> None: ...
+
+
+class Sha256PackageVerifier:
+    """Adapter to the authoritative v1 package verifier."""
+
+    def __init__(self, *, require_signature: bool = True) -> None:
+        self.require_signature = require_signature
+
+    def verify(self, package_path: Path, expected_sha256: str) -> bool:
+        from .updates import PluginPackageVerifier
+        try:
+            verified = PluginPackageVerifier(require_signature=self.require_signature).inspect(package_path)
+        except (OSError, ValueError):
             return False
-        return digest.hexdigest().lower() == expected_sha256.lower()
+        return verified.payload_digest.lower() == expected_sha256.lower()
+    """Verify the authoritative Plugin Package v1 payload digest."""
+
+    def verify(self, package_path: Path, expected_sha256: str) -> bool:
+        if not package_path.is_dir():
+            return False
+        entries: list[tuple[str, bytes]] = []
+        try:
+            for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
+                relative = path.relative_to(package_path).as_posix()
+                if relative == "manifest.json":
+                    continue
+                entries.append((relative, path.read_bytes()))
+        except OSError:
+            return False
+        return canonical_payload_digest(entries).lower() == expected_sha256.lower()
 
 
 class NoopPackageInstaller:
@@ -148,8 +174,11 @@ class PluginLifecycleManager:
         runtime: RuntimeController,
         installer: PackageInstaller | None = None,
         verifier: PackageVerifier | None = None,
+        package_remover: PackageRemover | None = None,
+        storage_remover: StorageRemover | None = None,
         quarantine_after: int = 3,
         max_logs: int = 200,
+        storage_cleanup: PluginStorageCleanup | None = None,
     ) -> None:
         if quarantine_after < 1:
             raise ValueError("quarantine_after must be positive")
@@ -158,10 +187,13 @@ class PluginLifecycleManager:
         self.runtime = runtime
         self.installer = installer or NoopPackageInstaller()
         self.verifier = verifier or Sha256PackageVerifier()
+        self.package_remover = package_remover
+        self.storage_remover = storage_remover
         self.quarantine_after = quarantine_after
         self.safe_mode = False
         self._records: dict[str, PluginRecord] = {}
         self._logs: deque[LifecycleLog] = deque(maxlen=max_logs)
+        self.storage_cleanup = storage_cleanup
 
     @staticmethod
     def _now() -> datetime:
@@ -267,12 +299,28 @@ class PluginLifecycleManager:
         return record
 
     async def uninstall(self, plugin_id: str) -> None:
-        """Stop a plugin and remove its manager record without executing its code."""
+        """Stop and fully remove one plugin installation and its owned data."""
         record = self._get(plugin_id)
         if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
+            stopped = await self.stop(plugin_id)
+            if stopped.state in {LifecycleState.FAILED_STOP, LifecycleState.QUARANTINED}:
+                raise RuntimeError(f"plugin {plugin_id} could not be stopped for uninstall")
+        if self.package_remover is not None:
+            await self.package_remover.remove(record.package_path)
+        if self.storage_remover is not None:
+            await self.storage_remover.remove(plugin_id)
             await self.stop(plugin_id)
+        if self.storage_cleanup is not None:
+            cleanup = self.storage_cleanup.uninstall
+            try:
+                result = cleanup(plugin_id)
+                if result is not None:
+                    await result
+            except Exception as exc:
+                self._log("error", "storage_cleanup_failed", plugin_id, f"plugin storage cleanup failed: {exc}")
+                raise RuntimeError(f"plugin storage cleanup failed: {exc}") from exc
         self._records.pop(plugin_id, None)
-        self._log("info", "uninstalled", plugin_id, "plugin removed from lifecycle manager")
+        self._log("info", "uninstalled", plugin_id, "plugin and owned data removed")
 
     def enable(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
@@ -288,20 +336,15 @@ class PluginLifecycleManager:
 
     async def disable(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
-        was_running = record.state in {
-            LifecycleState.RUNNING,
-            LifecycleState.STARTING,
-            LifecycleState.UNHEALTHY,
-        }
-        if was_running:
-            try:
-                await self.runtime.stop(plugin_id)
-            except Exception as exc:
-                self._record_failure(record, "stop_failed", f"plugin failed to stop during disable: {exc}")
-                return record
-        record.enabled = False
-        if record.state not in {LifecycleState.INVALID, LifecycleState.INCOMPATIBLE}:
-            record.state = LifecycleState.DISABLED
+        if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
+            record.enabled = False
+            result = await self.stop(plugin_id)
+            if result.state == LifecycleState.FAILED_STOP:
+                return result
+        else:
+            record.enabled = False
+            if record.state not in {LifecycleState.INVALID, LifecycleState.INCOMPATIBLE}:
+                record.state = LifecycleState.DISABLED
         self._log("info", "disabled", plugin_id, "plugin disabled")
         return record
 
@@ -415,13 +458,22 @@ class PluginLifecycleManager:
             record.state = LifecycleState.RUNNING
             self._log("info", "healthy", plugin_id, "plugin health check passed")
         else:
-            self._record_failure(record, "unhealthy", record.last_error or "plugin reported unhealthy")
-            if record.state == LifecycleState.QUARANTINED:
+            record.consecutive_failures += 1
+            record.last_error = record.last_error or "plugin reported unhealthy"
+            if record.consecutive_failures >= self.quarantine_after:
+                record.enabled = False
                 try:
                     await self.runtime.stop(plugin_id)
                 except Exception as exc:
+                    record.state = LifecycleState.FAILED_STOP
                     record.last_error = f"plugin quarantine stop failed: {exc}"
-                    self._log("error", "quarantine_stop_failed", plugin_id, record.last_error)
+                    self._log("error", "quarantine_stop_failed", plugin_id, record.last_error, record.consecutive_failures)
+                else:
+                    record.state = LifecycleState.QUARANTINED
+                    self._log("error", "quarantined", plugin_id, "plugin quarantined and stopped after repeated failures", record.consecutive_failures)
+            else:
+                record.state = LifecycleState.UNHEALTHY
+                self._log("error", "unhealthy", plugin_id, record.last_error, record.consecutive_failures)
         return self.health(plugin_id)
 
     async def health_check_all(self) -> tuple[PluginHealth, ...]:
@@ -486,7 +538,9 @@ __all__ = [
     "LifecycleState",
     "NoopPackageInstaller",
     "PackageInstaller",
+    "PackageRemover",
     "PackageVerifier",
+    "StorageRemover",
     "PluginHealth",
     "PluginLifecycleManager",
     "PluginRecord",
