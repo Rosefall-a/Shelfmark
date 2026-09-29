@@ -23,3 +23,5 @@ export const enablePlugin = (id: string) => request<void>(`/api/plugins/${encode
 export const disablePlugin = (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}/disable`, {method:"POST"});
 export const retryPlugin = (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}/retry`, {method:"POST"});
 export const revokePluginPermissions = (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}/permissions/revoke`, {method:"POST"});
+
+export const fetchPluginLogs = (id: string) => request<{logs:string[]}>(`/api/plugins/${encodeURIComponent(id)}/logs`);

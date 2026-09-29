@@ -1,12 +1,24 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, retryPlugin, revokePluginPermissions, type PluginSummary } from "../../services/plugins";
+import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, retryPlugin, revokePluginPermissions, fetchPluginLogs, type PluginSummary } from "../../services/plugins";
+import PluginUiHost from "../plugins/PluginUiHost.vue";
+import { fetchPluginUi, type PluginUiDocument, type UiAction, type UiValues } from "../../services/pluginUi";
 const router=useRouter();
 const plugins=ref<PluginSummary[]>([]), loading=ref(true), error=ref(""), action=ref(""), selectedFile=ref<File|null>(null), installing=ref(false), installMessage=ref("");
+const selected=ref<PluginSummary|null>(null), pluginUi=ref<PluginUiDocument|null>(null), pluginLogs=ref<string[]>([]), popupLoading=ref(false);
 async function load(){loading.value=true;error.value="";try{plugins.value=await fetchPlugins()}catch(err){error.value=err instanceof Error?err.message:"Plugin manager is unavailable."}finally{loading.value=false}}
 async function run(id:string,operation:(id:string)=>Promise<void>){action.value=id;try{await operation(id);await load()}catch(err){error.value=err instanceof Error?err.message:"Plugin action failed."}finally{action.value=""}}
 function selectFile(event: Event){ selectedFile.value=(event.target as HTMLInputElement).files?.[0] ?? null; installMessage.value=""; }
+async function openPlugin(plugin: PluginSummary){
+  selected.value=plugin; popupLoading.value=true; error.value="";
+  try { const [ui, logs] = await Promise.all([fetchPluginUi(plugin.plugin_id), fetchPluginLogs(plugin.plugin_id)]); pluginUi.value=ui; pluginLogs.value=logs.logs; }
+  catch(err){ error.value=err instanceof Error?err.message:"Failed to open plugin."; }
+  finally { popupLoading.value=false; }
+}
+async function refreshPlugin(){ if(selected.value) await openPlugin(selected.value); }
+async function savePlugin(values: UiValues){ if(!selected.value) return; const response=await fetch("/api/plugins/"+encodeURIComponent(selected.value.plugin_id)+"/settings",{method:"PUT",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)}); if(!response.ok) throw new Error("Plugin settings could not be saved."); }
+async function runPluginAction(item: UiAction, values: UiValues){ if(!selected.value) return; const response=await fetch("/api/plugins/"+encodeURIComponent(selected.value.plugin_id)+"/actions/"+encodeURIComponent(item.id),{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({values})}); if(!response.ok) throw new Error("Plugin action could not be completed."); await refreshPlugin(); }
 async function installSelected(){ 
   if(!selectedFile.value) return;
   installing.value=true; error.value=""; installMessage.value="";
@@ -36,9 +48,9 @@ onMounted(load);
 <header><div><h3>{{ plugin.name }}</h3><span>{{ plugin.plugin_id }} · v{{ plugin.version }}</span></div><strong>{{ plugin.status }}</strong></header>
 <p>{{ plugin.compatible ? "Compatible with the current host." : "Incompatible: " + plugin.compatibility_reason }}</p>
 <dl><div><dt>Health</dt><dd>{{ plugin.health }}</dd></div><div><dt>Permissions</dt><dd>{{ plugin.permissions.length }}</dd></div><div><dt>Enabled</dt><dd>{{ plugin.enabled ? "Yes" : "No" }}</dd></div></dl>
-<div class="actions"><button v-if="!plugin.enabled" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,enablePlugin)">Enable</button><button v-else type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,disablePlugin)">Disable</button><button v-if="plugin.status==='failed'||plugin.status==='quarantined'" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,retryPlugin)">Retry</button><button type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,revokePluginPermissions)">Revoke permissions</button></div>
+<div class="actions"><button type="button" :disabled="action===plugin.plugin_id" @click="openPlugin(plugin)">Open</button><button v-if="!plugin.enabled" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,enablePlugin)">Enable</button><button v-else type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,disablePlugin)">Disable</button><button v-if="plugin.status==='failed'||plugin.status==='quarantined'" type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,retryPlugin)">Retry</button><button type="button" :disabled="action===plugin.plugin_id" @click="run(plugin.plugin_id,revokePluginPermissions)">Revoke permissions</button></div>
 </article></div></section>
 </template>
 <style scoped>
-.installer{display:grid;gap:8px;margin:16px 0 24px;padding:16px;border:1px solid #2a2a2a;border-radius:10px}.success{color:#8f8}code{font-family:monospace}h2{margin-top:0}.muted{color:#aaa}.error{color:#f77}.list{display:grid;gap:14px}.plugin{border:1px solid #2a2a2a;border-radius:10px;padding:16px}header{display:flex;justify-content:space-between;gap:16px}h3{margin:0 0 4px}header span,dd{color:#aaa}dl{display:flex;flex-wrap:wrap;gap:24px}dt{font-size:12px;color:#777}dd{margin:2px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{cursor:pointer}
+.installer{display:grid;gap:8px;margin:16px 0 24px;padding:16px;border:1px solid #2a2a2a;border-radius:10px}.success{color:#8f8}code{font-family:monospace}h2{margin-top:0}.muted{color:#aaa}.error{color:#f77}.list{display:grid;gap:14px}.plugin{border:1px solid #2a2a2a;border-radius:10px;padding:16px}header{display:flex;justify-content:space-between;gap:16px}h3{margin:0 0 4px}header span,dd{color:#aaa}dl{display:flex;flex-wrap:wrap;gap:24px}dt{font-size:12px;color:#777}dd{margin:2px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{cursor:pointer}.plugin-dialog{width:min(960px,90vw);max-height:90vh;overflow:auto;background:var(--ui-bg,#111);color:inherit;border:1px solid #444;border-radius:12px;padding:24px}.plugin-dialog header,.logs header{display:flex;justify-content:space-between;align-items:center;gap:12px}.logs{margin-top:24px}.logs pre{max-height:260px;overflow:auto;white-space:pre-wrap;background:#080808;padding:12px;border-radius:8px}
 </style>

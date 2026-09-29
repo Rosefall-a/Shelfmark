@@ -45,3 +45,10 @@ Recovery clears lifecycle failure counters only. It does not grant permissions, 
 Global plugin safe mode prevents plugin activation while leaving the core application available for diagnosis. `start_enabled()` contains individual plugin failures and continues processing other plugins, so a broken plugin cannot prevent core startup.
 
 Structured lifecycle logs expose state transitions, failures and recovery events without exposing plugin secrets or internal exceptions to plugins.
+
+
+## Runtime observability and one-shot plugins
+
+The Plugin Runtime keeps a bounded per-plugin log buffer and exposes it through the authenticated host API. Plugin `stderr` is diagnostic output; plugin `stdout` is reserved for the v1 request/response protocol and is bridged by the runtime.
+
+A one-shot plugin that exits successfully is reported as **completed** rather than being mistaken for a failed/stopped plugin. A non-zero exit is reported as failed with its exit code retained for diagnosis. Enabling a plugin records the administrator user scope used by gateway requests.

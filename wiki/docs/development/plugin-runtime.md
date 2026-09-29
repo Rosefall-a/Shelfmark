@@ -136,3 +136,8 @@ Plugin package verification enforces bounded compressed package size, entry coun
 The runtime supervisor redirects plugin stdout and stderr to a non-blocking sink rather than exposing unconsumed subprocess pipes. This prevents noisy plugins from stalling on a full pipe buffer; plugin logs are not treated as an unbounded in-memory queue.
 
 Lifecycle disable and quarantine operations stop running plugin processes through the RuntimeController boundary. Uninstall has explicit package and plugin-storage cleanup boundaries so executable artifacts and namespaced data are not silently orphaned.
+
+
+## Runtime logs and gateway bridge
+
+The runtime exposes `/plugins/{plugin_id}/logs` to the authenticated host. The Plugin Manager displays these logs beside the declarative UI. Plugin stdout is reserved for the request protocol and diagnostics belong on stderr; both streams are drained so noisy plugins cannot deadlock. Core operations are forwarded through the private host gateway and are checked against active plugin permission grants.

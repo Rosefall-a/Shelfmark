@@ -56,8 +56,12 @@ class PluginRuntimeClient:
     async def plugin_ui(self, plugin_id: str) -> dict[str, Any]:
         return await self._request("GET", f"/plugins/{plugin_id}/ui")
 
-    async def start(self, plugin_id: str) -> None:
-        await self._request("POST", f"/plugins/{plugin_id}/start")
+    async def logs(self, plugin_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/plugins/{plugin_id}/logs")
+
+    async def start(self, plugin_id: str, user_id: str | None = None) -> None:
+        payload = {"user_id": user_id} if user_id is not None else None
+        await self._request("POST", f"/plugins/{plugin_id}/start", json=payload)
 
     async def stop(self, plugin_id: str) -> None:
         await self._request("POST", f"/plugins/{plugin_id}/stop")
