@@ -75,7 +75,7 @@ __all__ = [
     "IssuedClientCredential", "PermissionDecision", "PermissionGrant", "authorize_request",
     "issue_client_credential", "ActiveVersion", "InstalledPlugin", "PackageFormatError",
     "PackageVerificationError", "PluginPackageVerifier", "PluginUpdateManager", "TrustedPublisher",
-    "UpdateActivationError", "UpdateDependencyError", "UpdatePlan", "UpdateStore", "VerifiedPackage",
+    "UpdateActivationError", "UpdateDependencyError", "UpdatePlan", "UpdateRuntime", "UpdateStore", "VerifiedPackage",
     "LifecycleLog", "LifecycleState", "NoopPackageInstaller",
     "PackageInstaller", "PackageVerifier", "PluginHealth", "PluginLifecycleManager",
     "PluginRecord", "RuntimeController", "RuntimeUnavailable", "Sha256PackageVerifier",
