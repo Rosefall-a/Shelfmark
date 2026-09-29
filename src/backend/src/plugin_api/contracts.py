@@ -103,6 +103,7 @@ class RequestContext(ContractModel):
 
     request_id: UUID
     application_id: UUID
+    gateway_id: UUID
     plugin: PluginIdentity
     user: UserContext | None = None
     requested_capability: CapabilityRef

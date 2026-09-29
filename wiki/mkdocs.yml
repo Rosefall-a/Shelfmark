@@ -52,4 +52,5 @@ nav:
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
+      - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Contributing: development/contributing.md
