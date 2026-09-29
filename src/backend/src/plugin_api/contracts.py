@@ -422,6 +422,11 @@ class UiValidation(ContractModel):
             raise ValueError("min_length cannot exceed max_length")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise ValueError("minimum cannot exceed maximum")
+        if self.pattern is not None:
+            try:
+                re.compile(self.pattern)
+            except re.error as exc:
+                raise ValueError("pattern must be a valid regular expression") from exc
         return self
 
 
@@ -449,10 +454,31 @@ class UiField(ContractModel):
             raise ValueError("select fields require options")
         if self.type not in {UiFieldType.SELECT, UiFieldType.MULTISELECT} and self.options:
             raise ValueError("only select fields may declare options")
+        option_values = [option.value for option in self.options]
+        if len(option_values) != len(set(option_values)):
+            raise ValueError("select fields cannot contain duplicate option values")
         if self.type is UiFieldType.PASSWORD and not self.secret:
             raise ValueError("password fields must be marked secret")
         if self.secret and self.default is not None:
             raise ValueError("secret fields cannot expose default values")
+        if self.default is not None:
+            expected = {
+                UiFieldType.TEXT: (str,),
+                UiFieldType.TEXTAREA: (str,),
+                UiFieldType.PASSWORD: (str,),
+                UiFieldType.NUMBER: (int, float),
+                UiFieldType.BOOLEAN: (bool,),
+                UiFieldType.SELECT: (str,),
+                UiFieldType.MULTISELECT: (tuple,),
+            }[self.type]
+            if not isinstance(self.default, expected):
+                raise ValueError(f"default value does not match field type {self.type.value}")
+            if self.type is UiFieldType.MULTISELECT and not all(isinstance(value, str) for value in self.default):
+                raise ValueError("multiselect defaults must contain only strings")
+            if self.type in {UiFieldType.SELECT, UiFieldType.MULTISELECT}:
+                values = (self.default,) if self.type is UiFieldType.SELECT else self.default
+                if any(value not in option_values for value in values):
+                    raise ValueError("default value must use declared options")
         return self
 
 
