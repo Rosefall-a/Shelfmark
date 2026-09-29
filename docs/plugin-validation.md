@@ -1,12 +1,19 @@
 # Plugin integration validation
 
-This page documents the first production-quality Plugin API v1 validation
-integrations delivered for #272.
+This page documents the Plugin API v1 contract-validation integrations
+associated with #272.
 
-The examples are deliberately contract-level fixtures rather than code imported
-into the core application at runtime. They prove that an integration can be
-implemented against the stable gateway boundary without importing ORM models,
-database sessions, application secrets, or private provider registries.
+## Current audit status
+
+The examples currently on this branch are deliberately contract-level fixtures,
+not production external plugins. They prove that integration code can consume
+the stable Plugin API v1 DTOs and authorization boundary without importing ORM
+models, database sessions, application secrets or private provider registries.
+
+They are backed by the in-memory `ValidationGateway` test harness. A production
+transport and application-level plugin manager are still required before these
+examples can be considered end-to-end validation. See #320 for host/runtime
+integration and #321 for the real external examples.
 
 ## Validation targets
 
@@ -22,41 +29,39 @@ database sessions, application secrets, or private provider registries.
 The reference provider receives only a normalized NotificationRequest and
 returns a NotificationResult. The core remains responsible for notification
 creation, provider selection, preferences, retries, persistence and delivery
-state. The provider cannot reach those internals through this contract.
+state.
 
 ## Metadata provider
 
 The reference provider consumes a normalized search request and returns
 MetadataCandidate DTOs. Provider selection and result persistence remain
-core-owned. The example therefore does not recreate the metadata registry.
+core-owned.
 
 ## Discord
 
 The Discord example maps a Discord user ID to a core user ID in its own plugin
-namespace and subscribes only to selected event types for that user. Event
-delivery is filtered before it reaches the plugin, demonstrating the expected
-events.subscribe boundary.
+namespace and subscribes only to selected event types for that user. The
+validation harness demonstrates user-scoped event delivery.
 
 ## Playnite
 
 The Playnite example uses a PluginIdentity plus installation, authenticated
 user context and a device ID. It does not introduce a Playnite-specific broad
-API token. This is the contract shape intended for future Playnite migration
-away from the current user API-key integration.
+API token.
 
 ## Security and compatibility
 
-The validation gateway applies the existing default-deny authorization function
-for every operation. Manifest capability declarations remain requests, not
-grants. Storage is keyed by plugin ID, and event subscriptions are user-scoped.
+The validation gateway applies default-deny authorization for every operation.
+Manifest capability declarations remain requests, not grants. Storage is keyed
+by plugin ID, and event subscriptions are user-scoped.
 
 These examples do not create a new wire protocol. The in-memory gateway is a
-test harness for the existing Plugin API v1 contract. A production transport
+test harness for the existing Plugin API v1 contract. The production transport
 must expose the same DTOs and authorization semantics.
 
 ## Test coverage
 
-src/backend/tests/test_plugin_validation_integrations.py covers:
+`src/backend/tests/test_plugin_validation_integrations.py` covers:
 
 - notification delivery through the core-owned coordinator contract;
 - normalized metadata results;
@@ -65,9 +70,18 @@ src/backend/tests/test_plugin_validation_integrations.py covers:
 - default-deny and user-scope enforcement;
 - per-plugin storage isolation.
 
-No core provider registry is duplicated and no existing application behavior is
-removed or weakened.
+## Not yet verified end-to-end
 
-## End-to-end lifecycle validation
+The current suite does not prove:
 
-The integration suite also exercises the lifecycle boundary through install, declarative configuration, capability grant, run, stop, capability revocation and uninstall. Configuration is represented by the versioned native UI contract; password fields are secret and cannot expose defaults. Revocation is enforced by the gateway before a subsequent operation. Uninstall removes the plugin from the lifecycle manager after it is stopped.
+- external package installation;
+- production application-to-runtime gateway transport;
+- execution of an external plugin process through the lifecycle manager;
+- application-level plugin management endpoints;
+- restart/reconciliation of installed plugin state;
+- production UI/settings routing;
+- staged update/rollback through the running runtime;
+- complete uninstall/storage cleanup.
+
+Those are tracked by #320, #321 and #322. The validation examples should not be
+described as production-ready until those flows are verified.
