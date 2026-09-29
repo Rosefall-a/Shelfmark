@@ -58,6 +58,7 @@ services:
       PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_DEV_TOKEN:-dev-only-plugin-runtime-token-change-me-please}
       PLUGIN_RUNTIME_HOST: 0.0.0.0
       PLUGIN_RUNTIME_PORT: "8000"
+      PLUGIN_RUNTIME_DISCORD_EGRESS: "true"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
@@ -74,6 +75,7 @@ services:
       - plugin_data:/var/lib/unnamed-tracking/plugins
     networks:
       - plugin_gateway
+      - plugin_egress
     healthcheck:
       test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8000/health" ]
       interval: 10s
@@ -119,3 +121,4 @@ networks:
   core:
   plugin_gateway:
     internal: true
+  plugin_egress:
