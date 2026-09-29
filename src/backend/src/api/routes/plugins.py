@@ -7,6 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
@@ -15,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_admin, get_current_user
-from src.database.models.plugin_permissions import PluginPermissionGrant
+from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
@@ -37,7 +38,7 @@ def _plugin_package_verifier() -> PluginPackageVerifier:
         publishers = load_trusted_publishers(Path(configured_path) if configured_path else None)
     except PublisherTrustError as exc:
         raise RuntimeError("PLUGIN_TRUSTED_PUBLISHER_REGISTRY is invalid") from exc
-    return PluginPackageVerifier(publishers=publishers, require_signature=True)
+    return PluginPackageVerifier(publishers=publishers, require_signature=False)
 
 
 def _runtime_error(exc: PluginRuntimeUnavailable) -> HTTPException:
@@ -48,8 +49,9 @@ def _runtime_error(exc: PluginRuntimeUnavailable) -> HTTPException:
 async def install_plugin(
     file: UploadFile = File(...),
     admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Verify a signed .utp package, then transfer it to the isolated runtime."""
+    """Verify a .utp package, request declared permissions, then transfer it to the isolated runtime."""
     del admin
     temporary_path: str | None = None
     try:
@@ -71,15 +73,39 @@ async def install_plugin(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         package = Path(temporary_path).read_bytes()
+        installation_id = uuid4()
+        permission_requests = [
+            PluginPermissionRequest(
+                plugin_id=verified.manifest.plugin_id,
+                installation_id=installation_id,
+                capability=permission.capability.name.value,
+                capability_version=permission.capability.version,
+                rationale=permission.rationale,
+                status="pending",
+            )
+            for permission in verified.manifest.permissions
+        ]
+        db.add_all(permission_requests)
         try:
             result = await _client.install_package(package, filename)
         except PluginRuntimeUnavailable as exc:
+            await db.rollback()
             raise _runtime_error(exc) from exc
+        await db.commit()
+        trust_status = "trusted"
+        trust_warning = None
+        if verified.manifest.integrity.signature is None:
+            trust_status = "untrusted"
+            trust_warning = "Untrusted signing key: this plugin is unsigned."
         return {
             "plugin_id": verified.manifest.plugin_id,
             "version": verified.manifest.version,
             "name": verified.manifest.name,
             "publisher": verified.manifest.integrity.key_id,
+            "installation_id": str(installation_id),
+            "permissions_requested": len(permission_requests),
+            "trust_status": trust_status,
+            "trust_warning": trust_warning,
             "status": result.get("status", "installed"),
         }
     finally:
