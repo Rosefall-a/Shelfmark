@@ -122,6 +122,8 @@ class PluginSupervisor:
         self._logs: dict[str, deque[str]] = {}
         self._user_ids: dict[str, str | None] = {}
         self._storage_quotas: dict[str, int] = {}
+        self._package_paths: dict[str, Path] = {}
+        self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
     def _log(self, plugin_id: str, message: str) -> None:
@@ -174,8 +176,13 @@ class PluginSupervisor:
         quota = self._storage_quotas.get(plugin_id, 64 * 1024 * 1024)
         return PluginStorage(self.storage_root, plugin_id, quota_bytes=quota)
 
+    def _manifest(self, plugin_id: str) -> dict[str, Any]:
+        return self._package_manifests.get(plugin_id, {})
+
     def _settings(self, plugin_id: str) -> dict[str, Any]:
-        package, _ = self.package(plugin_id)
+        package = self._package_paths.get(plugin_id)
+        if package is None:
+            return {}
         path = package / ".settings.json"
         if not path.exists():
             return {}
@@ -194,7 +201,7 @@ class PluginSupervisor:
         if not isinstance(payload, dict):
             raise RuntimePolicyError("gateway payload must be an object")
         if method.startswith("storage."):
-            _, manifest = self.package(plugin_id)
+            manifest = self._manifest(plugin_id)
             permissions = {
                 str(item.get("capability", {}).get("name"))
                 for item in manifest.get("permissions", [])
@@ -379,6 +386,13 @@ class PluginSupervisor:
                 shutil.rmtree(workdir, ignore_errors=True)
                 raise
             self._processes[spec.plugin_id] = process
+            self._package_paths[spec.plugin_id] = package_dir
+            try:
+                self._package_manifests[spec.plugin_id] = json.loads(
+                    (package_dir / "manifest.json").read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
+                self._package_manifests[spec.plugin_id] = {}
             self._last_exit_codes[spec.plugin_id] = None
             self._logs.setdefault(spec.plugin_id, deque(maxlen=200))
             threading.Thread(
@@ -447,6 +461,8 @@ class PluginSupervisor:
                 pass
             process.wait()
         finally:
+            self._package_paths.pop(plugin_id, None)
+            self._package_manifests.pop(plugin_id, None)
             workdir = self.root / plugin_id
             if workdir.exists():
                 for path in sorted(workdir.rglob("*"), reverse=True):
@@ -515,15 +531,22 @@ class PluginRegistry:
         return package, data
 
     @staticmethod
-    def digest(package: Path) -> str:
-        digest = hashlib.sha256()
-        for path in sorted(
+    def _payload_files(package: Path) -> list[Path]:
+        return sorted(
             p
             for p in package.rglob("*")
             if p.is_file()
             and p.name not in {"manifest.json", ".settings.json"}
             and not p.name.startswith(".runtime-state")
-        ):
+            and "__pycache__" not in p.parts
+            and p.suffix not in {".pyc", ".pyo"}
+        )
+
+    @classmethod
+    def digest(cls, package: Path) -> str:
+        """Hash the v1 payload stream, ignoring runtime-generated Python caches."""
+        digest = hashlib.sha256()
+        for path in cls._payload_files(package):
             digest.update(path.relative_to(package).as_posix().encode())
             digest.update(b"\0")
             with path.open("rb") as handle:
