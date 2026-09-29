@@ -23,6 +23,14 @@ The Docker service additionally has no core database-network membership, no host
 no host filesystem or Docker socket, a read-only root filesystem, dropped
 capabilities, no-new-privileges, and bounded container resources.
 
+## Development fallback: `NONBUBBLE_ENV`
+
+If bubblewrap cannot run in a development/test environment, set `NONBUBBLE_ENV=true` on the **Plugin Runtime** service. This launches plugin processes directly instead of using the per-plugin bubblewrap namespace and filesystem sandbox. Resource limits, plugin environment filtering, the runtime service/container boundary, package verification, permissions, and gateway authorization still apply, but the per-plugin bwrap isolation does not.
+
+This is a **development troubleshooting escape hatch, not a production security mode**. Do not enable it for deployments that run untrusted plugins. Remove the variable or set it to a false value to restore the normal bubblewrap sandbox. Accepted true values are `1`, `true`, `yes`, and `on` (case-insensitive).
+
+For Docker Compose development, add `NONBUBBLE_ENV: "true"` to the `plugin-runtime.environment` section and recreate the runtime container.
+
 ## Network policy
 
 Outbound network access is default-deny. A plugin declaration may name
