@@ -55,7 +55,8 @@ def test_bootstrap_rejects_stale_timestamp() -> None:
 def test_bootstrap_rejects_unsupported_version() -> None:
     auth, now = make_auth()
     credential = auth.issue_bootstrap_credential(now=now)
-    request = request_for(auth, credential, now).model_copy(update={"supported_versions": ()})
+    request = request_for(auth, credential, now).model_dump()
+    request["supported_versions"] = ()
     with pytest.raises(ValueError):
         BootstrapRequest.model_validate(request)
 
