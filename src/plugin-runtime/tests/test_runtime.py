@@ -82,6 +82,42 @@ def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypat
     assert (tmp_path / "work" / "example").is_dir()
 
 
+def test_supervisor_can_start_without_bubblewrap_for_development(tmp_path, monkeypatch) -> None:
+    import runtime
+    from runtime import PluginSupervisor
+
+    class FakeProcess:
+        pid = 123
+
+        @staticmethod
+        def poll():
+            return None
+
+    calls = []
+
+    def fake_popen(*args, **kwargs):
+        calls.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    supervisor = PluginSupervisor(root=tmp_path / "work")
+    package = tmp_path / "package"
+    package.mkdir()
+    supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
+
+    assert calls[0][0][0] == ["python", "-c", "pass"]
+    assert calls[0][1]["cwd"] == package
+    assert calls[0][1]["env"]["HOME"] == str(package)
+
+
+def test_nonbubble_flag_is_off_by_default(monkeypatch) -> None:
+    from runtime import PluginSupervisor
+
+    monkeypatch.delenv("NONBUBBLE_ENV", raising=False)
+    assert PluginSupervisor._nonbubble_enabled() is False
+
+
 def _package_bytes(plugin_id: str = "example.upload") -> bytes:
     files = {"plugin.py": b"def main():\n    return None\n", "sdk/plugin_protocol.py": b"API_VERSION = 1\n"}
     digest = hashlib.sha256()
