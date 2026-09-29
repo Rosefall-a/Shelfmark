@@ -25,3 +25,8 @@ Global plugin safe mode prevents activation while keeping the core application a
 ## Application integration
 
 The application exposes the lifecycle endpoints under /api/plugins and delegates execution to plugin-runtime through src/backend/src/plugin_api/runtime_client.py. The runtime persists enabled state in its plugin volume and restores enabled packages after restart. Plugin failures are returned as contained lifecycle errors and do not make core application startup depend on plugin health.
+
+
+## Installation and activation
+
+Newly installed plugins are disabled by default. Installation creates pending permission requests but does not activate the plugin. An administrator must review and approve the requests, then explicitly enable the plugin. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.
