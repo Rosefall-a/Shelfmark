@@ -433,8 +433,9 @@ class PluginUpdateManager:
             except Exception:
                 pass
             if old_version and old_path and old_path.is_dir():
+                previous_version = current.previous_version if current is not None else None
                 self.store.atomically_set_active(
-                    plugin_id, old_version, current.previous_version
+                    plugin_id, old_version, previous_version
                 )
                 try:
                     await self.runtime.start(plugin_id, old_path)
