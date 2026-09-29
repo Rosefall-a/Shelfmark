@@ -194,7 +194,7 @@ def test_stop_failure_is_not_overwritten_by_stopped_state(tmp_path: Path) -> Non
     assert record.consecutive_failures == 1
 
 
-def test_disable_stops_running_plugin(tmp_path: Path) -> None:
+def test_disabling_running_plugin_stops_runtime(tmp_path: Path) -> None:
     runtime = FakeRuntime()
     lifecycle = manager(runtime)
     discover(lifecycle, tmp_path)
@@ -202,16 +202,17 @@ def test_disable_stops_running_plugin(tmp_path: Path) -> None:
     asyncio.run(lifecycle.start("example.plugin"))
     record = asyncio.run(lifecycle.disable("example.plugin"))
     assert record.state == LifecycleState.DISABLED
-    assert not record.enabled
+    assert record.enabled is False
     assert runtime.stopped == ["example.plugin"]
 
 
-def test_health_quarantine_stops_running_plugin(tmp_path: Path) -> None:
+def test_quarantine_stops_running_runtime(tmp_path: Path) -> None:
     runtime = FakeRuntime(healthy=False)
-    lifecycle = manager(runtime, quarantine_after=1)
+    lifecycle = manager(runtime, quarantine_after=2)
     discover(lifecycle, tmp_path)
     install(lifecycle)
     asyncio.run(lifecycle.start("example.plugin"))
+    asyncio.run(lifecycle.health_check("example.plugin"))
     asyncio.run(lifecycle.health_check("example.plugin"))
     assert lifecycle.health("example.plugin").state == LifecycleState.QUARANTINED
     assert runtime.stopped == ["example.plugin"]
