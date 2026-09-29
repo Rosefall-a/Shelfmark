@@ -5,6 +5,8 @@ FROM python:3.12-alpine
 RUN apk add --no-cache bubblewrap \
     && addgroup -S pluginruntime \
     && adduser -S -G pluginruntime pluginruntime
+    && mkdir -p /var/lib/unnamed-tracking/plugins
+    && chown -R pluginruntime:pluginruntime /var/lib/unnamed-tracking
 
 WORKDIR /opt/plugin-runtime
 COPY src/plugin-runtime/runtime.py ./runtime.py
