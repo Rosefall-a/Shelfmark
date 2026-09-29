@@ -166,7 +166,7 @@ class DiscordValidationPlugin:
     async def link_user(self, discord_user_id: str, user_id: UUID) -> None:
         self.user_map[discord_user_id] = user_id
         self.gateway.storage_put(
-            self.context(Capability.PLUGIN_STORAGE),
+            self.context(Capability.PLUGIN_STORAGE, user_id=user_id),
             f"users/{discord_user_id}",
             str(user_id).encode("ascii"),
         )

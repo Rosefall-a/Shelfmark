@@ -244,19 +244,19 @@ def test_plugin_storage_is_namespaced() -> None:
     )
 
     gateway.storage_put(
-        plugin_context(plugin_a, Capability.PLUGIN_STORAGE),
+        plugin_context(plugin_a, Capability.PLUGIN_STORAGE, USER_A),
         "secret",
         b"a",
     )
     gateway.storage_put(
-        plugin_context(plugin_b, Capability.PLUGIN_STORAGE),
+        plugin_context(plugin_b, Capability.PLUGIN_STORAGE, USER_A),
         "secret",
         b"b",
     )
 
     assert gateway.storage_get(
-        plugin_context(plugin_a, Capability.PLUGIN_STORAGE), "secret"
+        plugin_context(plugin_a, Capability.PLUGIN_STORAGE, USER_A), "secret"
     ) == b"a"
     assert gateway.storage_get(
-        plugin_context(plugin_b, Capability.PLUGIN_STORAGE), "secret"
+        plugin_context(plugin_b, Capability.PLUGIN_STORAGE, USER_A), "secret"
     ) == b"b"
