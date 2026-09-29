@@ -206,17 +206,17 @@ QUARANTINED
 
 ### H. Packaging, updates and rollback
 
-- [ ] Define plugin package format.
-- [ ] Verify package integrity before activation.
-- [ ] Validate dependencies before activation.
-- [ ] Stage new versions without replacing the active version.
-- [ ] Start and health-check staged versions.
-- [ ] Atomically activate only after validation.
-- [ ] Retain the previous known-good version.
-- [ ] Automatically roll back failed upgrades.
-- [ ] Keep plugin data independent from plugin executable versions.
-- [ ] Define SDK/application compatibility handling.
-- [ ] Do not block a core application update because a plugin is incompatible; disable/quarantine the plugin and report why.
+- [x] Define plugin package format.
+- [x] Verify package integrity and publisher signatures before activation.
+- [x] Validate dependencies before activation.
+- [x] Stage new versions without replacing the active version.
+- [x] Start and health-check staged versions.
+- [x] Atomically activate only after validation.
+- [x] Retain the previous known-good version.
+- [x] Automatically roll back failed upgrades.
+- [x] Keep plugin data independent from plugin executable versions.
+- [x] Define SDK/application compatibility handling.
+- [x] Do not block a core application update because a plugin is incompatible; disable/quarantine the plugin and report why.
 
 ### I. Permissions and scoped identity
 
