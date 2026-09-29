@@ -13,6 +13,10 @@ class PluginRuntimeUnavailable(RuntimeError):
     """Raised when the isolated runtime cannot be reached."""
 
 
+class PluginRuntimeRequestError(RuntimeError):
+    """Raised when the runtime rejects a validly reached request."""
+
+
 class PluginRuntimeClient:
     def __init__(self, base_url: str | None = None, token: str | None = None) -> None:
         resolved_url = base_url or os.getenv("PLUGIN_RUNTIME_URL") or "http://plugin-runtime:8000"
@@ -33,9 +37,13 @@ class PluginRuntimeClient:
                 )
         except httpx.HTTPError as exc:
             raise PluginRuntimeUnavailable("plugin runtime is unavailable") from exc
-        if response.status_code >= 400:
+        if response.status_code >= 500:
             raise PluginRuntimeUnavailable(
                 f"plugin runtime returned {response.status_code}: {response.text[:1024]}"
+            )
+        if response.status_code >= 400:
+            raise PluginRuntimeRequestError(
+                f"plugin runtime rejected the request ({response.status_code}): {response.text[:1024]}"
             )
         return response.json() if response.content else None
 
