@@ -5,6 +5,18 @@ from .contracts import (
     ApiVersion,
     Capability,
     CapabilityRef,
+    CompatibilityDecision,
+    CompatibilityStatus,
+    DependencyResolutionError,
+    IntegrityMetadata,
+    PermissionDeclaration,
+    PluginDependency,
+    PluginManifest,
+    PluginUiDeclaration,
+    StorageRequirements,
+    evaluate_manifest_compatibility,
+    migrate_manifest_data,
+    resolve_plugin_dependencies,
     ErrorCode,
     ErrorEnvelope,
     EventEnvelope,
@@ -15,6 +27,9 @@ from .contracts import (
     Timestamp,
     VersionNegotiationRequest,
     VersionNegotiationResponse,
+    parse_semver,
+    validate_version_range,
+    version_satisfies,
 )
 from .coordinators import (
     MetadataProvider,
@@ -24,7 +39,12 @@ from .coordinators import (
 )
 
 __all__ = [
-    "API_VERSION", "ApiVersion", "Capability", "CapabilityRef", "ErrorCode",
+    "API_VERSION", "ApiVersion", "Capability", "CapabilityRef", "CompatibilityDecision",
+    "CompatibilityStatus", "DependencyResolutionError", "IntegrityMetadata",
+    "PermissionDeclaration", "PluginDependency", "PluginManifest", "PluginUiDeclaration",
+    "StorageRequirements", "evaluate_manifest_compatibility", "migrate_manifest_data",
+    "resolve_plugin_dependencies", "parse_semver", "validate_version_range",
+    "version_satisfies", "ErrorCode",
     "ErrorEnvelope", "EventEnvelope", "Page", "Pagination", "PluginIdentity",
     "RequestContext", "Timestamp", "VersionNegotiationRequest",
     "VersionNegotiationResponse", "MetadataProvider", "MetadataProviderRequest",
