@@ -284,3 +284,12 @@ def test_package_verifier_enforces_resource_limits(tmp_path: Path) -> None:
     limited.max_entries = 3
     with pytest.raises(PackageFormatError, match="entry count"):
         limited.inspect(many)
+
+
+def test_current_example_test_publisher_is_trusted() -> None:
+    from src.plugin_api.publisher_trust import load_trusted_publishers
+
+    publishers = load_trusted_publishers()
+    publisher = publishers["non-secret-testkey"]
+    assert publisher.status == "retiring"
+    assert publisher.allows_plugin("example.playtime-report")
