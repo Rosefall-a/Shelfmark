@@ -351,13 +351,14 @@ class PluginSupervisor:
                 "HOME": "/plugin",
                 "TMPDIR": "/tmp",
                 "PYTHONUNBUFFERED": "1",
+                "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                 **spec.environment,
             }
             try:
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
-                    env={**environment, "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
+                    env=environment | {"HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
                     start_new_session=True,
                     # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
