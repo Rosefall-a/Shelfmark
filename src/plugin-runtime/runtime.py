@@ -954,10 +954,12 @@ class PluginRegistry:
         return {"completed": True}
 
     def delete(self, plugin_id: str) -> None:
-        package, _ = self.package(plugin_id)
+        package, manifest = self.package(plugin_id)
         self.supervisor.stop(plugin_id)
-        shutil.rmtree(package, ignore_errors=False)
+        quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
+        self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
         self.supervisor._storage(plugin_id).uninstall()
+        shutil.rmtree(package, ignore_errors=False)
         state = self._state()
         state.pop(plugin_id, None)
         self._save_state(state)
