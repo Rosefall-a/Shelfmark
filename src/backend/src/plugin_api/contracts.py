@@ -471,7 +471,11 @@ class UiField(ContractModel):
                 UiFieldType.SELECT: (str,),
                 UiFieldType.MULTISELECT: (tuple,),
             }[self.type]
-            if not isinstance(self.default, expected):
+            if self.type is UiFieldType.NUMBER:
+                valid_number = isinstance(self.default, (int, float)) and not isinstance(self.default, bool)
+                if not valid_number:
+                    raise ValueError(f"default value does not match field type {self.type.value}")
+            elif not isinstance(self.default, expected):
                 raise ValueError(f"default value does not match field type {self.type.value}")
             if self.type is UiFieldType.MULTISELECT and not all(isinstance(value, str) for value in self.default):
                 raise ValueError("multiselect defaults must contain only strings")
