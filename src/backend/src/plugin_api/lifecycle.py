@@ -14,9 +14,10 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import Awaitable, Protocol
 from uuid import UUID, uuid4
 
+from .updates import canonical_payload_digest
 from .contracts import (
     CompatibilityStatus,
     IntegrityMetadata,
@@ -62,6 +63,12 @@ class PackageInstaller(Protocol):
     async def install(self, package_path: Path, manifest: PluginManifest) -> Path: ...
 
 
+class PluginStorageCleanup(Protocol):
+    """Authoritative owner of a plugin installation namespace."""
+
+    def uninstall(self, plugin_id: str) -> None | Awaitable[None]: ...
+
+
 class PackageVerifier(Protocol):
     """Integrity boundary for plugin artifacts."""
 
@@ -93,6 +100,21 @@ class Sha256PackageVerifier:
         except (OSError, ValueError):
             return False
         return verified.payload_digest.lower() == expected_sha256.lower()
+    """Verify the authoritative Plugin Package v1 payload digest."""
+
+    def verify(self, package_path: Path, expected_sha256: str) -> bool:
+        if not package_path.is_dir():
+            return False
+        entries: list[tuple[str, bytes]] = []
+        try:
+            for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
+                relative = path.relative_to(package_path).as_posix()
+                if relative == "manifest.json":
+                    continue
+                entries.append((relative, path.read_bytes()))
+        except OSError:
+            return False
+        return canonical_payload_digest(entries).lower() == expected_sha256.lower()
 
 
 class NoopPackageInstaller:
@@ -156,6 +178,7 @@ class PluginLifecycleManager:
         storage_remover: StorageRemover | None = None,
         quarantine_after: int = 3,
         max_logs: int = 200,
+        storage_cleanup: PluginStorageCleanup | None = None,
     ) -> None:
         if quarantine_after < 1:
             raise ValueError("quarantine_after must be positive")
@@ -170,6 +193,7 @@ class PluginLifecycleManager:
         self.safe_mode = False
         self._records: dict[str, PluginRecord] = {}
         self._logs: deque[LifecycleLog] = deque(maxlen=max_logs)
+        self.storage_cleanup = storage_cleanup
 
     @staticmethod
     def _now() -> datetime:
@@ -285,6 +309,16 @@ class PluginLifecycleManager:
             await self.package_remover.remove(record.package_path)
         if self.storage_remover is not None:
             await self.storage_remover.remove(plugin_id)
+            await self.stop(plugin_id)
+        if self.storage_cleanup is not None:
+            cleanup = self.storage_cleanup.uninstall
+            try:
+                result = cleanup(plugin_id)
+                if result is not None:
+                    await result
+            except Exception as exc:
+                self._log("error", "storage_cleanup_failed", plugin_id, f"plugin storage cleanup failed: {exc}")
+                raise RuntimeError(f"plugin storage cleanup failed: {exc}") from exc
         self._records.pop(plugin_id, None)
         self._log("info", "uninstalled", plugin_id, "plugin and owned data removed")
 

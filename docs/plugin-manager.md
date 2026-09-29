@@ -405,3 +405,11 @@ A v1 release requires:
 - [x] Security/integration validation tests for the first four example integrations.
 - [x] Four production-quality validation example integrations (notification, metadata, Discord, Playnite).
 - [ ] Developer documentation sufficient for a third party to build a plugin without reading core internals.
+
+## Lifecycle integrity hardening
+
+The lifecycle manager uses the same canonical Plugin Package v1 payload digest as the package verifier. The digest covers sorted payload paths and bytes and excludes manifest.json, so installation and package inspection cannot disagree about a valid package.
+
+Complete uninstall is coordinated through an authoritative storage-owner boundary. Storage cleanup runs before the lifecycle record is removed; if cleanup fails, uninstall reports the failure and retains the lifecycle record so the installation is not silently orphaned.
+
+A running plugin is stopped before disable/uninstall completes. Runtime process output is redirected to a sink rather than an undrained pipe so noisy plugins cannot block on stdout/stderr.

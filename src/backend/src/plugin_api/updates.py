@@ -27,6 +27,17 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from .contracts import CompatibilityStatus, PluginManifest, parse_semver, resolve_plugin_dependencies
 
 
+def canonical_payload_digest(entries: list[tuple[str, bytes]]) -> str:
+    """Return the Plugin Package v1 canonical payload digest."""
+    digest = hashlib.sha256()
+    for name, data in sorted(entries):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 class PackageFormatError(ValueError):
     """Raised when a plugin package does not follow the v1 package format."""
 
@@ -148,13 +159,7 @@ class PluginPackageVerifier:
 
     @classmethod
     def _payload_digest(cls, entries: list[tuple[str, bytes]]) -> str:
-        digest = hashlib.sha256()
-        for name, data in sorted(entries):
-            digest.update(name.encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(data)
-            digest.update(b"\0")
-        return digest.hexdigest()
+        return canonical_payload_digest(entries)
 
     def _read_bounded(self, archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
         data = bytearray()
