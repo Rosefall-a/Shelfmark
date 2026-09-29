@@ -208,7 +208,8 @@ def parse_semver(value: str) -> tuple[int, int, int]:
     match = SEMVER_RE.fullmatch(value)
     if match is None:
         raise ValueError(f"invalid semantic version: {value!r}")
-    return tuple(int(part) for part in match.groups())
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch
 
 
 def _validate_range_part(part: str) -> None:
