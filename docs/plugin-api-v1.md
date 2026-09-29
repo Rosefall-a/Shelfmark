@@ -47,3 +47,14 @@ Notification and metadata providers are extension points behind core-owned coord
 The contract package has no ORM or application-service imports. Strict validation reduces accidental internal-model leakage.
 
 Authentication, authorization, rate limiting, storage, process isolation, package validation, and concrete transport remain downstream Plugin Hub work.
+
+
+## Manifest and dependency model
+
+Plugin API v1 now provides a strict static manifest contract. A manifest declares a stable plugin ID, semantic version, safe entrypoint, SDK/application compatibility ranges, requested capabilities and human-readable permission rationales, dependencies, declarative UI identifiers, namespaced storage quota, and SHA-256 integrity metadata with optional signature/key identifiers.
+
+Manifest validation is deliberately static: it validates data without importing or executing plugin code. Unknown fields, invalid identifiers, malformed semantic versions, duplicate declarations, unsafe entrypoints, and ambiguous legacy migrations are rejected.
+
+Compatibility is evaluated independently for SDK and application versions. An incompatible manifest is classified before activation and is quarantined rather than executed. Manifest version migration is a pure data transformation; it never loads plugin code.
+
+Dependencies support required/optional dependencies, semantic-version constraints, deterministic dependency-first ordering, missing/incompatible dependency rejection, and cycle detection. Dependency resolution occurs before plugin activation.

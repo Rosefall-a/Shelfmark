@@ -25,6 +25,15 @@ from src.plugin_api.contracts import (
     UserRepresentation,
     VersionNegotiationRequest,
     VersionNegotiationResponse,
+    CompatibilityStatus,
+    DependencyResolutionError,
+    PluginManifest,
+    PluginDependency,
+    PermissionDeclaration,
+    evaluate_manifest_compatibility,
+    migrate_manifest_data,
+    resolve_plugin_dependencies,
+    version_satisfies,
 )
 from src.plugin_api.coordinators import (
     MetadataCandidate,
@@ -173,3 +182,118 @@ def test_provider_requests_and_failures_are_normalized() -> None:
     assert delivered.delivered
     assert not failed.delivered
     assert metadata.query == "Example"
+
+
+def manifest_data(
+    *,
+    plugin_id: str = "example.metadata",
+    version: str = "1.2.3",
+    sdk_range: str = ">=1.0.0,<2.0.0",
+    app_range: str = ">=1.0.0,<3.0.0",
+    dependencies: tuple[PluginDependency, ...] = (),
+) -> dict:
+    return {
+        "plugin_id": plugin_id,
+        "name": "Example Metadata",
+        "version": version,
+        "entrypoint": "plugin:main",
+        "sdk_version_range": sdk_range,
+        "application_version_range": app_range,
+        "dependencies": dependencies,
+        "permissions": (
+            PermissionDeclaration(
+                capability=CapabilityRef(name=Capability.MEDIA_READ),
+                rationale="Read media for metadata enrichment",
+            ),
+        ),
+        "integrity": {"sha256": "a" * 64},
+    }
+
+
+def test_manifest_is_static_and_rejects_unsafe_or_ambiguous_fields() -> None:
+    manifest = PluginManifest.model_validate(manifest_data())
+    assert manifest.plugin_id == "example.metadata"
+    assert manifest.entrypoint == "plugin:main"
+
+    with pytest.raises(ValidationError):
+        PluginManifest.model_validate({**manifest_data(), "entrypoint": "../plugin:main"})
+    with pytest.raises(ValidationError):
+        PluginManifest.model_validate({**manifest_data(), "plugin_id": "Example Plugin"})
+    with pytest.raises(ValidationError):
+        PluginManifest.model_validate({**manifest_data(), "unexpected": "value"})
+
+
+def test_manifest_compatibility_is_evaluated_without_execution() -> None:
+    manifest = PluginManifest.model_validate(manifest_data())
+    compatible = evaluate_manifest_compatibility(manifest, "1.5.0", "2.1.0")
+    incompatible = evaluate_manifest_compatibility(manifest, "2.0.0", "2.1.0")
+
+    assert compatible.status == CompatibilityStatus.COMPATIBLE
+    assert compatible.action == "allow"
+    assert incompatible.status == CompatibilityStatus.INCOMPATIBLE
+    assert incompatible.action == "quarantine"
+
+
+def test_semver_ranges_are_deterministic() -> None:
+    assert version_satisfies("1.5.0", ">=1.0.0,<2.0.0")
+    assert version_satisfies("1.5.0", "^1.2.0")
+    assert version_satisfies("1.2.9", "~1.2.0")
+    assert version_satisfies("1.5.0", "1.x")
+    assert not version_satisfies("2.0.0", "^1.2.0")
+
+
+def test_manifest_migration_is_pure_and_rejects_ambiguous_data() -> None:
+    migrated = migrate_manifest_data({
+        "id": "example.metadata",
+        "display_name": "Example",
+        "version": "1.2.3",
+        "entry_point": "plugin:main",
+        "sdk_version": "1.0.0",
+        "app_version": "2.0.0",
+        "integrity": {"sha256": "a" * 64},
+    })
+    assert migrated["manifest_version"] == 1
+    assert migrated["plugin_id"] == "example.metadata"
+    assert migrated["sdk_version_range"] == "=1.0.0"
+
+    with pytest.raises(ValueError):
+        migrate_manifest_data({"id": "a", "plugin_id": "b"})
+
+
+def test_dependency_resolution_is_dependency_first_and_detects_cycles() -> None:
+    base = PluginManifest.model_validate(manifest_data(plugin_id="base"))
+    dependent = PluginManifest.model_validate(
+        manifest_data(
+            plugin_id="dependent",
+            dependencies=(
+                PluginDependency(plugin_id="base", version_range="^1.0.0"),
+            ),
+        ),
+    )
+    assert resolve_plugin_dependencies((dependent, base)) == ("base", "dependent")
+
+    bad = PluginManifest.model_validate(
+        manifest_data(
+            plugin_id="missing-dependent",
+            dependencies=(
+                PluginDependency(plugin_id="missing", version_range="^1.0.0"),
+            ),
+        ),
+    )
+    with pytest.raises(DependencyResolutionError):
+        resolve_plugin_dependencies((bad,))
+
+    first = PluginManifest.model_validate(
+        manifest_data(
+            plugin_id="first",
+            dependencies=(PluginDependency(plugin_id="second", version_range="^1.0.0"),),
+        ),
+    )
+    second = PluginManifest.model_validate(
+        manifest_data(
+            plugin_id="second",
+            dependencies=(PluginDependency(plugin_id="first", version_range="^1.0.0"),),
+        ),
+    )
+    with pytest.raises(DependencyResolutionError, match="dependency cycle"):
+        resolve_plugin_dependencies((first, second))
