@@ -31,6 +31,16 @@ For HTTPS access, use AUTH_COOKIE_SECURE=true.
 
 Keep SECRET_KEY stable for an existing installation. If it is omitted from the environment, preserve the persistent generated key under /data/config instead.
 
+## Plugin Runtime isolation
+
+Production Compose also defines a separate plugin-runtime service for the Plugin Manager.
+
+The runtime has no membership in the core application/database network. It uses a dedicated Docker network marked internal, has no host port, receives no core environment or application volume, and does not mount the Docker socket.
+
+Container hardening includes a non-root user, read-only root filesystem, temporary filesystem only for /tmp, dropped Linux capabilities, no-new-privileges, and bounded PID/CPU/memory resources.
+
+The current runtime image is intentionally only a bootstrap health process. Authenticated gateway connectivity is not added here: #265 owns core/gateway trust and transport, #266/#309 owns capability authorization, while #288 and #289 extend runtime isolation and network policy.
+
 ## Startup lifecycle
 
 The entrypoint starts Nginx before the application stack is ready.
