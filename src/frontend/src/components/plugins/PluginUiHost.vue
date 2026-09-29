@@ -49,13 +49,19 @@ async function handleFrontendMessage(event: MessageEvent) {
       if (!response.ok) throw new Error("Plugin secret could not be saved.");
       result = {saved: true};
     } else if (method === "plugin.save-settings") {
-      emit("save", data as UiValues);
+      const response = await fetch(\`/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/settings\`, {
+        method: "PUT", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Plugin settings could not be saved.");
       result = {saved: true};
     } else if (method === "plugin.run-action") {
       const action = props.document.actions.find((item) => item.id === String(data.actionId));
       if (!action) throw new Error("Plugin action not found.");
-      emit("action", action, (data.values || {}) as UiValues);
-      result = {completed: true};
+      const response = await fetch(\`/api/plugins/\${encodeURIComponent(props.document.plugin_id)}/actions/\${encodeURIComponent(action.id)}\`, {
+        method: "POST", credentials: "include", headers: {"Content-Type":"application/json"}, body: JSON.stringify({values: data.values || {}}),
+      });
+      if (!response.ok) throw new Error("Plugin action could not be completed.");
+      result = await response.json() as Record<string, unknown>;
     } else if (method === "plugin.context") {
       result = {plugin_id: props.document.plugin_id, path: window.location.pathname};
     } else {
