@@ -239,7 +239,7 @@ def _validate_range_part(part: str) -> None:
         parse_semver(expression[1:])
         return
     operator = next((op for op in (">=", "<=", ">", "<", "=") if expression.startswith(op)), "")
-    version = expression[len(operator):] if operator else expression
+    version = expression[len(operator) :] if operator else expression
     if version.endswith((".x", ".*")):
         prefix = version[:-2]
         if prefix and any(not item.isdigit() for item in prefix.split(".")):
@@ -278,11 +278,11 @@ def _satisfies_constraint(version: tuple[int, int, int], constraint: str) -> boo
         return lower <= version < (lower[0], lower[1] + 1, 0)
 
     operator = next((op for op in (">=", "<=", ">", "<", "=") if expression.startswith(op)), "")
-    value = expression[len(operator):] if operator else expression
+    value = expression[len(operator) :] if operator else expression
     if value.endswith((".x", ".*")):
         parts = value[:-2].split(".")
         prefix = tuple(int(item) for item in parts)
-        return version[:len(prefix)] == prefix
+        return version[: len(prefix)] == prefix
     target = parse_semver(value)
     return {
         "": version == target,
@@ -412,14 +412,15 @@ class PluginManifest(ContractModel):
         return self
 
 
-
 class UiSchemaVersion(StrEnum):
     """Versioned declarative UI schema semantics."""
+
     V1 = "v1"
 
 
 class UiFieldType(StrEnum):
     """Native field controls supported by the v1 renderer."""
+
     TEXT = "text"
     TEXTAREA = "textarea"
     PASSWORD = "password"
@@ -431,6 +432,7 @@ class UiFieldType(StrEnum):
 
 class UiValidation(ContractModel):
     """Safe client/server validation constraints for a declarative field."""
+
     pattern: str | None = Field(default=None, max_length=256)
     min_length: int | None = Field(default=None, ge=0, le=10_000)
     max_length: int | None = Field(default=None, ge=0, le=10_000)
@@ -439,7 +441,11 @@ class UiValidation(ContractModel):
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "UiValidation":
-        if self.min_length is not None and self.max_length is not None and self.min_length > self.max_length:
+        if (
+            self.min_length is not None
+            and self.max_length is not None
+            and self.min_length > self.max_length
+        ):
             raise ValueError("min_length cannot exceed max_length")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise ValueError("minimum cannot exceed maximum")
@@ -453,12 +459,14 @@ class UiValidation(ContractModel):
 
 class UiOption(ContractModel):
     """A non-executable option rendered by a select control."""
+
     value: str = Field(min_length=1, max_length=256)
     label: str = Field(min_length=1, max_length=256)
 
 
 class UiField(ContractModel):
     """One declarative settings value; secrets are write-only at the host boundary."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=256)
     type: UiFieldType
@@ -493,7 +501,9 @@ class UiField(ContractModel):
                 UiFieldType.MULTISELECT: (tuple,),
             }[self.type]
             if self.type is UiFieldType.NUMBER:
-                valid_number = isinstance(self.default, (int, float)) and not isinstance(self.default, bool)
+                valid_number = isinstance(self.default, (int, float)) and not isinstance(
+                    self.default, bool
+                )
                 if not valid_number:
                     raise ValueError(f"default value does not match field type {self.type.value}")
             elif not isinstance(self.default, expected):
@@ -513,6 +523,7 @@ class UiField(ContractModel):
 
 class UiSettingsSection(ContractModel):
     """A declarative group of settings fields."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
     description: str = Field(default="", max_length=2_000)
@@ -528,21 +539,28 @@ class UiSettingsSection(ContractModel):
 
 class UiAction(ContractModel):
     """A declarative action dispatched through the authenticated gateway."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=256)
-    handler: str | None = Field(default=None, max_length=255, pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
+    handler: str | None = Field(
+        default=None,
+        max_length=255,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$",
+    )
     capability: CapabilityRef | None = None
     confirmation: str | None = Field(default=None, max_length=512)
 
 
 class UiTableColumn(ContractModel):
     """A table column mapped to a response property, never executable code."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=256)
 
 
 class UiTable(ContractModel):
     """A declarative read-only table."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
     columns: tuple[UiTableColumn, ...] = ()
@@ -551,6 +569,7 @@ class UiTable(ContractModel):
 
 class UiDialog(ContractModel):
     """A declarative dialog whose actions still execute through the gateway."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
     body: str = Field(default="", max_length=4_000)
@@ -559,6 +578,7 @@ class UiDialog(ContractModel):
 
 class UiMenuItem(ContractModel):
     """A native navigation item; arbitrary external URLs are not supported."""
+
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     label: str = Field(min_length=1, max_length=256)
     page_id: str | None = None
@@ -663,9 +683,7 @@ class PluginUiDocument(ContractModel):
                 raise ValueError(f"page {page.id} references an unknown dialog")
         for extension in self.extensions:
             if extension.page_id not in page_set:
-                raise ValueError(
-                    f"extension {extension.id} references an unknown page"
-                )
+                raise ValueError(f"extension {extension.id} references an unknown page")
         if self.frontend is not None and self.extensions:
             raise ValueError("custom frontends cannot be mounted into host extension slots")
         return self
@@ -823,16 +841,55 @@ def resolve_plugin_dependencies(
 
 
 __all__ = [
-    "API_VERSION", "ApiVersion", "Capability", "CapabilityRef", "ErrorCode",
-    "ErrorDetail", "ErrorEnvelope", "EventAck", "EventEnvelope",
-    "EventSubscription", "GameRepresentation", "JsonValue", "MediaRepresentation",
-    "Page", "Pagination", "PluginIdentity", "RequestContext", "Timestamp",
-    "UserContext", "UserRepresentation", "VersionNegotiationRequest",
-    "VersionNegotiationResponse", "PermissionDeclaration", "PluginDependency",
-    "PluginUiDeclaration", "StorageRequirements", "IntegrityMetadata", "PluginManifest",
-    "UiSchemaVersion", "UiFieldType", "UiValidation", "UiOption", "UiField", "UiSettingsSection",
-    "UiAction", "UiTableColumn", "UiTable", "UiDialog", "UiMenuItem", "UiPage",
-    "PluginUiDocument", "PluginFrontendDeclaration", "CompatibilityStatus", "CompatibilityDecision", "evaluate_manifest_compatibility",
-    "migrate_manifest_data", "DependencyResolutionError", "resolve_plugin_dependencies",
-    "parse_semver", "validate_version_range", "version_satisfies",
+    "API_VERSION",
+    "ApiVersion",
+    "Capability",
+    "CapabilityRef",
+    "ErrorCode",
+    "ErrorDetail",
+    "ErrorEnvelope",
+    "EventAck",
+    "EventEnvelope",
+    "EventSubscription",
+    "GameRepresentation",
+    "JsonValue",
+    "MediaRepresentation",
+    "Page",
+    "Pagination",
+    "PluginIdentity",
+    "RequestContext",
+    "Timestamp",
+    "UserContext",
+    "UserRepresentation",
+    "VersionNegotiationRequest",
+    "VersionNegotiationResponse",
+    "PermissionDeclaration",
+    "PluginDependency",
+    "PluginUiDeclaration",
+    "StorageRequirements",
+    "IntegrityMetadata",
+    "PluginManifest",
+    "UiSchemaVersion",
+    "UiFieldType",
+    "UiValidation",
+    "UiOption",
+    "UiField",
+    "UiSettingsSection",
+    "UiAction",
+    "UiTableColumn",
+    "UiTable",
+    "UiDialog",
+    "UiMenuItem",
+    "UiPage",
+    "PluginUiDocument",
+    "PluginFrontendDeclaration",
+    "CompatibilityStatus",
+    "CompatibilityDecision",
+    "evaluate_manifest_compatibility",
+    "migrate_manifest_data",
+    "DependencyResolutionError",
+    "resolve_plugin_dependencies",
+    "parse_semver",
+    "validate_version_range",
+    "version_satisfies",
 ]

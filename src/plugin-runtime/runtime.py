@@ -369,7 +369,10 @@ class PluginSupervisor:
     @staticmethod
     def _nonbubble_enabled() -> bool:
         return os.getenv("NONBUBBLE_ENV", "").strip().lower() in {
-            "1", "true", "yes", "on"
+            "1",
+            "true",
+            "yes",
+            "on",
         }
 
     def _sandbox_command(
@@ -458,7 +461,12 @@ class PluginSupervisor:
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
-                    env=environment | {"HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
+                    env=environment
+                    | {
+                        "HOME": str(package_dir)
+                        if self._nonbubble_enabled()
+                        else "/plugin"
+                    },
                     start_new_session=True,
                     # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
@@ -508,7 +516,9 @@ class PluginSupervisor:
                 cwd=package_dir if self._nonbubble_enabled() else workdir,
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin",
+                    "HOME": str(package_dir)
+                    if self._nonbubble_enabled()
+                    else "/plugin",
                     "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
@@ -733,7 +743,9 @@ class PluginRegistry:
             ),
         }
 
-    def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
+    def install_package(
+        self, package: bytes, filename: str, *, replace: bool = False
+    ) -> dict[str, Any]:
         if not filename.lower().endswith(".utp"):
             raise RuntimePolicyError("plugin packages must use the .utp extension")
         if not package:
@@ -804,8 +816,12 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin manifest has an invalid entrypoint")
         frontend = manifest.get("frontend")
         if frontend is not None:
-            if not isinstance(frontend, dict) or not isinstance(frontend.get("entry"), str):
-                raise RuntimePolicyError("plugin manifest has an invalid frontend declaration")
+            if not isinstance(frontend, dict) or not isinstance(
+                frontend.get("entry"), str
+            ):
+                raise RuntimePolicyError(
+                    "plugin manifest has an invalid frontend declaration"
+                )
             entry = str(frontend["entry"])
             frontend_path = PurePosixPath(entry)
             if (
@@ -816,9 +832,13 @@ class PluginRegistry:
                 or "\\" in entry
                 or not entry.startswith("frontend/")
             ):
-                raise RuntimePolicyError("plugin manifest has an invalid frontend entry")
+                raise RuntimePolicyError(
+                    "plugin manifest has an invalid frontend entry"
+                )
             if not any(name == entry for name, _ in payload):
-                raise RuntimePolicyError("plugin frontend entry is missing from the package payload")
+                raise RuntimePolicyError(
+                    "plugin frontend entry is missing from the package payload"
+                )
 
         digest = hashlib.sha256()
         for name, data in sorted(payload):
@@ -860,7 +880,10 @@ class PluginRegistry:
                 destination.chmod(0o700)
             (staging / "manifest.json").write_bytes(manifest_data)
             if target.exists():
-                backup = self.root / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                backup = (
+                    self.root
+                    / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                )
                 target.rename(backup)
                 try:
                     staging.rename(target)
@@ -913,7 +936,9 @@ class PluginRegistry:
         try:
             path.resolve(strict=True).relative_to(package.resolve())
         except (OSError, ValueError) as exc:
-            raise RuntimePolicyError("plugin frontend path escapes the package") from exc
+            raise RuntimePolicyError(
+                "plugin frontend path escapes the package"
+            ) from exc
         if not path.is_file():
             raise KeyError(relative)
         data = path.read_bytes()
@@ -1123,7 +1148,9 @@ class PluginRegistry:
                     raise RuntimePolicyError(
                         "Discord delivery requires a non-empty message"
                     )
-                webhook_bytes = self.supervisor._storage(plugin_id).get("secrets/discord_webhook")
+                webhook_bytes = self.supervisor._storage(plugin_id).get(
+                    "secrets/discord_webhook"
+                )
                 webhook = webhook_bytes.decode("utf-8").strip() if webhook_bytes else ""
                 if not webhook:
                     raise RuntimePolicyError(
@@ -1243,7 +1270,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) if length else b"{}")
-                self.server.registry.storage_put(parts[1], str(payload.get("key", "")), str(payload.get("value", "")))  # type: ignore[attr-defined]
+                self.server.registry.storage_put(
+                    parts[1], str(payload.get("key", "")), str(payload.get("value", ""))
+                )  # type: ignore[attr-defined]
                 self._json(200, {"saved": True})
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "actions":

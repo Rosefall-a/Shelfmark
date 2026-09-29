@@ -75,10 +75,12 @@ def frontend_package_bytes() -> bytes:
         "sdk_version_range": "^1.0.0",
         "application_version_range": "*",
         "capabilities": [{"name": "notifications.send", "version": 1}],
-        "permissions": [{
-            "capability": {"name": "notifications.send", "version": 1},
-            "rationale": "Send page announcements.",
-        }],
+        "permissions": [
+            {
+                "capability": {"name": "notifications.send", "version": 1},
+                "rationale": "Send page announcements.",
+            }
+        ],
         "dependencies": [],
         "ui": {"settings": ["filters"], "actions": ["announce-page"], "pages": ["overview"]},
         "storage": {"quota_mb": 1},
@@ -104,9 +106,14 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
     upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example-upload.utp")
 
     class FakeDb:
-        def add_all(self, rows): self.rows = rows
-        async def commit(self): pass
-        async def rollback(self): pass
+        def add_all(self, rows):
+            self.rows = rows
+
+        async def commit(self):
+            pass
+
+        async def rollback(self):
+            pass
 
     try:
         asyncio.run(plugins.install_plugin(upload, admin=object(), db=FakeDb()))
@@ -117,7 +124,9 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
         raise AssertionError("untrusted package was installed without confirmation")
 
     upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example-upload.utp")
-    result = asyncio.run(plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb()))
+    result = asyncio.run(
+        plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb())
+    )
 
     assert result["plugin_id"] == "example.upload"
     assert result["version"] == "1.0.0"
@@ -141,9 +150,14 @@ def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) ->
     )
 
     class FakeDb:
-        def add_all(self, rows): self.rows = rows
-        async def commit(self): pass
-        async def rollback(self): pass
+        def add_all(self, rows):
+            self.rows = rows
+
+        async def commit(self):
+            pass
+
+        async def rollback(self):
+            pass
 
     db = FakeDb()
     result = asyncio.run(
