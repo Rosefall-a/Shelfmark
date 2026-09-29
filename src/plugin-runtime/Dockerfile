@@ -2,7 +2,7 @@
 
 FROM python:3.12-alpine
 
-RUN apk add --no-cache bubblewrap \
+RUN apk add --no-cache bubblewrap ca-certificates \
     && addgroup -S -g 10001 pluginruntime \
     && adduser -S -D -u 10001 -G pluginruntime pluginruntime \
     && mkdir -p /var/lib/unnamed-tracking/plugins \
