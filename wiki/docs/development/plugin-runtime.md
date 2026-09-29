@@ -22,6 +22,11 @@ runtime is not attached to the core database network. This prevents Docker
 service discovery from becoming an accidental database access path while
 allowing the authenticated host-to-runtime transport.
 
+The repository-root development Compose file supplies a development-only
+fallback runtime token. Set `PLUGIN_RUNTIME_DEV_TOKEN` to test a specific
+local token. Deployments must always set a unique `PLUGIN_RUNTIME_TOKEN`;
+`src/docker-container/compose.yaml` rejects a missing value before startup.
+
 ## Per-plugin process isolation
 
 PluginSupervisor launches every plugin separately. Plugin IDs are validated,
