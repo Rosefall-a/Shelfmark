@@ -573,7 +573,7 @@ class PluginRegistry:
             ),
         }
 
-    def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+    def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
         if not filename.lower().endswith(".utp"):
             raise RuntimePolicyError("plugin packages must use the .utp extension")
         if not package:
@@ -657,8 +657,11 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin package integrity verification failed")
 
         target = self.root / plugin_id
-        if target.exists():
+        previous_state = self._state().get(plugin_id)
+        if target.exists() and not replace:
             raise RuntimePolicyError("plugin is already installed")
+        if target.exists():
+            self.supervisor.stop(plugin_id)
         staging = (
             self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
         )
@@ -679,15 +682,29 @@ class PluginRegistry:
                 destination.write_bytes(data)
                 destination.chmod(0o700)
             (staging / "manifest.json").write_bytes(manifest_data)
-            staging.rename(target)
+            if target.exists():
+                backup = self.root / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                target.rename(backup)
+                try:
+                    staging.rename(target)
+                except Exception:
+                    backup.rename(target)
+                    raise
+                shutil.rmtree(backup, ignore_errors=True)
+            else:
+                staging.rename(target)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        if replace and isinstance(previous_state, dict):
+            state = self._state()
+            state[plugin_id] = previous_state
+            self._save_state(state)
         return {
             "plugin_id": plugin_id,
             "name": manifest.get("name", plugin_id),
             "version": manifest.get("version", "0.0.0"),
-            "status": "installed",
+            "status": "updated" if replace else "installed",
         }
 
     def list(self) -> list[dict[str, Any]]:
@@ -1069,7 +1086,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     return
                 package = self.rfile.read(length)
                 result = self.server.registry.install_package(  # type: ignore[attr-defined]
-                    package, self.headers.get("X-Plugin-Package-Name", "")
+                    package,
+                    self.headers.get("X-Plugin-Package-Name", ""),
+                    replace=self.headers.get("X-Plugin-Replace", "").lower() == "true",
                 )
                 self._json(201, result)
             except (RuntimePolicyError, ValueError) as exc:
