@@ -38,4 +38,4 @@ Dependency failures reject activation rather than allowing an invalid dependency
 
 Administrators install a plugin from **Settings → Plugins → Install plugin** by selecting its `.utp` package. The backend limits uploads to 64 MiB and verifies the v1 archive, canonical payload digest, and Ed25519 publisher signature before sending the package over the authenticated runtime connection. The runtime validates the archive and digest again and atomically creates the plugin directory; it never executes plugin code during installation.
 
-Official reference publisher keys are trusted by default. Additional publisher keys may be supplied through `PLUGIN_TRUSTED_PUBLISHERS` as comma-separated `key_id=base64_public_key` entries.
+Official reference publisher keys are trusted by default. The current official example artifacts also use the retiring `non-secret-testkey` for the `example.` namespace; it is accepted for compatibility with those artifacts and is intentionally public/test-only, not a production signing key. Production deployments should migrate to a private active publisher key. Additional publisher trust is configured through `PLUGIN_TRUSTED_PUBLISHER_REGISTRY`.
