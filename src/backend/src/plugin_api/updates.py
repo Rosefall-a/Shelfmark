@@ -13,13 +13,13 @@ import binascii
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import shutil
 import tempfile
 from typing import Protocol
 import zipfile
-import re
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -131,9 +131,23 @@ class PluginPackageVerifier:
         publishers: dict[str, TrustedPublisher] | None = None,
         *,
         require_signature: bool = True,
+        max_package_bytes: int = 64 * 1024 * 1024,
+        max_entries: int = 1000,
+        max_file_bytes: int = 16 * 1024 * 1024,
+        max_uncompressed_bytes: int = 64 * 1024 * 1024,
+        max_compression_ratio: float = 100.0,
     ) -> None:
+        if min(max_package_bytes, max_entries, max_file_bytes, max_uncompressed_bytes) < 1:
+            raise ValueError("package limits must be positive")
+        if max_compression_ratio < 1:
+            raise ValueError("max_compression_ratio must be at least 1")
         self.publishers = publishers or {}
         self.require_signature = require_signature
+        self.max_package_bytes = max_package_bytes
+        self.max_entries = max_entries
+        self.max_file_bytes = max_file_bytes
+        self.max_uncompressed_bytes = max_uncompressed_bytes
+        self.max_compression_ratio = max_compression_ratio
 
     @staticmethod
     def _validate_member(name: str) -> None:
@@ -147,17 +161,41 @@ class PluginPackageVerifier:
     def _payload_digest(cls, entries: list[tuple[str, bytes]]) -> str:
         return canonical_payload_digest(entries)
 
+    def _read_bounded(self, archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+        data = bytearray()
+        with archive.open(info) as source:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                data.extend(chunk)
+                if len(data) > self.max_file_bytes:
+                    raise PackageFormatError("plugin payload file exceeds maximum size")
+        return bytes(data)
+
     def inspect(self, package_path: Path) -> VerifiedPackage:
         if not package_path.is_file():
             raise PackageFormatError("plugin package must be a file")
         try:
+            if package_path.stat().st_size > self.max_package_bytes:
+                raise PackageFormatError("plugin package exceeds maximum compressed size")
             with zipfile.ZipFile(package_path) as archive:
                 infos = archive.infolist()
+                if len(infos) > self.max_entries:
+                    raise PackageFormatError("plugin package exceeds maximum entry count")
+                total_uncompressed = 0
                 names: set[str] = set()
                 payload: list[tuple[str, bytes]] = []
                 manifest_data: bytes | None = None
                 for info in infos:
                     self._validate_member(info.filename)
+                    if info.file_size > self.max_file_bytes:
+                        raise PackageFormatError("plugin payload file exceeds maximum size")
+                    total_uncompressed += info.file_size
+                    if total_uncompressed > self.max_uncompressed_bytes:
+                        raise PackageFormatError("plugin package exceeds maximum uncompressed size")
+                    if info.compress_size and info.file_size / info.compress_size > self.max_compression_ratio:
+                        raise PackageFormatError("plugin package exceeds maximum compression ratio")
                     if info.filename in names:
                         raise PackageFormatError("package contains duplicate paths")
                     names.add(info.filename)
@@ -173,7 +211,7 @@ class PluginPackageVerifier:
                         relative = info.filename[len(self.PAYLOAD_PREFIX):]
                         if not relative:
                             raise PackageFormatError("payload entry must have a filename")
-                        payload.append((relative, archive.read(info)))
+                        payload.append((relative, self._read_bounded(archive, info)))
                     else:
                         raise PackageFormatError("package contains an unexpected file")
         except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
@@ -245,7 +283,7 @@ class UpdateStore:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def _plugin_root(self, plugin_id: str) -> Path:
-        if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", plugin_id) is None:
+        if not plugin_id or not re.fullmatch(r"^[a-z0-9][a-z0-9._-]*$", plugin_id):
             raise UpdateActivationError("invalid plugin ID for update store")
         path = self.root / plugin_id
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -255,7 +293,7 @@ class UpdateStore:
         try:
             parse_semver(version)
         except ValueError as exc:
-            raise UpdateActivationError("invalid plugin version for update store") from exc
+            raise UpdateActivationError("invalid semantic version for update store") from exc
         return self._plugin_root(plugin_id) / "versions" / version
 
     def read_active(self, plugin_id: str) -> ActiveVersion | None:
@@ -487,7 +525,16 @@ class PluginUpdateManager:
             self.store.atomically_set_active(
                 plugin_id, current.active_version, current.previous_version
             )
-            raise UpdateActivationError("rollback target failed to start") from exc
+            recovery_path = self.store.version_path(plugin_id, current.active_version)
+            try:
+                await self.runtime.start(plugin_id, recovery_path)
+                if not await self.runtime.health(plugin_id):
+                    raise UpdateActivationError("former active version failed recovery health check")
+            except Exception as recovery_exc:
+                raise UpdateActivationError(
+                    "rollback target failed and former active version could not be recovered"
+                ) from recovery_exc
+            raise UpdateActivationError("rollback target failed; former active version was recovered") from exc
         return ActiveVersion(current.previous_version, current.active_version)
 
 

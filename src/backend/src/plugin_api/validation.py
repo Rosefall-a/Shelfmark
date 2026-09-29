@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any
 from uuid import UUID
 
@@ -46,6 +47,7 @@ class ValidationGateway:
     events: dict[str, list[EventEnvelope[dict[str, Any]]]] = field(
         default_factory=lambda: defaultdict(list)
     )
+    _event_rate: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list), init=False, repr=False)
 
     def _authorize(self, context: RequestContext, capability: Capability) -> None:
         requested = context.requested_capability
@@ -80,18 +82,22 @@ class ValidationGateway:
     ) -> None:
         self._authorize(context, Capability.EVENTS_SUBSCRIBE)
         self.subscriptions[context.plugin.plugin_id] = subscription
+        self._event_rate[context.plugin.plugin_id] = []
 
     def publish_event(self, event: EventEnvelope[dict[str, Any]]) -> None:
         """Deliver only events matching each plugin subscription."""
         for plugin_id, subscription in self.subscriptions.items():
             if subscription.event_types and event.event_type not in subscription.event_types:
                 continue
-            if (
-                subscription.user_ids
-                and event.user_id is not None
-                and event.user_id not in subscription.user_ids
-            ):
+            if subscription.user_ids and event.user_id not in subscription.user_ids:
                 continue
+            now = monotonic()
+            recent = [stamp for stamp in self._event_rate[plugin_id] if now - stamp < 60]
+            if len(recent) >= subscription.max_events_per_minute:
+                self._event_rate[plugin_id] = recent
+                continue
+            recent.append(now)
+            self._event_rate[plugin_id] = recent
             self.events[plugin_id].append(event)
 
     def storage_put(self, context: RequestContext, key: str, value: bytes) -> None:

@@ -233,11 +233,54 @@ def test_manual_rollback_health_checks_and_restores_on_failure(tmp_path: Path) -
     assert active.active_version == "2.0.0"
 
 
-def test_update_store_rejects_path_like_plugin_ids_and_versions(tmp_path: Path) -> None:
+def test_update_store_rejects_path_inputs(tmp_path: Path) -> None:
     store = UpdateStore(tmp_path / "store")
-    with pytest.raises(UpdateActivationError):
-        store.version_path("../escape", "1.0.0")
     with pytest.raises(UpdateActivationError):
         store.version_path("example.plugin", "../escape")
     with pytest.raises(UpdateActivationError):
-        store.version_path("example.plugin", "not-semver")
+        store.version_path(".", "1.0.0")
+    with pytest.raises(UpdateActivationError):
+        store.version_path("example.plugin", "not-a-version")
+
+
+def test_failed_rollback_restarts_former_active_version(tmp_path: Path) -> None:
+    store = UpdateStore(tmp_path / "store")
+    runtime = FakeRuntime()
+    manager = PluginUpdateManager(
+        store=store, runtime=runtime,
+        verifier=PluginPackageVerifier(require_signature=False),
+        sdk_version="1.0.0", application_version="1.0.0",
+    )
+    for version in ("1.0.0", "2.0.0"):
+        path = store.version_path("example.plugin", version)
+        path.mkdir(parents=True)
+        (path / "plugin.py").write_bytes(b"safe")
+    store.atomically_set_active("example.plugin", "2.0.0", "1.0.0")
+    runtime.healthy = False
+    with pytest.raises(UpdateActivationError):
+        asyncio.run(manager.rollback("example.plugin"))
+    assert runtime.started.count("example.plugin") == 2
+    active = store.read_active("example.plugin")
+    assert active is not None and active.active_version == "2.0.0"
+
+
+def test_package_verifier_enforces_resource_limits(tmp_path: Path) -> None:
+    package = tmp_path / "large.utp"
+    data = manifest_data(digest="0" * 64)
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(data))
+        archive.writestr("payload/plugin.py", b"x" * 32)
+    limited = PluginPackageVerifier(require_signature=False)
+    limited.max_file_bytes = 16
+    with pytest.raises(PackageFormatError, match="maximum size"):
+        limited.inspect(package)
+
+    many = tmp_path / "many.utp"
+    with zipfile.ZipFile(many, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(data))
+        for index in range(4):
+            archive.writestr(f"payload/{index}.txt", b"x")
+    limited.max_file_bytes = 1024
+    limited.max_entries = 3
+    with pytest.raises(PackageFormatError, match="entry count"):
+        limited.inspect(many)
