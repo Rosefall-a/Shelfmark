@@ -49,3 +49,35 @@ def test_manifest_without_frontend_remains_valid() -> None:
     )
 
     assert manifest.frontend is None
+
+
+def test_manifest_rejects_unsafe_frontend_entry() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        PluginManifest.model_validate({
+            "plugin_id": "example.ui-playground",
+            "name": "Plugin UI Playground",
+            "version": "1.0.0",
+            "entrypoint": "plugin:main",
+            "sdk_version_range": "^1.0.0",
+            "application_version_range": "*",
+            "integrity": {"sha256": "0" * 64, "signature": None, "key_id": None},
+            "frontend": {"entry": "../index.html"},
+        })
+
+
+def test_manifest_rejects_empty_frontend_entry() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        PluginManifest.model_validate({
+            "plugin_id": "example.ui-playground",
+            "name": "Plugin UI Playground",
+            "version": "1.0.0",
+            "entrypoint": "plugin:main",
+            "sdk_version_range": "^1.0.0",
+            "application_version_range": "*",
+            "integrity": {"sha256": "0" * 64, "signature": None, "key_id": None},
+            "frontend": {"entry": ""},
+        })
