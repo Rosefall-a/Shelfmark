@@ -1,78 +1,49 @@
 # Plugin API v1
 
-This document defines the first stable wire-contract layer for the plugin
-platform tracked by #262 and implemented by #263.
+This document defines the contract foundation for Plugin Hub (#262), implemented by #263 and its contract sub-issues #274-#278.
 
 ## Scope
 
-Plugin API v1 defines contracts, not transport. The gateway and runtime
-implementations are downstream work.
+Plugin API v1 defines transport-neutral contracts. Gateway and runtime implementations are downstream work.
 
-The public boundary deliberately contains stable application/plugin/install
-identities, optional user context, explicit capability identifiers, versioned
-request/error/event envelopes, cursor pagination, and provider-neutral
-notification/metadata DTOs.
+The public boundary defines stable application/plugin/installation identity, authenticated user context, capability families and semantic versions, stable user/game/media representations, error envelopes, cursor pagination, timestamps, API-version negotiation, versioned events, and notification/metadata coordinator interfaces.
 
-It does not expose SQLAlchemy models, database sessions, environment
-variables, application secrets, filesystem paths, Docker objects, or
-arbitrary application internals.
+The boundary does not expose ORM/database objects, sessions, environment variables, secrets, filesystem paths, Docker objects, or unrestricted application internals.
 
-## Compatibility
+## Request identity and capabilities
 
-The current API version is v1. Additive fields require an explicitly
-versioned contract decision. Removing or changing the meaning of an existing
-field is a breaking change and requires a new major API version.
+Every gateway request carries a request ID, core application ID, plugin identity, installation ID/version, optional user context, and a requested capability with its semantic version.
 
-Event types have their own integer event_version. Event payloads must be
-interpreted according to that version. Event versions are independent of the
-overall API version.
+Capability names are stable strings grouped into users, games, media, notifications, events, and plugin families. Changing an existing capability's meaning requires a capability-version change and compatibility review.
 
-Capability identifiers are stable strings. A new capability may be added
-without changing the API version. Changing an existing capability's meaning
-requires a compatibility review.
+The contract does not grant access. A downstream gateway must authorize the requested capability against installation grants and user scope.
 
-## Request identity
+## DTOs, errors and pagination
 
-Every gateway request carries a request ID, core application identity,
-plugin identity, installation identity/version, the requested capability, and
-optional authenticated user context.
+Public DTOs are immutable and reject unknown fields. UUIDs are used for application-owned IDs. User, game and media representations contain only stable plugin-facing fields, not ORM objects.
 
-The contract does not itself grant access. Gateway work must authorize the
-requested capability against the installation's grants.
+Errors use a stable machine-readable code, safe message, request ID, and structured validation details. Internal exceptions, stack traces, SQL, secrets, and environment values must never be returned.
 
-## Errors
-
-Errors use ErrorEnvelope with a stable machine-readable code, safe message,
-request ID and optional structured validation details.
-
-Internal exception messages, stack traces, SQL, secrets and environment
-values must never be placed in an error envelope.
+List contracts use a bounded cursor with a default limit of 50 and maximum of 200.
 
 ## Events
 
-Events contain API version, event ID, event type, event version, UTC
-occurrence time, source, optional user ID, and a versioned payload.
+Events include API version, event ID/type/version, UTC occurrence time, source, optional user ID, and versioned payload. Subscriptions can filter event types and user IDs and declare a bounded delivery rate. Acknowledgements can carry a safe error envelope.
 
-Subscriptions can be filtered by stable event type and relevant user IDs.
-The gateway remains responsible for enforcing the events.subscribe grant and
-preventing cross-user data leakage.
+The gateway remains responsible for enforcing the events.subscribe capability and preventing cross-user delivery.
 
-## Coordinator boundaries
+## Versioning and compatibility
 
-Notification and metadata providers are implementations behind core-owned
-coordinators. Plugins return normalized DTOs; core retains ownership of
-provider selection/priority, user preferences, authorization, retries,
-delivery state, persistence, provider lifecycle, and cross-provider
-orchestration.
+v1 is the current major API version. VersionNegotiationRequest lets callers advertise supported versions and VersionNegotiationResponse identifies the selected version.
 
-This preserves the extension seams identified by #238 and #242 without
-duplicating those registries inside the plugin framework.
+Additive fields require compatibility review. Removing a field or changing its meaning is breaking and requires a new major API version. Event versions are independent from API versions. Capability semantic changes require a capability-version change. Deprecation must be documented before removal.
 
-## Security and compatibility
+## Provider coordinators
 
-The contract layer contains no ORM imports and no direct application-service
-imports. DTOs reject unknown fields to reduce accidental coupling to internal
-models.
+Notification and metadata providers are extension points behind core-owned coordinators. Plugins return normalized DTOs; core retains provider selection/priority, user preferences, authorization, retries, delivery state, persistence, lifecycle, and cross-provider orchestration.
 
-Authentication, authorization, rate limiting, storage, process isolation and
-package validation are separate downstream concerns.
+## Security boundary
+
+The contract package has no ORM or application-service imports. Strict validation reduces accidental internal-model leakage.
+
+Authentication, authorization, rate limiting, storage, process isolation, package validation, and concrete transport remain downstream Plugin Hub work.

@@ -1,12 +1,10 @@
-"""Stable public contracts for Plugin API v1.
-
-This package contains data contracts only. It must not import application
-database models, request handlers, or implementation-specific services.
-"""
+"""Stable public contracts for Plugin API v1."""
 
 from .contracts import (
     API_VERSION,
+    ApiVersion,
     Capability,
+    CapabilityRef,
     ErrorCode,
     ErrorEnvelope,
     EventEnvelope,
@@ -15,6 +13,8 @@ from .contracts import (
     PluginIdentity,
     RequestContext,
     Timestamp,
+    VersionNegotiationRequest,
+    VersionNegotiationResponse,
 )
 from .coordinators import (
     MetadataProvider,
@@ -24,8 +24,9 @@ from .coordinators import (
 )
 
 __all__ = [
-    "API_VERSION", "Capability", "ErrorCode", "ErrorEnvelope",
-    "EventEnvelope", "Page", "Pagination", "PluginIdentity",
-    "RequestContext", "Timestamp", "MetadataProvider",
-    "MetadataProviderRequest", "NotificationProvider", "NotificationRequest",
+    "API_VERSION", "ApiVersion", "Capability", "CapabilityRef", "ErrorCode",
+    "ErrorEnvelope", "EventEnvelope", "Page", "Pagination", "PluginIdentity",
+    "RequestContext", "Timestamp", "VersionNegotiationRequest",
+    "VersionNegotiationResponse", "MetadataProvider", "MetadataProviderRequest",
+    "NotificationProvider", "NotificationRequest",
 ]
