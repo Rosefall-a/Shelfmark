@@ -68,12 +68,22 @@ class TrustedPublisher:
 
     key_id: str
     public_key: bytes
+    publisher: str = ""
+    status: str = "active"
+    plugin_id_prefixes: tuple[str, ...] = ()
 
     def verifier(self) -> Ed25519PublicKey:
         try:
             return Ed25519PublicKey.from_public_bytes(self.public_key)
         except ValueError as exc:
             raise PackageVerificationError("invalid trusted publisher public key") from exc
+
+    def allows_plugin(self, plugin_id: str) -> bool:
+        """Return whether this non-revoked publisher may sign the plugin ID."""
+        return self.status in {"active", "retiring"} and (
+            not self.plugin_id_prefixes
+            or any(plugin_id.startswith(prefix) for prefix in self.plugin_id_prefixes)
+        )
 
 
 @dataclass(frozen=True)
@@ -238,6 +248,8 @@ class PluginPackageVerifier:
             publisher = self.publishers.get(manifest.integrity.key_id)
             if publisher is None:
                 raise PackageVerificationError("plugin package publisher is not trusted")
+            if not publisher.allows_plugin(manifest.plugin_id):
+                raise PackageVerificationError("plugin package publisher is not trusted for this plugin")
             try:
                 signature_bytes = base64.b64decode(signature, validate=True)
             except (ValueError, binascii.Error) as exc:

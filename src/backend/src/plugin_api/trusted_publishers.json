@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "publishers": [
+    {
+      "key_id": "official-example-2026",
+      "publisher": "Unnamed Tracking Official",
+      "public_key_b64": "fwPuWEpJnl7NTFw84238zvcO0fAy8OUzyY9mUppIuA4=",
+      "public_key_sha256": "459bb01f710a97e3e740d28b6767e99c736ec10c13c82df10d59d4ea0c1452fa",
+      "status": "active",
+      "plugin_id_prefixes": ["example."]
+    },
+    {
+      "key_id": "official-example-2026-additional",
+      "publisher": "Unnamed Tracking Official",
+      "public_key_b64": "WhB68DO1RI9EgdknsvW5s+3QqEvwShxfL0fCcIwR0/s=",
+      "public_key_sha256": "65dcdfba7de21c9238b39d8a4d5f1237d9664894566542ac435186691bedaada",
+      "status": "active",
+      "plugin_id_prefixes": ["example."]
+    }
+  ]
+}
