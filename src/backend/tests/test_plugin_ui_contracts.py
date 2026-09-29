@@ -93,3 +93,50 @@ def test_document_accepts_versioned_native_primitives() -> None:
     )
     assert document.schema_version.value == "v1"
     assert document.pages[0].settings == ("general",)
+
+
+def test_field_defaults_match_declared_types() -> None:
+    with pytest.raises(ValidationError):
+        _field(type=UiFieldType.BOOLEAN, secret=False, default="yes")
+    with pytest.raises(ValidationError):
+        _field(type=UiFieldType.NUMBER, secret=False, default=True)
+
+
+def test_select_and_multiselect_defaults_use_declared_options() -> None:
+    with pytest.raises(ValidationError):
+        _field(
+            id="provider",
+            label="Provider",
+            type=UiFieldType.SELECT,
+            secret=False,
+            options=(UiOption(value="one", label="One"),),
+            default="two",
+        )
+    with pytest.raises(ValidationError):
+        _field(
+            id="providers",
+            label="Providers",
+            type=UiFieldType.MULTISELECT,
+            secret=False,
+            options=(UiOption(value="one", label="One"),),
+            default=("one", "two"),
+        )
+
+
+def test_select_options_must_be_unique() -> None:
+    with pytest.raises(ValidationError):
+        _field(
+            id="provider",
+            label="Provider",
+            type=UiFieldType.SELECT,
+            secret=False,
+            options=(
+                UiOption(value="one", label="One"),
+                UiOption(value="one", label="Duplicate"),
+            ),
+        )
+
+
+def test_invalid_regex_patterns_are_rejected() -> None:
+    with pytest.raises(ValidationError):
+        UiValidation(pattern="[")
