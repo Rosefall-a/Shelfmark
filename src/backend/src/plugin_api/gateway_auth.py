@@ -124,9 +124,7 @@ class InMemoryCredentialStore:
         )
 
     def mark_nonce_used(self, nonce: UUID, expires_at: datetime) -> bool:
-        now = datetime.now(timezone.utc)
-        self._used_nonces = {k: v for k, v in self._used_nonces.items() if v > now}
-        if nonce in self._used_nonces:
+        if nonce in self._used_nonces and self._used_nonces[nonce] > expires_at - timedelta(minutes=10):
             return False
         self._used_nonces[nonce] = expires_at
         return True
