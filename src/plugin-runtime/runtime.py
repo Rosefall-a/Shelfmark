@@ -274,9 +274,21 @@ class PluginSupervisor:
         resource.setrlimit(resource.RLIMIT_NPROC, (limits.processes, limits.processes))
 
     @staticmethod
+    def _nonbubble_enabled() -> bool:
+        return os.getenv("NONBUBBLE_ENV", "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+
+    @classmethod
     def _sandbox_command(
-        spec: PluginSpec, workdir: Path, package_dir: Path
+        cls, spec: PluginSpec, workdir: Path, package_dir: Path
     ) -> list[str]:
+        if cls._nonbubble_enabled():
+            # Development escape hatch for hosts where bubblewrap is unavailable.
+            # The Docker/container boundary and resource limits still apply, but
+            # the per-plugin bwrap namespace/filesystem boundary is intentionally
+            # disabled.
+            return list(spec.command)
         return [
             "bwrap",
             "--unshare-all",
@@ -340,8 +352,8 @@ class PluginSupervisor:
             try:
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
-                    cwd=workdir,
-                    env=environment,
+                    cwd=package_dir if self._nonbubble_enabled() else workdir,
+                    env={**environment, "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
                     start_new_session=True,
                     # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
@@ -377,10 +389,10 @@ class PluginSupervisor:
         try:
             result = subprocess.run(
                 self._sandbox_command(spec, workdir, package_dir),
-                cwd=workdir,
+                cwd=package_dir if self._nonbubble_enabled() else workdir,
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": "/plugin",
+                    "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin",
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
                     **spec.environment,
