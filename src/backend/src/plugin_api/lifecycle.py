@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from .updates import canonical_payload_digest
 from .contracts import (
     CompatibilityStatus,
     IntegrityMetadata,
@@ -70,25 +71,21 @@ class PackageVerifier(Protocol):
 
 
 class Sha256PackageVerifier:
-    """Verify a file or deterministic directory digest without executing it."""
+    """Verify the authoritative Plugin Package v1 payload digest."""
 
     def verify(self, package_path: Path, expected_sha256: str) -> bool:
-        digest = hashlib.sha256()
-        if package_path.is_file():
-            with package_path.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        elif package_path.is_dir():
-            for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
-                digest.update(path.relative_to(package_path).as_posix().encode())
-                digest.update(b"\0")
-                with path.open("rb") as handle:
-                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                        digest.update(chunk)
-                digest.update(b"\0")
-        else:
+        if not package_path.is_dir():
             return False
-        return digest.hexdigest().lower() == expected_sha256.lower()
+        entries: list[tuple[str, bytes]] = []
+        try:
+            for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
+                relative = path.relative_to(package_path).as_posix()
+                if relative == "manifest.json":
+                    continue
+                entries.append((relative, path.read_bytes()))
+        except OSError:
+            return False
+        return canonical_payload_digest(entries).lower() == expected_sha256.lower()
 
 
 class NoopPackageInstaller:
@@ -150,6 +147,7 @@ class PluginLifecycleManager:
         verifier: PackageVerifier | None = None,
         quarantine_after: int = 3,
         max_logs: int = 200,
+        storage_cleanup: object | None = None,
     ) -> None:
         if quarantine_after < 1:
             raise ValueError("quarantine_after must be positive")
@@ -162,6 +160,7 @@ class PluginLifecycleManager:
         self.safe_mode = False
         self._records: dict[str, PluginRecord] = {}
         self._logs: deque[LifecycleLog] = deque(maxlen=max_logs)
+        self.storage_cleanup = storage_cleanup
 
     @staticmethod
     def _now() -> datetime:
@@ -271,6 +270,15 @@ class PluginLifecycleManager:
         record = self._get(plugin_id)
         if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
             await self.stop(plugin_id)
+        if self.storage_cleanup is not None:
+            cleanup = getattr(self.storage_cleanup, "uninstall")
+            try:
+                result = cleanup(plugin_id)
+                if hasattr(result, "__await__"):
+                    await result
+            except Exception as exc:
+                self._log("error", "storage_cleanup_failed", plugin_id, f"plugin storage cleanup failed: {exc}")
+                raise RuntimeError(f"plugin storage cleanup failed: {exc}") from exc
         self._records.pop(plugin_id, None)
         self._log("info", "uninstalled", plugin_id, "plugin removed from lifecycle manager")
 
