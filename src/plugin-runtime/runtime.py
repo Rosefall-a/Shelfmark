@@ -979,10 +979,10 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin action returned invalid output"
                 ) from exc
-            webhook = (
-                message.get("discord_webhook") if isinstance(message, dict) else None
+            discord_requested = (
+                isinstance(message, dict) and message.get("discord") is True
             )
-            if webhook is not None:
+            if discord_requested:
                 capabilities = {
                     item.get("name") for item in manifest.get("capabilities", [])
                 }
@@ -991,13 +991,15 @@ class PluginRegistry:
                         "plugin action requested Discord delivery without notifications.send"
                     )
                 content = message.get("content")
-                if (
-                    not isinstance(webhook, str)
-                    or not isinstance(content, str)
-                    or not content.strip()
-                ):
+                if not isinstance(content, str) or not content.strip():
                     raise RuntimePolicyError(
-                        "Discord delivery requires a webhook URL and message"
+                        "Discord delivery requires a non-empty message"
+                    )
+                webhook_bytes = self._storage(plugin_id).get("secrets/discord_webhook")
+                webhook = webhook_bytes.decode("utf-8").strip() if webhook_bytes else ""
+                if not webhook:
+                    raise RuntimePolicyError(
+                        "Discord delivery requires a configured plugin webhook"
                     )
                 if (
                     os.getenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "false").lower()
