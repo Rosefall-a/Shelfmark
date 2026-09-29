@@ -367,10 +367,18 @@ class PluginSupervisor:
                 "HOME": "/plugin",
                 "TMPDIR": "/tmp",
                 "PYTHONUNBUFFERED": "1",
+                "PYTHONDONTWRITEBYTECODE": "1",
                 "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                 **spec.environment,
             }
             try:
+                self._package_paths[spec.plugin_id] = package_dir
+                try:
+                    self._package_manifests[spec.plugin_id] = json.loads(
+                        (package_dir / "manifest.json").read_text(encoding="utf-8")
+                    )
+                except (OSError, ValueError):
+                    self._package_manifests[spec.plugin_id] = {}
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
@@ -383,16 +391,11 @@ class PluginSupervisor:
                     preexec_fn=lambda: self._limits(spec.resources),
                 )
             except Exception:
+                self._package_paths.pop(spec.plugin_id, None)
+                self._package_manifests.pop(spec.plugin_id, None)
                 shutil.rmtree(workdir, ignore_errors=True)
                 raise
             self._processes[spec.plugin_id] = process
-            self._package_paths[spec.plugin_id] = package_dir
-            try:
-                self._package_manifests[spec.plugin_id] = json.loads(
-                    (package_dir / "manifest.json").read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError):
-                self._package_manifests[spec.plugin_id] = {}
             self._last_exit_codes[spec.plugin_id] = None
             self._logs.setdefault(spec.plugin_id, deque(maxlen=200))
             threading.Thread(
@@ -480,6 +483,8 @@ class PluginSupervisor:
             if process.poll() is not None:
                 self._last_exit_codes[plugin_id] = process.returncode
                 self._processes.pop(plugin_id, None)
+                self._package_paths.pop(plugin_id, None)
+                self._package_manifests.pop(plugin_id, None)
                 return False
             return True
 
