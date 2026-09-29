@@ -6,6 +6,7 @@ this service over an authenticated container-network boundary.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -710,6 +711,22 @@ class PluginRegistry:
                 )
         return result
 
+    def frontend(self, plugin_id: str, relative: str) -> dict[str, Any]:
+        package, manifest = self.package(plugin_id)
+        entry = str(manifest.get("frontend", {}).get("entry", "frontend/index.html"))
+        relative = relative or entry
+        path = package / Path(relative)
+        try:
+            path.resolve(strict=True).relative_to(package.resolve())
+        except (OSError, ValueError) as exc:
+            raise RuntimePolicyError("plugin frontend path escapes the package") from exc
+        if not path.is_file():
+            raise KeyError(relative)
+        data = path.read_bytes()
+        if len(data) > 4 * 1024 * 1024:
+            raise RuntimePolicyError("plugin frontend asset exceeds 4 MiB")
+        return {"path": relative, "content": base64.b64encode(data).decode("ascii")}
+
     def ui(self, plugin_id: str) -> dict[str, Any]:
         package, manifest = self.package(plugin_id)
         ui_path = package / "ui.json"
@@ -985,6 +1002,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":
                 self._json(200, {"logs": self.server.registry.logs(parts[1])})  # type: ignore[attr-defined]
+            elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
+                relative = "/".join(parts[3:])
+                self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]
             else:
                 self._json(404, {"detail": "not found"})
         except KeyError:
