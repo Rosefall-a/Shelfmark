@@ -13,6 +13,7 @@ import {
   retryPlugin,
   updatePlugin,
   type PluginInstallPreview,
+  type PluginDiagnostics,
   type PluginSummary,
 } from "../../services/plugins";
 import {
@@ -43,7 +44,7 @@ const installing = ref(false);
 const installMessage = ref("");
 const selected = ref<PluginSummary | null>(null);
 const pluginUi = ref<PluginUiDocument | null>(null);
-const pluginLogs = ref<string[]>([]);
+const pluginDiagnostics = ref<PluginDiagnostics | null>(null);
 const pluginGrants = ref<PluginPermissionGrant[]>([]);
 const pluginRequests = ref<PluginPermissionRequest[]>([]);
 const popupLoading = ref(false);
@@ -145,7 +146,7 @@ async function openPlugin(plugin: PluginSummary) {
       fetchPluginPermissionRequests(),
     ]);
     pluginUi.value = ui;
-    pluginLogs.value = logs.logs;
+    pluginDiagnostics.value = logs;
     pluginGrants.value = grants.filter(
       (grant) => grant.plugin_id === plugin.plugin_id,
     );
@@ -164,7 +165,7 @@ async function openPlugin(plugin: PluginSummary) {
 function closePlugin() {
   selected.value = null;
   pluginUi.value = null;
-  pluginLogs.value = [];
+  pluginDiagnostics.value = null;
   pluginGrants.value = [];
   pluginRequests.value = [];
 }
@@ -376,7 +377,7 @@ onMounted(load);
       :document="pluginUi"
       :grants="pluginGrants"
       :requests="pluginRequests"
-      :logs="pluginLogs"
+      :diagnostics="pluginDiagnostics"
       :loading="popupLoading"
       :busy="action === selected.plugin_id"
       @close="closePlugin"

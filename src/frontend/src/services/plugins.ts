@@ -49,6 +49,23 @@ export interface PluginInstallResult {
   trust_warning: string | null;
   status: string;
 }
+export interface PluginDiagnosticEvent {
+  sequence: number;
+  timestamp: string;
+  level: "debug" | "info" | "warning" | "error";
+  event: string;
+  message: string;
+  source: "runtime" | "plugin" | string;
+  plugin_id: string;
+  correlation_id: string | null;
+  metadata: Record<string, string | number | boolean | null>;
+}
+export interface PluginDiagnostics {
+  plugin_id: string;
+  status: "running" | "stopped";
+  last_exit_code: number | null;
+  events: PluginDiagnosticEvent[];
+}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -157,7 +174,7 @@ export const revokePluginPermissions = (id: string) =>
   });
 
 export const fetchPluginLogs = (id: string) =>
-  request<{ logs: string[] }>(`/api/plugins/${encodeURIComponent(id)}/logs`);
+  request<PluginDiagnostics>(`/api/plugins/${encodeURIComponent(id)}/logs`);
 
 export const updatePlugin = async (
   id: string,

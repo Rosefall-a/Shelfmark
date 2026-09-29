@@ -25,6 +25,7 @@ from src.api.routes import (
     media_io,
     media_lists,
     media_stats,
+    notification_providers,
     notifications,
     preferences,
     movies,
@@ -89,6 +90,7 @@ app.include_router(media_io.router)
 app.include_router(media_extras.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
+app.include_router(notification_providers.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)
 app.include_router(calendar_events.router)

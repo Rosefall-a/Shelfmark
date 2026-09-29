@@ -12,23 +12,30 @@ import io
 import json
 import os
 import re
-import resource
 import signal
 import shutil
 import stat
 import subprocess
 import threading
+import time
 import zipfile
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from storage import PluginStorage, StorageError
+from storage import PluginStorage
 from collections import deque
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import unquote
+from uuid import UUID, uuid4
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows development/test fallback
+    resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
@@ -41,6 +48,11 @@ _RESERVED_ENV = {
     "PLUGIN_GATEWAY_BOOTSTRAP_TOKEN",
     "PLUGIN_GATEWAY_SESSION_TOKEN",
 }
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)((?:authorization|password|secret|token|webhook)[\s\"']*[:=][\s\"']*)([^\s,\"']+)"
+)
+_WEBHOOK_URL = re.compile(r"https?://[^\s/]+/(?:api/)?webhooks?/[^\s]+", re.IGNORECASE)
+_DIAGNOSTIC_LEVELS = {"debug", "info", "warning", "error"}
 
 
 class RuntimePolicyError(ValueError):
@@ -119,18 +131,62 @@ class PluginSupervisor:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._processes: dict[str, subprocess.Popen[bytes]] = {}
         self._last_exit_codes: dict[str, int | None] = {}
-        self._logs: dict[str, deque[str]] = {}
+        self._logs: dict[str, deque[dict[str, Any]]] = {}
+        self._diagnostic_sequence = 0
         self._user_ids: dict[str, str | None] = {}
+        self._installation_ids: dict[str, str] = {}
         self._storage_quotas: dict[str, int] = {}
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
-    def _log(self, plugin_id: str, message: str) -> None:
-        with self._lock:
-            self._logs.setdefault(plugin_id, deque(maxlen=200)).append(message[:4000])
+    @staticmethod
+    def _redact(value: str) -> str:
+        value = _WEBHOOK_URL.sub("[REDACTED_WEBHOOK]", value)
+        return _SENSITIVE_VALUE.sub(r"\1[REDACTED]", value)[:4000]
 
-    def logs(self, plugin_id: str) -> list[str]:
+    @classmethod
+    def _safe_metadata(cls, metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+        safe: dict[str, Any] = {}
+        for key, value in (metadata or {}).items():
+            if any(
+                marker in key.lower()
+                for marker in ("token", "secret", "password", "webhook")
+            ):
+                safe[key] = "[REDACTED]"
+            elif isinstance(value, (str, int, float, bool)) or value is None:
+                safe[key] = cls._redact(value) if isinstance(value, str) else value
+        return safe
+
+    def _log(
+        self,
+        plugin_id: str,
+        message: str,
+        *,
+        level: str = "info",
+        event: str = "plugin.message",
+        source: str = "runtime",
+        correlation_id: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> None:
+        normalized_level = level if level in _DIAGNOSTIC_LEVELS else "info"
+        with self._lock:
+            self._diagnostic_sequence += 1
+            self._logs.setdefault(plugin_id, deque(maxlen=200)).append(
+                {
+                    "sequence": self._diagnostic_sequence,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": normalized_level,
+                    "event": event,
+                    "message": self._redact(message),
+                    "source": source,
+                    "plugin_id": plugin_id,
+                    "correlation_id": correlation_id,
+                    "metadata": self._safe_metadata(metadata),
+                }
+            )
+
+    def logs(self, plugin_id: str) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._logs.get(plugin_id, ()))
 
@@ -139,19 +195,30 @@ class PluginSupervisor:
             return self._last_exit_codes.get(plugin_id)
 
     def _serve_stdout(self, plugin_id: str, process: subprocess.Popen[bytes]) -> None:
-        if process.stdout is None:
+        stdout = getattr(process, "stdout", None)
+        if stdout is None:
             return
-        for raw in iter(process.stdout.readline, b""):
+        for raw in iter(stdout.readline, b""):
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
+            request: Any = None
             try:
                 request = json.loads(line)
                 if not isinstance(request, dict):
                     raise ValueError("gateway request must be an object")
                 response = self._handle_gateway_request(plugin_id, request)
             except Exception as exc:
-                self._log(plugin_id, f"[gateway] request failed: {exc}")
+                request_id = (
+                    request.get("request_id") if isinstance(request, dict) else None
+                )
+                self._log(
+                    plugin_id,
+                    f"Gateway request failed: {exc}",
+                    level="error",
+                    event="gateway.request_failed",
+                    correlation_id=str(request_id) if request_id else None,
+                )
                 response = {"error": str(exc)}
             try:
                 if process.stdin is None:
@@ -170,7 +237,13 @@ class PluginSupervisor:
         for raw in iter(stderr.readline, b""):
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
-                self._log(plugin_id, f"[stderr] {line}")
+                self._log(
+                    plugin_id,
+                    line,
+                    level="warning",
+                    event="plugin.stderr",
+                    source="plugin",
+                )
 
     def _storage(self, plugin_id: str) -> PluginStorage:
         quota = self._storage_quotas.get(plugin_id, 64 * 1024 * 1024)
@@ -211,7 +284,10 @@ class PluginSupervisor:
                 raise RuntimePolicyError("plugin.storage permission is required")
         if method == "lifecycle.ready":
             self._log(
-                plugin_id, f"[lifecycle] ready {json.dumps(payload, sort_keys=True)}"
+                plugin_id,
+                "Plugin reported ready.",
+                event="lifecycle.ready",
+                metadata={"payload_keys": ",".join(sorted(payload))},
             )
             return {"payload": {"accepted": True}}
         if method == "settings.get":
@@ -248,9 +324,14 @@ class PluginSupervisor:
             raise RuntimePolicyError(
                 "plugin has no user context; enable it from the Plugin Manager first"
             )
+        installation_id = self._installation_ids.get(plugin_id)
+        if not installation_id:
+            raise RuntimePolicyError("plugin installation identity is missing")
         body = json.dumps(
             {
                 "plugin_id": plugin_id,
+                "installation_id": installation_id,
+                "request_id": str(uuid4()),
                 "user_id": user_id,
                 "method": method,
                 "capability": capability,
@@ -279,6 +360,8 @@ class PluginSupervisor:
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:
+        if resource is None:
+            return
         resource.setrlimit(
             resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds)
         )
@@ -293,7 +376,10 @@ class PluginSupervisor:
     @staticmethod
     def _nonbubble_enabled() -> bool:
         return os.getenv("NONBUBBLE_ENV", "").strip().lower() in {
-            "1", "true", "yes", "on"
+            "1",
+            "true",
+            "yes",
+            "on",
         }
 
     def _sandbox_command(
@@ -382,7 +468,12 @@ class PluginSupervisor:
                 process = subprocess.Popen(
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
-                    env=environment | {"HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin"},
+                    env=environment
+                    | {
+                        "HOME": str(package_dir)
+                        if self._nonbubble_enabled()
+                        else "/plugin"
+                    },
                     start_new_session=True,
                     # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
@@ -404,7 +495,13 @@ class PluginSupervisor:
             threading.Thread(
                 target=self._serve_stderr, args=(spec.plugin_id, process), daemon=True
             ).start()
-            return process
+        self._log(
+            spec.plugin_id,
+            "Plugin process started.",
+            event="runtime.started",
+            metadata={"pid": process.pid},
+        )
+        return process
 
     def execute(
         self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0
@@ -417,6 +514,8 @@ class PluginSupervisor:
             self.root / f"{spec.plugin_id}.action-{os.getpid()}-{threading.get_ident()}"
         )
         workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
+        started_at = time.monotonic()
+        self._log(spec.plugin_id, "Plugin action started.", event="action.started")
         try:
             self._storage(spec.plugin_id)
             result = subprocess.run(
@@ -424,7 +523,9 @@ class PluginSupervisor:
                 cwd=package_dir if self._nonbubble_enabled() else workdir,
                 env={
                     "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": str(package_dir) if self._nonbubble_enabled() else "/plugin",
+                    "HOME": str(package_dir)
+                    if self._nonbubble_enabled()
+                    else "/plugin",
                     "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
@@ -440,14 +541,34 @@ class PluginSupervisor:
                 preexec_fn=lambda: self._limits(spec.resources),
             )
         except subprocess.TimeoutExpired as exc:
+            self._log(
+                spec.plugin_id,
+                "Plugin action timed out.",
+                level="error",
+                event="action.timed_out",
+                metadata={"timeout_seconds": timeout},
+            )
             raise RuntimePolicyError("plugin action timed out") from exc
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         if result.returncode:
+            self._log(
+                spec.plugin_id,
+                "Plugin action handler failed.",
+                level="error",
+                event="action.failed",
+                metadata={"return_code": result.returncode},
+            )
             raise RuntimePolicyError("plugin action handler failed")
         output = result.stdout or b""
         if len(output) > 64 * 1024:
             raise RuntimePolicyError("plugin action output exceeds 64 KiB")
+        self._log(
+            spec.plugin_id,
+            "Plugin action completed.",
+            event="action.completed",
+            metadata={"duration_ms": round((time.monotonic() - started_at) * 1000)},
+        )
         return output
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
@@ -455,6 +576,7 @@ class PluginSupervisor:
             process = self._processes.pop(plugin_id, None)
         if process is None:
             return
+        self._log(plugin_id, "Stopping plugin process.", event="runtime.stopping")
         try:
             os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=timeout)
@@ -465,6 +587,13 @@ class PluginSupervisor:
                 pass
             process.wait()
         finally:
+            self._last_exit_codes[plugin_id] = process.returncode
+            self._log(
+                plugin_id,
+                "Plugin process stopped.",
+                event="runtime.stopped",
+                metadata={"return_code": process.returncode},
+            )
             self._package_paths.pop(plugin_id, None)
             self._package_manifests.pop(plugin_id, None)
             workdir = self.root / plugin_id
@@ -477,17 +606,27 @@ class PluginSupervisor:
                 workdir.rmdir()
 
     def running(self, plugin_id: str) -> bool:
+        exited_code: int | None = None
         with self._lock:
             process = self._processes.get(plugin_id)
             if process is None:
                 return False
             if process.poll() is not None:
                 self._last_exit_codes[plugin_id] = process.returncode
+                exited_code = process.returncode
                 self._processes.pop(plugin_id, None)
                 self._package_paths.pop(plugin_id, None)
                 self._package_manifests.pop(plugin_id, None)
-                return False
-            return True
+        if exited_code is not None:
+            self._log(
+                plugin_id,
+                "Plugin process exited unexpectedly.",
+                level="error" if exited_code else "warning",
+                event="runtime.exited",
+                metadata={"return_code": exited_code},
+            )
+            return False
+        return True
 
     def stop_all(self) -> None:
         for plugin_id in list(self._processes):
@@ -501,13 +640,13 @@ class PluginRegistry:
         self.state_path = root / ".runtime-state.json"
         self.root.mkdir(mode=0o750, parents=True, exist_ok=True)
 
-    def _state(self) -> dict[str, bool]:
+    def _state(self) -> dict[str, Any]:
         try:
             return json.loads(self.state_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
 
-    def _save_state(self, state: dict[str, bool]) -> None:
+    def _save_state(self, state: dict[str, Any]) -> None:
         temporary = self.state_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
         temporary.replace(self.state_path)
@@ -580,6 +719,9 @@ class PluginRegistry:
             "plugin_id": plugin_id,
             "name": data.get("name", plugin_id),
             "version": data.get("version", "0.0.0"),
+            "installation_id": raw_state.get("installation_id")
+            if isinstance(raw_state, dict)
+            else None,
             "compatible": compatible,
             "compatibility_reason": ""
             if compatible
@@ -588,7 +730,6 @@ class PluginRegistry:
                 p.get("capability", {}).get("name") for p in data.get("permissions", [])
             ],
             "enabled": enabled,
-            "status": "running" if running else ("stopped" if enabled else "disabled"),
             "health": "healthy"
             if running
             else (
@@ -611,13 +752,24 @@ class PluginRegistry:
             ),
         }
 
-    def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
+    def install_package(
+        self,
+        package: bytes,
+        filename: str,
+        *,
+        installation_id: str,
+        replace: bool = False,
+    ) -> dict[str, Any]:
         if not filename.lower().endswith(".utp"):
             raise RuntimePolicyError("plugin packages must use the .utp extension")
         if not package:
             raise RuntimePolicyError("plugin package is empty")
         if len(package) > 64 * 1024 * 1024:
             raise RuntimePolicyError("plugin package exceeds the 64 MiB upload limit")
+        try:
+            UUID(installation_id)
+        except ValueError as exc:
+            raise RuntimePolicyError("plugin installation ID is invalid") from exc
 
         try:
             archive = zipfile.ZipFile(io.BytesIO(package))
@@ -682,8 +834,12 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin manifest has an invalid entrypoint")
         frontend = manifest.get("frontend")
         if frontend is not None:
-            if not isinstance(frontend, dict) or not isinstance(frontend.get("entry"), str):
-                raise RuntimePolicyError("plugin manifest has an invalid frontend declaration")
+            if not isinstance(frontend, dict) or not isinstance(
+                frontend.get("entry"), str
+            ):
+                raise RuntimePolicyError(
+                    "plugin manifest has an invalid frontend declaration"
+                )
             entry = str(frontend["entry"])
             frontend_path = PurePosixPath(entry)
             if (
@@ -694,9 +850,13 @@ class PluginRegistry:
                 or "\\" in entry
                 or not entry.startswith("frontend/")
             ):
-                raise RuntimePolicyError("plugin manifest has an invalid frontend entry")
+                raise RuntimePolicyError(
+                    "plugin manifest has an invalid frontend entry"
+                )
             if not any(name == entry for name, _ in payload):
-                raise RuntimePolicyError("plugin frontend entry is missing from the package payload")
+                raise RuntimePolicyError(
+                    "plugin frontend entry is missing from the package payload"
+                )
 
         digest = hashlib.sha256()
         for name, data in sorted(payload):
@@ -738,7 +898,10 @@ class PluginRegistry:
                 destination.chmod(0o700)
             (staging / "manifest.json").write_bytes(manifest_data)
             if target.exists():
-                backup = self.root / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                backup = (
+                    self.root
+                    / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
+                )
                 target.rename(backup)
                 try:
                     staging.rename(target)
@@ -751,10 +914,25 @@ class PluginRegistry:
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        state = self._state()
         if replace and isinstance(previous_state, dict):
-            state = self._state()
+            previous_state["installation_id"] = previous_state.get(
+                "installation_id", installation_id
+            )
             state[plugin_id] = previous_state
-            self._save_state(state)
+        else:
+            state[plugin_id] = {
+                "enabled": False,
+                "user_id": None,
+                "installation_id": installation_id,
+            }
+        self._save_state(state)
+        self.supervisor._log(
+            plugin_id,
+            "Plugin package updated." if replace else "Plugin package installed.",
+            event="package.updated" if replace else "package.installed",
+            metadata={"version": manifest.get("version", "0.0.0")},
+        )
         return {
             "plugin_id": plugin_id,
             "name": manifest.get("name", plugin_id),
@@ -791,7 +969,9 @@ class PluginRegistry:
         try:
             path.resolve(strict=True).relative_to(package.resolve())
         except (OSError, ValueError) as exc:
-            raise RuntimePolicyError("plugin frontend path escapes the package") from exc
+            raise RuntimePolicyError(
+                "plugin frontend path escapes the package"
+            ) from exc
         if not path.is_file():
             raise KeyError(relative)
         data = path.read_bytes()
@@ -846,6 +1026,7 @@ class PluginRegistry:
             f"m=importlib.import_module({module!r}); "
             f"f=getattr(m,{function!r}); "
             "result=f(json.load(sys.stdin)); "
+            "json.dump(result if isinstance(result,dict) else {'completed':result is not False},sys.stdout); "
             "raise SystemExit(0 if result is not False else 1)"
         )
         return ("python", "-c", script)
@@ -860,6 +1041,9 @@ class PluginRegistry:
         persisted = self._state().get(plugin_id)
         if user_id is None and isinstance(persisted, dict):
             self.supervisor._user_ids[plugin_id] = persisted.get("user_id")
+        if not isinstance(persisted, dict) or not persisted.get("installation_id"):
+            raise RuntimePolicyError("plugin installation identity is missing")
+        self.supervisor._installation_ids[plugin_id] = str(persisted["installation_id"])
         quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
         self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
         self.supervisor.start(PluginSpec(plugin_id, self._command(manifest)), package)
@@ -867,6 +1051,7 @@ class PluginRegistry:
         state[plugin_id] = {
             "enabled": True,
             "user_id": self.supervisor._user_ids.get(plugin_id),
+            "installation_id": self.supervisor._installation_ids[plugin_id],
         }
         self._save_state(state)
 
@@ -880,12 +1065,21 @@ class PluginRegistry:
             "user_id": previous.get("user_id")
             if isinstance(previous, dict)
             else self.supervisor._user_ids.get(plugin_id),
+            "installation_id": previous.get("installation_id")
+            if isinstance(previous, dict)
+            else self.supervisor._installation_ids.get(plugin_id),
         }
         self._save_state(state)
 
-    def logs(self, plugin_id: str) -> list[str]:
+    def diagnostics(self, plugin_id: str) -> dict[str, Any]:
         self.package(plugin_id)
-        return self.supervisor.logs(plugin_id)
+        running = self.supervisor.running(plugin_id)
+        return {
+            "plugin_id": plugin_id,
+            "status": "running" if running else "stopped",
+            "last_exit_code": self.supervisor.exit_code(plugin_id),
+            "events": self.supervisor.logs(plugin_id),
+        }
 
     def storage_put(self, plugin_id: str, key: str, value: str) -> None:
         self.package(plugin_id)
@@ -947,7 +1141,10 @@ class PluginRegistry:
 
     def action(
         self, plugin_id: str, action_id: str, values: dict[str, Any]
-    ) -> dict[str, bool]:
+    ) -> dict[str, Any]:
+        persisted = self._state().get(plugin_id)
+        if isinstance(persisted, dict) and not persisted.get("enabled", False):
+            raise RuntimePolicyError("plugin must be enabled before actions can run")
         document = self.ui(plugin_id)
         action = next(
             (
@@ -972,6 +1169,7 @@ class PluginRegistry:
         output = self.supervisor.execute(
             PluginSpec(plugin_id, self._action_command(handler)), package, payload
         )
+        result: dict[str, Any] = {"completed": True}
         if output:
             try:
                 message = json.loads(output.decode("utf-8").strip())
@@ -979,9 +1177,10 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin action returned invalid output"
                 ) from exc
-            discord_requested = (
-                isinstance(message, dict) and message.get("discord") is True
-            )
+            if not isinstance(message, dict):
+                raise RuntimePolicyError("plugin action result must be an object")
+            result = message
+            discord_requested = message.get("discord") is True
             if discord_requested:
                 capabilities = {
                     item.get("name") for item in manifest.get("capabilities", [])
@@ -995,7 +1194,9 @@ class PluginRegistry:
                     raise RuntimePolicyError(
                         "Discord delivery requires a non-empty message"
                     )
-                webhook_bytes = self.supervisor._storage(plugin_id).get("secrets/discord_webhook")
+                webhook_bytes = self.supervisor._storage(plugin_id).get(
+                    "secrets/discord_webhook"
+                )
                 webhook = webhook_bytes.decode("utf-8").strip() if webhook_bytes else ""
                 if not webhook:
                     raise RuntimePolicyError(
@@ -1009,7 +1210,8 @@ class PluginRegistry:
                         "Discord egress is disabled in this runtime"
                     )
                 self._discord_webhook(webhook, content)
-        return {"completed": True}
+                result = {"completed": True}
+        return result
 
     def delete(self, plugin_id: str) -> None:
         package, manifest = self.package(plugin_id)
@@ -1080,7 +1282,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "health":
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":
-                self._json(200, {"logs": self.server.registry.logs(parts[1])})  # type: ignore[attr-defined]
+                self._json(200, self.server.registry.diagnostics(parts[1]))  # type: ignore[attr-defined]
             elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
                 relative = "/".join(parts[3:])
                 self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]
@@ -1115,7 +1317,9 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) if length else b"{}")
-                self.server.registry.storage_put(parts[1], str(payload.get("key", "")), str(payload.get("value", "")))  # type: ignore[attr-defined]
+                self.server.registry.storage_put(
+                    parts[1], str(payload.get("key", "")), str(payload.get("value", ""))
+                )  # type: ignore[attr-defined]
                 self._json(200, {"saved": True})
                 return
             if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "actions":
@@ -1150,6 +1354,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 result = self.server.registry.install_package(  # type: ignore[attr-defined]
                     package,
                     self.headers.get("X-Plugin-Package-Name", ""),
+                    installation_id=self.headers.get("X-Plugin-Installation-ID", ""),
                     replace=self.headers.get("X-Plugin-Replace", "").lower() == "true",
                 )
                 self._json(201, result)
