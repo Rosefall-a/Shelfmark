@@ -169,8 +169,10 @@ class PluginSupervisor:
             env=environment,
             start_new_session=True,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            # Plugin output is intentionally discarded here; an undrained PIPE can
+            # deadlock a noisy untrusted process once the OS pipe buffer fills.
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             preexec_fn=lambda: self._limits(spec.resources),
         )
         self._processes[spec.plugin_id] = process
