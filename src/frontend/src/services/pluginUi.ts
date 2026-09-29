@@ -43,6 +43,7 @@ export interface UiPage {
 }
 export interface PluginUiDocument {
   schema_version: "v1";
+  frontend?: { entry: string };
   plugin_id: string;
   title: string;
   settings: UiSettingsSection[];
