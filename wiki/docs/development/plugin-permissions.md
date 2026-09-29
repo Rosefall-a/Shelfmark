@@ -35,3 +35,8 @@ The administrator approval view classifies requested capabilities before approva
 - **Low risk:** plugin-owned settings/storage capabilities.
 
 Risk is a presentation aid for administrator review; it never changes authorization. The gateway still requires an explicit grant and applies the same default-deny policy regardless of the displayed risk.
+
+
+## Installation review
+
+When an installation declares permissions, the Plugin Manager sends the administrator directly to **Settings → Plugin Permissions**, focused on the newly installed plugin. Pending requests must be approved before the plugin can be enabled, and actions requiring a capability are rejected until an active grant exists.
