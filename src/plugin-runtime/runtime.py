@@ -360,7 +360,13 @@ class PluginRegistry:
         staging = self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
         if staging.exists():
             raise RuntimePolicyError("plugin installation is already in progress")
-        staging.mkdir(mode=0o700)
+        try:
+            staging.mkdir(mode=0o700)
+        except OSError as exc:
+            raise RuntimePolicyError(
+                "plugin storage is not writable; ensure /var/lib/unnamed-tracking/plugins "
+                "is owned by the plugin runtime user"
+            ) from exc
         try:
             for name, data in payload:
                 relative = PurePosixPath(name)
