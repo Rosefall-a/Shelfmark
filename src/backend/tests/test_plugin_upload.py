@@ -53,16 +53,16 @@ class FakeClient:
 
 def frontend_package_bytes() -> bytes:
     files = {
-        "plugin.py": b"def main():\\n    pass\\n",
-        "sdk/plugin_protocol.py": b"API_VERSION = 1\\n",
+        "plugin.py": b"def main():\n    pass\n",
+        "sdk/plugin_protocol.py": b"API_VERSION = 1\n",
         "frontend/index.html": b"<!doctype html><html><body>playground</body></html>",
     }
     digest = hashlib.sha256()
     for name, data in sorted(files.items()):
         digest.update(name.encode("utf-8"))
-        digest.update(b"\\0")
+        digest.update(b"\0")
         digest.update(data)
-        digest.update(b"\\0")
+        digest.update(b"\0")
     manifest = {
         "manifest_version": 1,
         "plugin_id": "example.ui-playground",

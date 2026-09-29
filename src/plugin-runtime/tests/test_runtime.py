@@ -160,7 +160,7 @@ def test_runtime_installs_and_serves_declared_frontend(tmp_path):
     registry.install_package(_package_bytes(frontend=True), "frontend.utp")
     asset = registry.frontend("example.upload", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
-    assert "ok" in asset["content"]
+    assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
 
 
 def test_runtime_rejects_missing_declared_frontend(tmp_path):
