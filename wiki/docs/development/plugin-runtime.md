@@ -27,6 +27,14 @@ fallback runtime token. Set `PLUGIN_RUNTIME_DEV_TOKEN` to test a specific
 local token. Deployments must always set a unique `PLUGIN_RUNTIME_TOKEN`;
 `src/docker-container/compose.yaml` rejects a missing value before startup.
 
+## Development fallback: `NONBUBBLE_ENV`
+
+If bubblewrap cannot run in a development/test environment, set `NONBUBBLE_ENV=true` on the **Plugin Runtime** service. Plugin processes are then launched directly rather than through the per-plugin bubblewrap namespace/filesystem sandbox. Resource limits, environment filtering, package verification, permissions, and the authenticated gateway still apply, as does the outer Docker/container boundary, but the per-plugin bwrap isolation does not.
+
+This is a **development troubleshooting escape hatch, not a production security mode**. Do not enable it when running untrusted plugins. Remove the variable or set it to a false value to restore normal bubblewrap isolation. Accepted true values are `1`, `true`, `yes`, and `on`, case-insensitive.
+
+For repository-root Docker Compose development, add `NONBUBBLE_ENV: "true"` under `plugin-runtime.environment`, then recreate the runtime container.
+
 ## Per-plugin process isolation
 
 PluginSupervisor launches every plugin separately. Plugin IDs are validated,
