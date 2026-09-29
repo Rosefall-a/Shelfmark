@@ -296,7 +296,7 @@ async def plugin_frontend(
         content=content,
         media_type=media_type,
         headers={
-            "Content-Security-Policy": "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'",
             "X-Content-Type-Options": "nosniff",
         },
     )
