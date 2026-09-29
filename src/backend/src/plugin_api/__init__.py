@@ -46,6 +46,11 @@ from .lifecycle import (
     PluginHealth, PluginLifecycleManager, PluginRecord, RuntimeController, RuntimeUnavailable,
     Sha256PackageVerifier,
 )
+from .updates import (
+    ActiveVersion, InstalledPlugin, PackageFormatError, PackageVerificationError,
+    PluginPackageVerifier, PluginUpdateManager, TrustedPublisher, UpdateActivationError,
+    UpdateDependencyError, UpdatePlan, UpdateStore, VerifiedPackage,
+)
 from .coordinators import (
     MetadataProvider,
     MetadataProviderRequest,
@@ -57,7 +62,8 @@ __all__ = [
     "API_VERSION", "ApiVersion", "Capability", "CapabilityRef", "CompatibilityDecision",
     "CompatibilityStatus", "DependencyResolutionError", "IntegrityMetadata",
     "PermissionDeclaration", "PluginDependency", "PluginManifest", "PluginUiDeclaration",
-    "StorageRequirements", "StorageEntry", "StorageMetadata", "evaluate_manifest_compatibility", "migrate_manifest_data",
+    "StorageRequirements", "StorageEntry", "StorageMetadata", "evaluate_manifest_compatibility",
+    "migrate_manifest_data",
     "resolve_plugin_dependencies", "parse_semver", "validate_version_range",
     "version_satisfies", "ErrorCode",
     "ErrorEnvelope", "EventEnvelope", "Page", "Pagination", "PluginIdentity",
@@ -67,7 +73,10 @@ __all__ = [
     "GatewayIdentity", "ReplayError", "MetadataProvider", "MetadataProviderRequest",
     "NotificationProvider", "NotificationRequest", "AuthorizationDecision", "ClientIdentity",
     "IssuedClientCredential", "PermissionDecision", "PermissionGrant", "authorize_request",
-    "issue_client_credential", "LifecycleLog", "LifecycleState", "NoopPackageInstaller",
+    "issue_client_credential", "ActiveVersion", "InstalledPlugin", "PackageFormatError",
+    "PackageVerificationError", "PluginPackageVerifier", "PluginUpdateManager", "TrustedPublisher",
+    "UpdateActivationError", "UpdateDependencyError", "UpdatePlan", "UpdateRuntime", "UpdateStore", "VerifiedPackage",
+    "LifecycleLog", "LifecycleState", "NoopPackageInstaller",
     "PackageInstaller", "PackageVerifier", "PluginHealth", "PluginLifecycleManager",
     "PluginRecord", "RuntimeController", "RuntimeUnavailable", "Sha256PackageVerifier",
 ]

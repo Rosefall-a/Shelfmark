@@ -400,7 +400,7 @@ class PluginLifecycleManager:
         return self.health(plugin_id)
 
     async def health_check_all(self) -> tuple[PluginHealth, ...]:
-        return tuple(await self.health_check(plugin_id) for plugin_id in sorted(self._records))
+        return tuple([await self.health_check(plugin_id) for plugin_id in sorted(self._records)])
 
     async def recover(self, plugin_id: str) -> PluginRecord:
         """Clear quarantine after administrator review without changing grants."""
