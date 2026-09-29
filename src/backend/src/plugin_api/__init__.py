@@ -31,6 +31,10 @@ from .contracts import (
     validate_version_range,
     version_satisfies,
 )
+from .gateway_auth import (
+    ApplicationIdentity, BootstrapRequest, CredentialError, CredentialKind,
+    GatewayAuthenticator, GatewayHandshake, GatewayIdentity, ReplayError,
+)
 from .coordinators import (
     MetadataProvider,
     MetadataProviderRequest,
@@ -47,6 +51,8 @@ __all__ = [
     "version_satisfies", "ErrorCode",
     "ErrorEnvelope", "EventEnvelope", "Page", "Pagination", "PluginIdentity",
     "RequestContext", "Timestamp", "VersionNegotiationRequest",
-    "VersionNegotiationResponse", "MetadataProvider", "MetadataProviderRequest",
+    "VersionNegotiationResponse", "ApplicationIdentity", "BootstrapRequest",
+    "CredentialError", "CredentialKind", "GatewayAuthenticator", "GatewayHandshake",
+    "GatewayIdentity", "ReplayError", "MetadataProvider", "MetadataProviderRequest",
     "NotificationProvider", "NotificationRequest",
 ]

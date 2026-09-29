@@ -63,6 +63,7 @@ def test_request_context_contains_scoped_identity_and_capability_version() -> No
     context = RequestContext(
         request_id=uuid4(),
         application_id=uuid4(),
+        gateway_id=uuid4(),
         plugin=PluginIdentity(
             plugin_id="example.metadata",
             installation_id=uuid4(),
