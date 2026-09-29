@@ -279,7 +279,7 @@ class PluginLifecycleManager:
             cleanup = self.storage_cleanup.uninstall
             try:
                 result = cleanup(plugin_id)
-                if hasattr(result, "__await__"):
+                if result is not None:
                     await result
             except Exception as exc:
                 self._log("error", "storage_cleanup_failed", plugin_id, f"plugin storage cleanup failed: {exc}")
