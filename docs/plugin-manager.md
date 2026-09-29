@@ -23,20 +23,33 @@ Unnamed Tracking
 The plugin runtime owns plugin execution. The core application owns the authoritative data/services. Plugins communicate through a versioned, capability-scoped API.
 
 
-## Installing a `.utp` plugin
+## Current verified scope
 
-The application now exposes the complete end-user installation path through **Settings → Plugins**. Administrators select a `.utp` package, and the backend:
+The Plugin Manager is not yet a complete production plugin platform. The
+host can receive a package through **Settings → Plugins**, and the backend:
 
 1. enforces the `.utp` format and a 64 MiB upload limit;
 2. verifies the v1 package structure and canonical payload SHA-256 digest;
 3. verifies the Ed25519 publisher signature against the configured trusted-publisher set;
 4. transfers the verified package over the authenticated backend → plugin-runtime connection;
-5. has the isolated runtime validate the archive again and atomically install it under the plugin root;
-6. refreshes the plugin list so the administrator can enable the newly installed plugin.
+5. has the isolated runtime validate the archive again and atomically install it under the plugin root.
 
 Official reference publisher keys are trusted by default. Additional publisher public keys can be configured with `PLUGIN_TRUSTED_PUBLISHERS` as comma-separated `key_id=base64_public_key` entries. Installation never executes plugin code during upload or package verification.
 
 The `.utp` package is a ZIP containing `manifest.json` plus `payload/` files. Do not rename arbitrary source files to `.utp`; packages must contain a valid v1 manifest and matching integrity metadata.
+
+The following blockers prevent this from being described as a complete
+install → authorize → configure → execute lifecycle:
+
+- #321: validation packages must be real external plugins;
+- #334 and #344: Compose runtime network and authenticated deployment wiring;
+- #336: durable permission, revocation, client-credential, and audit enforcement;
+- #345: runtime action dispatch and protected secret settings;
+- #338: canonical package-member validation.
+
+The checklists below are the authoritative v1 scope. A checked item requires
+working production wiring and verification, not only a contract or unit-test
+harness.
 
 ## Non-negotiable requirements
 
@@ -418,6 +431,6 @@ A v1 release requires:
 - [ ] Staged updates and rollback.
 - [ ] Compatibility handling.
 - [ ] Audit/logging.
-- [x] Security/integration validation tests for the first four example integrations.
-- [x] Four production-quality validation example integrations (notification, metadata, Discord, Playnite).
+- [ ] Security/integration validation tests for real external plugins.
+- [ ] Four production-quality validation plugins (notification, metadata, Discord, Playnite).
 - [ ] Developer documentation sufficient for a third party to build a plugin without reading core internals.
