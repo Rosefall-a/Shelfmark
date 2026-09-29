@@ -4,7 +4,7 @@ Issue #271 defines secure package updates, staged activation, dependency validat
 
 ## Package verification
 
-Plugin package v1 is a ZIP containing `manifest.json` and `payload/`. Paths are constrained to the package namespace. The verifier rejects traversal, duplicate entries, unexpected files and unsupported filesystem entries.
+Plugin package v1 is a ZIP containing `manifest.json` and `payload/`. Paths are constrained to the package namespace. The verifier rejects traversal, exact duplicate entries, unexpected files and unsupported filesystem entries. Semantic ZIP path collisions such as repeated separators still require hardening; see #338.
 
 The manifest integrity field contains a deterministic SHA-256 digest of sorted payload paths and bytes. Production verification requires an Ed25519 publisher signature over `plugin-package-v1:<sha256>`, with the manifest's `key_id` resolving to an explicitly trusted publisher key.
 
