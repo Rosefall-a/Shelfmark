@@ -52,6 +52,36 @@ def test_resource_limits_are_positive() -> None:
         ).validate()
 
 
+def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypatch) -> None:
+    import runtime
+    from runtime import PluginSupervisor
+
+    class FakeProcess:
+        pid = 123
+
+        @staticmethod
+        def poll():
+            return None
+
+    calls = []
+
+    def fake_popen(*args, **kwargs):
+        calls.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    supervisor = PluginSupervisor(root=tmp_path / "work")
+    package = tmp_path / "package"
+    package.mkdir()
+    process = supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
+
+    assert process.pid == 123
+    assert supervisor.running("example") is True
+    assert calls[0][0][0][:2] == ["bwrap", "--unshare-all"]
+    assert calls[0][1]["env"]["HOME"] == "/plugin"
+    assert (tmp_path / "work" / "example").is_dir()
+
+
 def _package_bytes(plugin_id: str = "example.upload") -> bytes:
     files = {"plugin.py": b"def main():\n    return None\n", "sdk/plugin_protocol.py": b"API_VERSION = 1\n"}
     digest = hashlib.sha256()
