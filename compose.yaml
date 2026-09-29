@@ -23,6 +23,7 @@ services:
       PYTHONUNBUFFERED: 1
       STARTUP_MODE: ${STARTUP_MODE:-} # dev/development skips post-install setup; testing uses testing/development defaults with setup UI; empty/other uses normal defaults with setup UI
       PLUGIN_RUNTIME_URL: http://plugin-runtime:8000
+      PLUGIN_GATEWAY_URL: http://backend:8000
       PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_DEV_TOKEN:-dev-only-plugin-runtime-token-change-me-please}
     env_file:
       - .env
