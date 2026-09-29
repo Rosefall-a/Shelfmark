@@ -255,9 +255,7 @@ class PluginSupervisor:
                     cwd=workdir,
                     env=environment,
                     start_new_session=True,
-                    stdin=subprocess.DEVNULL,
-                    # Plugin output is intentionally discarded here; an undrained PIPE can
-                    # deadlock a noisy untrusted process once the OS pipe buffer fills.
+                    # Keep stdin available for the JSON-line plugin protocol.
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
