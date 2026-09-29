@@ -375,6 +375,192 @@ class PluginManifest(ContractModel):
         return self
 
 
+
+class UiSchemaVersion(StrEnum):
+    """Versioned declarative UI schema semantics."""
+    V1 = "v1"
+
+
+class UiFieldType(StrEnum):
+    """Native field controls supported by the v1 renderer."""
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    PASSWORD = "password"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+    SELECT = "select"
+    MULTISELECT = "multiselect"
+
+
+class UiValidation(ContractModel):
+    """Safe client/server validation constraints for a declarative field."""
+    pattern: str | None = Field(default=None, max_length=256)
+    min_length: int | None = Field(default=None, ge=0, le=10_000)
+    max_length: int | None = Field(default=None, ge=0, le=10_000)
+    minimum: float | None = None
+    maximum: float | None = None
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "UiValidation":
+        if self.min_length is not None and self.max_length is not None and self.min_length > self.max_length:
+            raise ValueError("min_length cannot exceed max_length")
+        if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
+            raise ValueError("minimum cannot exceed maximum")
+        return self
+
+
+class UiOption(ContractModel):
+    """A non-executable option rendered by a select control."""
+    value: str = Field(min_length=1, max_length=256)
+    label: str = Field(min_length=1, max_length=256)
+
+
+class UiField(ContractModel):
+    """One declarative settings value; secrets are write-only at the host boundary."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=256)
+    type: UiFieldType
+    description: str = Field(default="", max_length=2_000)
+    required: bool = False
+    secret: bool = False
+    default: str | int | float | bool | tuple[str, ...] | None = None
+    options: tuple[UiOption, ...] = ()
+    validation: UiValidation | None = None
+
+    @model_validator(mode="after")
+    def validate_options(self) -> "UiField":
+        if self.type in {UiFieldType.SELECT, UiFieldType.MULTISELECT} and not self.options:
+            raise ValueError("select fields require options")
+        if self.type not in {UiFieldType.SELECT, UiFieldType.MULTISELECT} and self.options:
+            raise ValueError("only select fields may declare options")
+        if self.type is UiFieldType.PASSWORD and not self.secret:
+            raise ValueError("password fields must be marked secret")
+        if self.secret and self.default is not None:
+            raise ValueError("secret fields cannot expose default values")
+        return self
+
+
+class UiSettingsSection(ContractModel):
+    """A declarative group of settings fields."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(default="", max_length=2_000)
+    fields: tuple[UiField, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_unique_fields(self) -> "UiSettingsSection":
+        ids = [field.id for field in self.fields]
+        if len(ids) != len(set(ids)):
+            raise ValueError("settings section contains duplicate field IDs")
+        return self
+
+
+class UiAction(ContractModel):
+    """A declarative action dispatched through the authenticated gateway."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=256)
+    capability: CapabilityRef | None = None
+    confirmation: str | None = Field(default=None, max_length=512)
+
+
+class UiTableColumn(ContractModel):
+    """A table column mapped to a response property, never executable code."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=256)
+
+
+class UiTable(ContractModel):
+    """A declarative read-only table."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    title: str = Field(min_length=1, max_length=256)
+    columns: tuple[UiTableColumn, ...] = ()
+    empty_message: str = Field(default="No data available.", max_length=512)
+
+
+class UiDialog(ContractModel):
+    """A declarative dialog whose actions still execute through the gateway."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    title: str = Field(min_length=1, max_length=256)
+    body: str = Field(default="", max_length=4_000)
+    actions: tuple[str, ...] = ()
+
+
+class UiMenuItem(ContractModel):
+    """A native navigation item; arbitrary external URLs are not supported."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=256)
+    page_id: str | None = None
+    action_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_target(self) -> "UiMenuItem":
+        if (self.page_id is None) == (self.action_id is None):
+            raise ValueError("menu item must target exactly one page or action")
+        return self
+
+
+class UiPage(ContractModel):
+    """A native plugin page composed only from approved declarative primitives."""
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(default="", max_length=2_000)
+    settings: tuple[str, ...] = ()
+    actions: tuple[str, ...] = ()
+    tables: tuple[str, ...] = ()
+    dialogs: tuple[str, ...] = ()
+
+
+class PluginUiDocument(ContractModel):
+    """Complete versioned UI document consumed by the native frontend host."""
+    schema_version: UiSchemaVersion = UiSchemaVersion.V1
+    plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    title: str = Field(min_length=1, max_length=256)
+    settings: tuple[UiSettingsSection, ...] = ()
+    actions: tuple[UiAction, ...] = ()
+    tables: tuple[UiTable, ...] = ()
+    dialogs: tuple[UiDialog, ...] = ()
+    menus: tuple[UiMenuItem, ...] = ()
+    pages: tuple[UiPage, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_references(self) -> "PluginUiDocument":
+        def unique(values: list[str], kind: str) -> None:
+            if len(values) != len(set(values)):
+                raise ValueError(f"duplicate {kind} identifiers")
+
+        setting_ids = [item.id for item in self.settings]
+        action_ids = [item.id for item in self.actions]
+        table_ids = [item.id for item in self.tables]
+        dialog_ids = [item.id for item in self.dialogs]
+        page_ids = [item.id for item in self.pages]
+        unique(setting_ids, "setting")
+        unique(action_ids, "action")
+        unique(table_ids, "table")
+        unique(dialog_ids, "dialog")
+        unique(page_ids, "page")
+
+        action_set = set(action_ids)
+        table_set = set(table_ids)
+        dialog_set = set(dialog_ids)
+        setting_set = set(setting_ids)
+        page_set = set(page_ids)
+        for menu in self.menus:
+            if menu.page_id is not None and menu.page_id not in page_set:
+                raise ValueError(f"menu references unknown page: {menu.page_id}")
+            if menu.action_id is not None and menu.action_id not in action_set:
+                raise ValueError(f"menu references unknown action: {menu.action_id}")
+        for page in self.pages:
+            if any(value not in setting_set for value in page.settings):
+                raise ValueError(f"page {page.id} references an unknown setting")
+            if any(value not in action_set for value in page.actions):
+                raise ValueError(f"page {page.id} references an unknown action")
+            if any(value not in table_set for value in page.tables):
+                raise ValueError(f"page {page.id} references an unknown table")
+            if any(value not in dialog_set for value in page.dialogs):
+                raise ValueError(f"page {page.id} references an unknown dialog")
+        return self
+
+
 class CompatibilityStatus(StrEnum):
     """Static compatibility outcome before any plugin code is executed."""
 
@@ -534,7 +720,9 @@ __all__ = [
     "UserContext", "UserRepresentation", "VersionNegotiationRequest",
     "VersionNegotiationResponse", "PermissionDeclaration", "PluginDependency",
     "PluginUiDeclaration", "StorageRequirements", "IntegrityMetadata", "PluginManifest",
-    "CompatibilityStatus", "CompatibilityDecision", "evaluate_manifest_compatibility",
+    "UiSchemaVersion", "UiFieldType", "UiValidation", "UiOption", "UiField", "UiSettingsSection",
+    "UiAction", "UiTableColumn", "UiTable", "UiDialog", "UiMenuItem", "UiPage",
+    "PluginUiDocument", "CompatibilityStatus", "CompatibilityDecision", "evaluate_manifest_compatibility",
     "migrate_manifest_data", "DependencyResolutionError", "resolve_plugin_dependencies",
     "parse_semver", "validate_version_range", "version_satisfies",
 ]
