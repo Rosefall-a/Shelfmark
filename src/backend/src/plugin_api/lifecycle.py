@@ -88,23 +88,26 @@ class StorageRemover(Protocol):
 
 
 class Sha256PackageVerifier:
-    """Adapter to the authoritative v1 package verifier."""
+    """Verify the authoritative v1 package digest for files or directories."""
 
     def __init__(self, *, require_signature: bool = True) -> None:
         self.require_signature = require_signature
 
     def verify(self, package_path: Path, expected_sha256: str) -> bool:
-        from .updates import PluginPackageVerifier
-        try:
-            verified = PluginPackageVerifier(require_signature=self.require_signature).inspect(package_path)
-        except (OSError, ValueError):
-            return False
-        return verified.payload_digest.lower() == expected_sha256.lower()
-    """Verify the authoritative Plugin Package v1 payload digest."""
+        if package_path.is_file():
+            from .updates import PluginPackageVerifier
 
-    def verify(self, package_path: Path, expected_sha256: str) -> bool:
+            try:
+                verified = PluginPackageVerifier(require_signature=self.require_signature).inspect(package_path)
+            except (OSError, ValueError):
+                return False
+            return verified.payload_digest.lower() == expected_sha256.lower()
+
         if not package_path.is_dir():
             return False
+
+        from .updates import canonical_payload_digest
+
         entries: list[tuple[str, bytes]] = []
         try:
             for path in sorted(p for p in package_path.rglob("*") if p.is_file()):
