@@ -428,6 +428,7 @@ class PluginSupervisor:
                     "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
+                    "PYTHONDONTWRITEBYTECODE": "1",
                     **spec.environment,
                 },
                 input=payload,
