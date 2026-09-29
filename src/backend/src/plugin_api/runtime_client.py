@@ -34,7 +34,10 @@ class PluginRuntimeClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.request(
-                    method, f"{self.base_url}{path}", headers={**self._headers(), **kwargs.pop("headers", {})}, **kwargs
+                    method,
+                    f"{self.base_url}{path}",
+                    headers={**self._headers(), **kwargs.pop("headers", {})},
+                    **kwargs,
                 )
         except httpx.HTTPError as exc:
             raise PluginRuntimeUnavailable("plugin runtime is unavailable") from exc
@@ -75,9 +78,18 @@ class PluginRuntimeClient:
         await self._request("DELETE", f"/plugins/{plugin_id}")
 
     async def save_secret(self, plugin_id: str, key: str, value: str) -> None:
-        await self._request("POST", f"/plugins/{plugin_id}/storage", json={"key": key, "value": value})
+        await self._request(
+            "POST", f"/plugins/{plugin_id}/storage", json={"key": key, "value": value}
+        )
 
-    async def install_package(self, package: bytes, filename: str, *, replace: bool = False) -> dict[str, Any]:
+    async def install_package(
+        self,
+        package: bytes,
+        filename: str,
+        *,
+        installation_id: str,
+        replace: bool = False,
+    ) -> dict[str, Any]:
         return await self._request(
             "PUT",
             "/plugins/install",
@@ -85,6 +97,7 @@ class PluginRuntimeClient:
             headers={
                 "Content-Type": "application/octet-stream",
                 "X-Plugin-Package-Name": filename,
+                "X-Plugin-Installation-Id": installation_id,
                 "X-Plugin-Replace": "true" if replace else "false",
             },
         )
@@ -96,8 +109,11 @@ class PluginRuntimeClient:
     async def save_settings(self, plugin_id: str, values: dict[str, Any]) -> None:
         await self._request("PUT", f"/plugins/{plugin_id}/settings", json=values)
 
-    async def action(self, plugin_id: str, action_id: str, values: dict[str, Any]) -> dict[str, Any]:
+    async def action(
+        self, plugin_id: str, action_id: str, values: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self._request(
-            "POST", f"/plugins/{quote(plugin_id, safe='')}/actions/{quote(action_id, safe='')}",
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/actions/{quote(action_id, safe='')}",
             json={"values": values},
         )

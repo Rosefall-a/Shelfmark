@@ -40,7 +40,11 @@ from src.plugin_api.runtime_client import (
 )
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
-from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
+from src.plugin_api.updates import (
+    PackageFormatError,
+    PackageVerificationError,
+    PluginPackageVerifier,
+)
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 logger = logging.getLogger(__name__)
@@ -199,11 +203,14 @@ async def install_plugin(
         temporary_path, filename, total = await _store_plugin_upload(file, "plugin-upload-")
         verified, trust_status, trust_warning = _inspect_install_candidate(temporary_path)
         if trust_status == "untrusted" and not allow_untrusted:
-            raise HTTPException(status_code=409, detail={
-                "code": "untrusted_plugin",
-                "message": "The plugin publisher is not trusted. Explicit untrusted consent is required.",
-                **_install_preview(verified, trust_status, trust_warning),
-            })
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "untrusted_plugin",
+                    "message": "The plugin publisher is not trusted. Explicit untrusted consent is required.",
+                    **_install_preview(verified, trust_status, trust_warning),
+                },
+            )
 
         package = temporary_path.read_bytes()
         installation_id = uuid4()
@@ -213,7 +220,9 @@ async def install_plugin(
         }
         approved_keys = set(approved_permissions if isinstance(approved_permissions, list) else ())
         if not approved_keys.issubset(declared_keys):
-            raise HTTPException(status_code=400, detail="Consent contains an undeclared permission.")
+            raise HTTPException(
+                status_code=400, detail="Consent contains an undeclared permission."
+            )
         resolved_at = int(time.time())
         permission_requests: list[PluginPermissionRequest] = []
         permission_grants: list[PluginPermissionGrant] = []
@@ -222,35 +231,45 @@ async def install_plugin(
             capability = permission.capability.name.value
             version = permission.capability.version
             approved = _permission_key(capability, version) in approved_keys
-            permission_requests.append(PluginPermissionRequest(
-                plugin_id=verified.manifest.plugin_id,
-                installation_id=installation_id,
-                capability=capability,
-                capability_version=version,
-                rationale=permission.rationale,
-                status="approved" if approved else "denied",
-                resolved_at=resolved_at,
-                resolved_by=getattr(admin, "id", None),
-            ))
-            if approved:
-                permission_grants.append(PluginPermissionGrant(
+            permission_requests.append(
+                PluginPermissionRequest(
                     plugin_id=verified.manifest.plugin_id,
                     installation_id=installation_id,
                     capability=capability,
                     capability_version=version,
-                ))
-            permission_audits.append(PluginPermissionAudit(
-                plugin_id=verified.manifest.plugin_id,
-                installation_id=installation_id,
-                capability=capability,
-                capability_version=version,
-                user_id=getattr(admin, "id", None),
-                decision="allowed" if approved else "denied",
-                reason="administrator install consent",
-            ))
+                    rationale=permission.rationale,
+                    status="approved" if approved else "denied",
+                    resolved_at=resolved_at,
+                    resolved_by=getattr(admin, "id", None),
+                )
+            )
+            if approved:
+                permission_grants.append(
+                    PluginPermissionGrant(
+                        plugin_id=verified.manifest.plugin_id,
+                        installation_id=installation_id,
+                        capability=capability,
+                        capability_version=version,
+                    )
+                )
+            permission_audits.append(
+                PluginPermissionAudit(
+                    plugin_id=verified.manifest.plugin_id,
+                    installation_id=installation_id,
+                    capability=capability,
+                    capability_version=version,
+                    user_id=getattr(admin, "id", None),
+                    decision="allowed" if approved else "denied",
+                    reason="administrator install consent",
+                )
+            )
         db.add_all([*permission_requests, *permission_grants, *permission_audits])
         try:
-            result = await _client.install_package(package, filename)
+            result = await _client.install_package(
+                package,
+                filename,
+                installation_id=str(installation_id),
+            )
         except PluginRuntimeRequestError as exc:
             await db.rollback()
             raise _runtime_request_error(exc) from exc
@@ -297,7 +316,6 @@ async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
         raise _runtime_error(exc) from exc
 
 
-
 @router.delete("/{plugin_id}", status_code=204)
 async def delete_plugin(
     plugin_id: str,
@@ -312,11 +330,22 @@ async def delete_plugin(
         raise _runtime_error(exc) from exc
     return Response(status_code=204)
 
+
 @router.post("/{plugin_id}/enable")
-async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> dict:
-    pending = await db.scalar(select(PluginPermissionRequest.id).where(PluginPermissionRequest.plugin_id == plugin_id, PluginPermissionRequest.status == "pending"))
+async def enable_plugin(
+    plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)
+) -> dict:
+    pending = await db.scalar(
+        select(PluginPermissionRequest.id).where(
+            PluginPermissionRequest.plugin_id == plugin_id,
+            PluginPermissionRequest.status == "pending",
+        )
+    )
     if pending is not None:
-        raise HTTPException(status_code=403, detail="Approve all pending plugin permissions before enabling this plugin.")
+        raise HTTPException(
+            status_code=403,
+            detail="Approve all pending plugin permissions before enabling this plugin.",
+        )
     try:
         await _client.start(quote(plugin_id, safe=""), user_id=str(admin.id))
     except PluginRuntimeUnavailable as exc:
@@ -334,7 +363,6 @@ async def disable_plugin(plugin_id: str, admin: User = Depends(get_current_admin
     return {"plugin_id": plugin_id, "enabled": False}
 
 
-
 @router.put("/{plugin_id}/update", status_code=200)
 async def update_plugin(
     plugin_id: str,
@@ -347,21 +375,30 @@ async def update_plugin(
     try:
         filename = file.filename or ""
         if not filename.lower().endswith(".utp"):
-            raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
-        with tempfile.NamedTemporaryFile(prefix="plugin-update-", suffix=".utp", delete=False) as handle:
+            raise HTTPException(
+                status_code=400, detail="Plugin packages must use the .utp extension."
+            )
+        with tempfile.NamedTemporaryFile(
+            prefix="plugin-update-", suffix=".utp", delete=False
+        ) as handle:
             temporary_path = handle.name
             total = 0
             while chunk := await file.read(1024 * 1024):
                 total += len(chunk)
                 if total > _MAX_PLUGIN_PACKAGE_BYTES:
-                    raise HTTPException(status_code=413, detail="Plugin package exceeds the 64 MiB upload limit.")
+                    raise HTTPException(
+                        status_code=413, detail="Plugin package exceeds the 64 MiB upload limit."
+                    )
                 handle.write(chunk)
         try:
             verified = _plugin_package_verifier().inspect(Path(temporary_path))
         except (PackageFormatError, PackageVerificationError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if verified.manifest.plugin_id != plugin_id:
-            raise HTTPException(status_code=400, detail="Updated package plugin ID does not match the installed plugin.")
+            raise HTTPException(
+                status_code=400,
+                detail="Updated package plugin ID does not match the installed plugin.",
+            )
         active_grants = set(
             await db.scalars(
                 select(PluginPermissionGrant.capability).where(
@@ -370,10 +407,11 @@ async def update_plugin(
                 )
             )
         )
+        installation_id = uuid4()
         permission_requests = [
             PluginPermissionRequest(
                 plugin_id=plugin_id,
-                installation_id=uuid4(),
+                installation_id=installation_id,
                 capability=permission.capability.name.value,
                 capability_version=permission.capability.version,
                 rationale=permission.rationale,
@@ -384,7 +422,12 @@ async def update_plugin(
         ]
         db.add_all(permission_requests)
         try:
-            result = await _client.install_package(Path(temporary_path).read_bytes(), filename, replace=True)
+            result = await _client.install_package(
+                Path(temporary_path).read_bytes(),
+                filename,
+                installation_id=str(installation_id),
+                replace=True,
+            )
         except PluginRuntimeRequestError as exc:
             await db.rollback()
             raise _runtime_request_error(exc) from exc
@@ -402,6 +445,7 @@ async def update_plugin(
         if temporary_path:
             Path(temporary_path).unlink(missing_ok=True)
         await file.close()
+
 
 @router.post("/{plugin_id}/retry")
 async def retry_plugin(plugin_id: str, admin: User = Depends(get_current_admin)) -> dict:
@@ -523,7 +567,9 @@ async def save_plugin_secret(
         )
     )
     if grant is None:
-        raise HTTPException(status_code=403, detail="Permission plugin.storage has not been granted.")
+        raise HTTPException(
+            status_code=403, detail="Permission plugin.storage has not been granted."
+        )
     value = payload.get("value")
     if not isinstance(value, str) or not value:
         raise HTTPException(status_code=400, detail="Secret value must be a non-empty string.")
@@ -532,6 +578,7 @@ async def save_plugin_secret(
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     return {"plugin_id": plugin_id, "key": key, "saved": True}
+
 
 @router.put("/{plugin_id}/settings")
 async def save_plugin_settings(
@@ -556,19 +603,31 @@ async def plugin_action(
     user: User = Depends(get_current_user),
 ) -> dict:
     document = await _client.plugin_ui(quote(plugin_id, safe=""))
-    action = next((item for item in document.get("actions", []) if item.get("id") == action_id), None)
+    action = next(
+        (item for item in document.get("actions", []) if item.get("id") == action_id), None
+    )
     if action is None:
         raise HTTPException(status_code=404, detail="Plugin action not found.")
-    plugin = next((item for item in await _client.plugins() if item.get("plugin_id") == plugin_id), None)
+    plugin = next(
+        (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id), None
+    )
     if plugin is None:
         raise HTTPException(status_code=404, detail="Plugin not found.")
     if not plugin.get("enabled"):
         raise HTTPException(status_code=409, detail="Enable the plugin before running actions.")
     capability = (action.get("capability") or {}).get("name")
     if capability:
-        grant = await db.scalar(select(PluginPermissionGrant.id).where(PluginPermissionGrant.plugin_id == plugin_id, PluginPermissionGrant.capability == capability, PluginPermissionGrant.revoked_at.is_(None)))
+        grant = await db.scalar(
+            select(PluginPermissionGrant.id).where(
+                PluginPermissionGrant.plugin_id == plugin_id,
+                PluginPermissionGrant.capability == capability,
+                PluginPermissionGrant.revoked_at.is_(None),
+            )
+        )
         if grant is None:
-            raise HTTPException(status_code=403, detail=f"Permission {capability} has not been granted.")
+            raise HTTPException(
+                status_code=403, detail=f"Permission {capability} has not been granted."
+            )
     values = dict(payload.values)
     values.setdefault("_plugin_context", {"path": f"/plugins/{plugin_id}", "user_id": str(user.id)})
     try:
@@ -598,14 +657,19 @@ async def plugin_gateway(
         raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
     try:
         result = await dispatch_gateway_request(
-            db, plugin_id=payload.plugin_id, user_id=payload.user_id,
-            method=payload.method, capability=payload.capability, payload=payload.payload,
+            db,
+            plugin_id=payload.plugin_id,
+            user_id=payload.user_id,
+            method=payload.method,
+            capability=payload.capability,
+            payload=payload.payload,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ValueError, LookupError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"payload": result}
+
 
 @router.get("/runtime/health")
 async def runtime_health(admin: User = Depends(get_current_admin)) -> dict:
