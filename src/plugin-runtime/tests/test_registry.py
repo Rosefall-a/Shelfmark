@@ -46,6 +46,8 @@ def test_runtime_discovers_and_serves_declarative_plugin(tmp_path: Path) -> None
     items = registry.list()
     assert items[0]["plugin_id"] == "example.plugin"
     assert items[0]["compatible"] is True
+    assert items[0]["enabled"] is False
+    assert items[0]["status"] == "disabled"
     assert registry.ui("example.plugin")["title"] == "Example"
 
 
@@ -70,6 +72,24 @@ def test_runtime_dispatches_declared_action_in_supervisor(tmp_path: Path, monkey
     assert registry.action("example.plugin", "ping", {"value": "ok"}) == {"completed": True}
     assert calls[0][0].command[0] == "python"
     assert calls[0][2] == b'{"value":"ok"}'
+
+
+def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "plugins"
+    package = root / "example.plugin"
+    package.mkdir(parents=True)
+    (package / "main.py").write_text("def main():\n    return None\n", encoding="utf-8")
+    (package / "ui.json").write_text(json.dumps({"plugin_id": "example.plugin", "settings": [], "actions": [{"id": "announce", "handler": "main:action"}]}), encoding="utf-8")
+    digest = package_digest(package)
+    (package / "manifest.json").write_text(json.dumps({"plugin_id": "example.plugin", "name": "Example", "version": "1.0.0", "entrypoint": "main:main", "capabilities": [{"name": "notifications.send", "version": 1}], "integrity": {"sha256": digest}}), encoding="utf-8")
+    registry = PluginRegistry(root, PluginSupervisor(root=tmp_path / "processes"))
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    monkeypatch.setattr(registry.supervisor, "execute", lambda spec, package, payload: b'{"discord_webhook":"https://discord.com/api/webhooks/test/x","content":"hello"}')
+    sent = []
+    monkeypatch.setattr(registry, "_discord_webhook", lambda url, content: sent.append((url, content)))
+
+    assert registry.action("example.plugin", "announce", {}) == {"completed": True}
+    assert sent == [("https://discord.com/api/webhooks/test/x", "hello")]
 
 
 def test_runtime_rejects_tampered_package(tmp_path: Path) -> None:
