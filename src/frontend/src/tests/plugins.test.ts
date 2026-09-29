@@ -9,7 +9,7 @@ import {
 
 describe("plugin management service", () => {
   it("uses the gateway-facing plugin lifecycle endpoints", async () => {
-    const mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
       new Response(JSON.stringify([]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
