@@ -23,7 +23,7 @@ import zipfile
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from .contracts import CompatibilityStatus, PluginManifest, resolve_plugin_dependencies
+from .contracts import CompatibilityStatus, PluginManifest, parse_semver, resolve_plugin_dependencies
 
 
 class PackageFormatError(ValueError):
@@ -126,7 +126,7 @@ class PluginPackageVerifier:
     @staticmethod
     def _validate_member(name: str) -> None:
         path = PurePosixPath(name)
-        if not name or path.is_absolute() or ".." in path.parts:
+        if not name or path.is_absolute() or ".." in path.parts or "." in path.parts:
             raise PackageFormatError("package contains an unsafe path")
         if "\\" in name:
             raise PackageFormatError("package paths must use POSIX separators")
@@ -237,6 +237,8 @@ class UpdateStore:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def _plugin_root(self, plugin_id: str) -> Path:
+        if not plugin_id or "/" in plugin_id or "\\" in plugin_id or ".." in PurePosixPath(plugin_id).parts:
+            raise UpdateActivationError("invalid plugin ID for update store")
         path = self.root / plugin_id
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         return path
@@ -250,14 +252,16 @@ class UpdateStore:
             return None
         try:
             data = json.loads(pointer.read_text(encoding="utf-8"))
-            return ActiveVersion(
-                active_version=str(data["active_version"]),
-                previous_version=(
-                    str(data["previous_version"])
-                    if data.get("previous_version") is not None
-                    else None
-                ),
+            active_version = str(data["active_version"])
+            previous_version = (
+                str(data["previous_version"])
+                if data.get("previous_version") is not None
+                else None
             )
+            parse_semver(active_version)
+            if previous_version is not None:
+                parse_semver(previous_version)
+            return ActiveVersion(active_version=active_version, previous_version=previous_version)
         except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise UpdateActivationError("active plugin version pointer is corrupt") from exc
 
