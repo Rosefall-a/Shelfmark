@@ -134,7 +134,6 @@ async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
 
 @router.post("/{plugin_id}/enable")
 async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> dict:
-    del admin
     pending = await db.scalar(select(PluginPermissionRequest.id).where(PluginPermissionRequest.plugin_id == plugin_id, PluginPermissionRequest.status == "pending"))
     if pending is not None:
         raise HTTPException(status_code=403, detail="Approve all pending plugin permissions before enabling this plugin.")
