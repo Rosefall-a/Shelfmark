@@ -7,7 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
@@ -21,6 +21,7 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeRequestError, PluginRuntimeUnavailable
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
+from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
 from src.plugin_api.updates import PackageFormatError, PackageVerificationError, PluginPackageVerifier
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
@@ -56,7 +57,6 @@ async def install_plugin(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Verify a .utp package, request declared permissions, then transfer it to the isolated runtime."""
-    del admin
     temporary_path: str | None = None
     try:
         filename = file.filename or ""
@@ -99,6 +99,11 @@ async def install_plugin(
             await db.rollback()
             raise _runtime_error(exc) from exc
         await db.commit()
+        if not permission_requests:
+            try:
+                await _client.start(verified.manifest.plugin_id, user_id=str(admin.id))
+            except PluginRuntimeUnavailable as exc:
+                raise _runtime_error(exc) from exc
         trust_status = "trusted"
         trust_warning = None
         if verified.manifest.integrity.signature is None:
@@ -139,7 +144,7 @@ async def enable_plugin(plugin_id: str, db: AsyncSession = Depends(get_db), admi
     if pending is not None:
         raise HTTPException(status_code=403, detail="Approve all pending plugin permissions before enabling this plugin.")
     try:
-        await _client.start(quote(plugin_id, safe=""))
+        await _client.start(quote(plugin_id, safe=""), user_id=str(admin.id))
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     return {"plugin_id": plugin_id, "enabled": True}
@@ -245,6 +250,30 @@ async def plugin_action(
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     return {"plugin_id": plugin_id, "action": action_id, **(result or {"completed": True})}
+
+
+class PluginGatewayIn(BaseModel):
+    plugin_id: str
+    user_id: UUID
+    method: str
+    capability: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/runtime/gateway")
+async def plugin_gateway(payload: PluginGatewayIn, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    if not runtime_token_is_valid(os.getenv("PLUGIN_RUNTIME_TOKEN")):
+        raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
+    try:
+        result = await dispatch_gateway_request(
+            db, plugin_id=payload.plugin_id, user_id=payload.user_id,
+            method=payload.method, capability=payload.capability, payload=payload.payload,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ValueError, LookupError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"payload": result}
 
 @router.get("/runtime/health")
 async def runtime_health(admin: User = Depends(get_current_admin)) -> dict:
