@@ -54,6 +54,14 @@ class PluginRuntimeClient:
     async def stop(self, plugin_id: str) -> None:
         await self._request("POST", f"/plugins/{plugin_id}/stop")
 
+    async def install_package(self, package: bytes, filename: str) -> dict[str, Any]:
+        return await self._request(
+            "PUT",
+            "/plugins/install",
+            content=package,
+            headers={"Content-Type": "application/octet-stream", "X-Plugin-Package-Name": filename},
+        )
+
     async def plugin_health(self, plugin_id: str) -> bool:
         data = await self._request("GET", f"/plugins/{plugin_id}/health")
         return bool(data.get("healthy"))
