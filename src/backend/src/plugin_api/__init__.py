@@ -41,6 +41,11 @@ from .permissions import (
     AuthorizationDecision, ClientIdentity, IssuedClientCredential, PermissionDecision,
     PermissionGrant, authorize_request, issue_client_credential,
 )
+from .lifecycle import (
+    LifecycleLog, LifecycleState, NoopPackageInstaller, PackageInstaller, PackageVerifier,
+    PluginHealth, PluginLifecycleManager, PluginRecord, RuntimeController, RuntimeUnavailable,
+    Sha256PackageVerifier,
+)
 from .coordinators import (
     MetadataProvider,
     MetadataProviderRequest,
@@ -62,5 +67,7 @@ __all__ = [
     "GatewayIdentity", "ReplayError", "MetadataProvider", "MetadataProviderRequest",
     "NotificationProvider", "NotificationRequest", "AuthorizationDecision", "ClientIdentity",
     "IssuedClientCredential", "PermissionDecision", "PermissionGrant", "authorize_request",
-    "issue_client_credential",
+    "issue_client_credential", "LifecycleLog", "LifecycleState", "NoopPackageInstaller",
+    "PackageInstaller", "PackageVerifier", "PluginHealth", "PluginLifecycleManager",
+    "PluginRecord", "RuntimeController", "RuntimeUnavailable", "Sha256PackageVerifier",
 ]
