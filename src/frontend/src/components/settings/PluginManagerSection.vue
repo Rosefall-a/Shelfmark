@@ -65,13 +65,17 @@ async function installSelected(){
   installing.value=true; error.value=""; installMessage.value="";
   try {
     const result=await installPlugin(selectedFile.value);
-    installMessage.value=`Installed ${result.name} v${result.version} from ${result.publisher ?? "unknown publisher"}; ${result.permissions_requested} permission request(s) created.`;
-    if (result.trust_warning) window.alert(result.trust_warning);
+    installMessage.value="Installed " + result.name + " v" + result.version + " from " + (result.publisher ?? "unknown publisher") + "; " + result.permissions_requested + " permission request(s) created.";
     selectedFile.value=null;
     await load();
     if (result.permissions_requested > 0) await router.push({ path: "/settings", query: { section: "plugin-permissions", plugin: result.plugin_id } });
-  } catch(err) {
-    error.value=err instanceof Error?err.message:"Plugin installation failed.";
+  } catch(err){
+    if (err instanceof UntrustedPluginError) {
+      untrustedFile.value = selectedFile.value;
+      untrustedDetails.value = err.details;
+    } else {
+      error.value = err instanceof Error ? err.message : "Plugin installation failed.";
+    }
   } finally { installing.value=false; }
 }
 onMounted(load);
