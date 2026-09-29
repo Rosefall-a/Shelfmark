@@ -148,7 +148,11 @@ Lifecycle disable and quarantine operations stop running plugin processes throug
 
 ## Runtime logs and gateway bridge
 
-The runtime exposes `/plugins/{plugin_id}/logs` to the authenticated host. The Plugin Manager displays these logs beside the declarative UI. Plugin stdout is reserved for the request protocol and diagnostics belong on stderr; both streams are drained so noisy plugins cannot deadlock. Core operations are forwarded through the private host gateway and are checked against active plugin permission grants.
+The runtime exposes `/plugins/{plugin_id}/logs` to the authenticated host. The application route is administrator-only and the per-plugin Settings dialog displays process status, last exit code, and structured events.
+
+Every event has a monotonic sequence, UTC timestamp, level, stable event name, source, plugin ID, optional correlation ID, message, and bounded scalar metadata. The in-memory buffer retains the newest 200 events per plugin. Lifecycle start/stop/exit, one-shot actions, gateway failures, readiness, and plugin stderr are recorded. Token-, password-, secret-, and webhook-shaped values are redacted before storage or display.
+
+Plugin stdout is reserved for the request protocol and diagnostics belong on stderr; both streams are drained so noisy plugins cannot deadlock. Core operations are forwarded through the private host gateway and are checked against active plugin permission grants.
 
 ## Plugin frontends
 

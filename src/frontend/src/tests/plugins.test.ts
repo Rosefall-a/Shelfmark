@@ -3,6 +3,7 @@ import {
   disablePlugin,
   enablePlugin,
   fetchPlugins,
+  fetchPluginLogs,
   retryPlugin,
   revokePluginPermissions,
   installPlugin,
@@ -126,6 +127,41 @@ describe("plugin management service", () => {
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(new Response("unavailable", { status: 503 }));
     await expect(fetchPlugins()).rejects.toThrow("503");
+    mock.mockRestore();
+  });
+
+  it("loads structured administrative diagnostics", async () => {
+    const diagnostics = {
+      plugin_id: "example.plugin",
+      status: "stopped",
+      last_exit_code: 1,
+      events: [
+        {
+          sequence: 1,
+          timestamp: "2026-09-30T00:00:00+00:00",
+          level: "error",
+          event: "runtime.exited",
+          message: "Plugin process exited unexpectedly.",
+          source: "runtime",
+          plugin_id: "example.plugin",
+          correlation_id: null,
+          metadata: { return_code: 1 },
+        },
+      ],
+    };
+    const mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(diagnostics), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(fetchPluginLogs("example.plugin")).resolves.toEqual(
+      diagnostics,
+    );
+    expect(String(mock.mock.calls[0][0])).toBe(
+      "/api/plugins/example.plugin/logs",
+    );
     mock.mockRestore();
   });
 });

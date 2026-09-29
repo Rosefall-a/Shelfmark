@@ -12,13 +12,14 @@ import io
 import json
 import os
 import re
-import resource
 import signal
 import shutil
 import stat
 import subprocess
 import threading
+import time
 import zipfile
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
@@ -29,6 +30,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import unquote
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows development/test fallback
+    resource = None  # type: ignore[assignment]
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
@@ -41,6 +47,11 @@ _RESERVED_ENV = {
     "PLUGIN_GATEWAY_BOOTSTRAP_TOKEN",
     "PLUGIN_GATEWAY_SESSION_TOKEN",
 }
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)((?:authorization|password|secret|token|webhook)[\s\"']*[:=][\s\"']*)([^\s,\"']+)"
+)
+_WEBHOOK_URL = re.compile(r"https?://[^\s/]+/(?:api/)?webhooks?/[^\s]+", re.IGNORECASE)
+_DIAGNOSTIC_LEVELS = {"debug", "info", "warning", "error"}
 
 
 class RuntimePolicyError(ValueError):
@@ -119,18 +130,61 @@ class PluginSupervisor:
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._processes: dict[str, subprocess.Popen[bytes]] = {}
         self._last_exit_codes: dict[str, int | None] = {}
-        self._logs: dict[str, deque[str]] = {}
+        self._logs: dict[str, deque[dict[str, Any]]] = {}
+        self._diagnostic_sequence = 0
         self._user_ids: dict[str, str | None] = {}
         self._storage_quotas: dict[str, int] = {}
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
-    def _log(self, plugin_id: str, message: str) -> None:
-        with self._lock:
-            self._logs.setdefault(plugin_id, deque(maxlen=200)).append(message[:4000])
+    @staticmethod
+    def _redact(value: str) -> str:
+        value = _WEBHOOK_URL.sub("[REDACTED_WEBHOOK]", value)
+        return _SENSITIVE_VALUE.sub(r"\1[REDACTED]", value)[:4000]
 
-    def logs(self, plugin_id: str) -> list[str]:
+    @classmethod
+    def _safe_metadata(cls, metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+        safe: dict[str, Any] = {}
+        for key, value in (metadata or {}).items():
+            if any(
+                marker in key.lower()
+                for marker in ("token", "secret", "password", "webhook")
+            ):
+                safe[key] = "[REDACTED]"
+            elif isinstance(value, (str, int, float, bool)) or value is None:
+                safe[key] = cls._redact(value) if isinstance(value, str) else value
+        return safe
+
+    def _log(
+        self,
+        plugin_id: str,
+        message: str,
+        *,
+        level: str = "info",
+        event: str = "plugin.message",
+        source: str = "runtime",
+        correlation_id: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> None:
+        normalized_level = level if level in _DIAGNOSTIC_LEVELS else "info"
+        with self._lock:
+            self._diagnostic_sequence += 1
+            self._logs.setdefault(plugin_id, deque(maxlen=200)).append(
+                {
+                    "sequence": self._diagnostic_sequence,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": normalized_level,
+                    "event": event,
+                    "message": self._redact(message),
+                    "source": source,
+                    "plugin_id": plugin_id,
+                    "correlation_id": correlation_id,
+                    "metadata": self._safe_metadata(metadata),
+                }
+            )
+
+    def logs(self, plugin_id: str) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._logs.get(plugin_id, ()))
 
@@ -139,19 +193,30 @@ class PluginSupervisor:
             return self._last_exit_codes.get(plugin_id)
 
     def _serve_stdout(self, plugin_id: str, process: subprocess.Popen[bytes]) -> None:
-        if process.stdout is None:
+        stdout = getattr(process, "stdout", None)
+        if stdout is None:
             return
-        for raw in iter(process.stdout.readline, b""):
+        for raw in iter(stdout.readline, b""):
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
                 continue
+            request: Any = None
             try:
                 request = json.loads(line)
                 if not isinstance(request, dict):
                     raise ValueError("gateway request must be an object")
                 response = self._handle_gateway_request(plugin_id, request)
             except Exception as exc:
-                self._log(plugin_id, f"[gateway] request failed: {exc}")
+                request_id = (
+                    request.get("request_id") if isinstance(request, dict) else None
+                )
+                self._log(
+                    plugin_id,
+                    f"Gateway request failed: {exc}",
+                    level="error",
+                    event="gateway.request_failed",
+                    correlation_id=str(request_id) if request_id else None,
+                )
                 response = {"error": str(exc)}
             try:
                 if process.stdin is None:
@@ -170,7 +235,13 @@ class PluginSupervisor:
         for raw in iter(stderr.readline, b""):
             line = raw.decode("utf-8", errors="replace").rstrip()
             if line:
-                self._log(plugin_id, f"[stderr] {line}")
+                self._log(
+                    plugin_id,
+                    line,
+                    level="warning",
+                    event="plugin.stderr",
+                    source="plugin",
+                )
 
     def _storage(self, plugin_id: str) -> PluginStorage:
         quota = self._storage_quotas.get(plugin_id, 64 * 1024 * 1024)
@@ -211,7 +282,10 @@ class PluginSupervisor:
                 raise RuntimePolicyError("plugin.storage permission is required")
         if method == "lifecycle.ready":
             self._log(
-                plugin_id, f"[lifecycle] ready {json.dumps(payload, sort_keys=True)}"
+                plugin_id,
+                "Plugin reported ready.",
+                event="lifecycle.ready",
+                metadata={"payload_keys": ",".join(sorted(payload))},
             )
             return {"payload": {"accepted": True}}
         if method == "settings.get":
@@ -279,6 +353,8 @@ class PluginSupervisor:
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:
+        if resource is None:
+            return
         resource.setrlimit(
             resource.RLIMIT_CPU, (limits.cpu_seconds, limits.cpu_seconds)
         )
@@ -404,7 +480,13 @@ class PluginSupervisor:
             threading.Thread(
                 target=self._serve_stderr, args=(spec.plugin_id, process), daemon=True
             ).start()
-            return process
+        self._log(
+            spec.plugin_id,
+            "Plugin process started.",
+            event="runtime.started",
+            metadata={"pid": process.pid},
+        )
+        return process
 
     def execute(
         self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0
@@ -417,6 +499,8 @@ class PluginSupervisor:
             self.root / f"{spec.plugin_id}.action-{os.getpid()}-{threading.get_ident()}"
         )
         workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
+        started_at = time.monotonic()
+        self._log(spec.plugin_id, "Plugin action started.", event="action.started")
         try:
             self._storage(spec.plugin_id)
             result = subprocess.run(
@@ -440,14 +524,34 @@ class PluginSupervisor:
                 preexec_fn=lambda: self._limits(spec.resources),
             )
         except subprocess.TimeoutExpired as exc:
+            self._log(
+                spec.plugin_id,
+                "Plugin action timed out.",
+                level="error",
+                event="action.timed_out",
+                metadata={"timeout_seconds": timeout},
+            )
             raise RuntimePolicyError("plugin action timed out") from exc
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         if result.returncode:
+            self._log(
+                spec.plugin_id,
+                "Plugin action handler failed.",
+                level="error",
+                event="action.failed",
+                metadata={"return_code": result.returncode},
+            )
             raise RuntimePolicyError("plugin action handler failed")
         output = result.stdout or b""
         if len(output) > 64 * 1024:
             raise RuntimePolicyError("plugin action output exceeds 64 KiB")
+        self._log(
+            spec.plugin_id,
+            "Plugin action completed.",
+            event="action.completed",
+            metadata={"duration_ms": round((time.monotonic() - started_at) * 1000)},
+        )
         return output
 
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
@@ -455,6 +559,7 @@ class PluginSupervisor:
             process = self._processes.pop(plugin_id, None)
         if process is None:
             return
+        self._log(plugin_id, "Stopping plugin process.", event="runtime.stopping")
         try:
             os.killpg(process.pid, signal.SIGTERM)
             process.wait(timeout=timeout)
@@ -465,6 +570,13 @@ class PluginSupervisor:
                 pass
             process.wait()
         finally:
+            self._last_exit_codes[plugin_id] = process.returncode
+            self._log(
+                plugin_id,
+                "Plugin process stopped.",
+                event="runtime.stopped",
+                metadata={"return_code": process.returncode},
+            )
             self._package_paths.pop(plugin_id, None)
             self._package_manifests.pop(plugin_id, None)
             workdir = self.root / plugin_id
@@ -477,17 +589,27 @@ class PluginSupervisor:
                 workdir.rmdir()
 
     def running(self, plugin_id: str) -> bool:
+        exited_code: int | None = None
         with self._lock:
             process = self._processes.get(plugin_id)
             if process is None:
                 return False
             if process.poll() is not None:
                 self._last_exit_codes[plugin_id] = process.returncode
+                exited_code = process.returncode
                 self._processes.pop(plugin_id, None)
                 self._package_paths.pop(plugin_id, None)
                 self._package_manifests.pop(plugin_id, None)
-                return False
-            return True
+        if exited_code is not None:
+            self._log(
+                plugin_id,
+                "Plugin process exited unexpectedly.",
+                level="error" if exited_code else "warning",
+                event="runtime.exited",
+                metadata={"return_code": exited_code},
+            )
+            return False
+        return True
 
     def stop_all(self) -> None:
         for plugin_id in list(self._processes):
@@ -883,9 +1005,15 @@ class PluginRegistry:
         }
         self._save_state(state)
 
-    def logs(self, plugin_id: str) -> list[str]:
+    def diagnostics(self, plugin_id: str) -> dict[str, Any]:
         self.package(plugin_id)
-        return self.supervisor.logs(plugin_id)
+        running = self.supervisor.running(plugin_id)
+        return {
+            "plugin_id": plugin_id,
+            "status": "running" if running else "stopped",
+            "last_exit_code": self.supervisor.exit_code(plugin_id),
+            "events": self.supervisor.logs(plugin_id),
+        }
 
     def storage_put(self, plugin_id: str, key: str, value: str) -> None:
         self.package(plugin_id)
@@ -1080,7 +1208,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "health":
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":
-                self._json(200, {"logs": self.server.registry.logs(parts[1])})  # type: ignore[attr-defined]
+                self._json(200, self.server.registry.diagnostics(parts[1]))  # type: ignore[attr-defined]
             elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
                 relative = "/".join(parts[3:])
                 self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]

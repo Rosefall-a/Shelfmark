@@ -250,11 +250,7 @@ async def install_plugin(
             ))
         db.add_all([*permission_requests, *permission_grants, *permission_audits])
         try:
-            result = await _client.install_package(
-                package,
-                filename,
-                installation_id=str(installation_id),
-            )
+            result = await _client.install_package(package, filename)
         except PluginRuntimeRequestError as exc:
             await db.rollback()
             raise _runtime_request_error(exc) from exc
@@ -444,13 +440,27 @@ async def revoke_plugin_permissions(
 
 
 @router.get("/{plugin_id}/logs")
-async def plugin_logs(plugin_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
-    del user
+async def plugin_logs(
+    plugin_id: str,
+    level: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, Any]:
+    del admin
+    if level is not None and level not in {"debug", "info", "warning", "error"}:
+        raise HTTPException(status_code=400, detail="Unknown diagnostic level.")
     try:
-        return await _client.logs(quote(plugin_id, safe=""))
+        diagnostics = await _client.logs(quote(plugin_id, safe=""))
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
-
+    events = diagnostics.get("events", [])
+    if not isinstance(events, list):
+        events = []
+    events = [event for event in events if isinstance(event, dict)]
+    if level is not None:
+        events = [event for event in events if event.get("level") == level]
+    diagnostics["events"] = events[-limit:]
+    return diagnostics
 
 
 @router.get("/{plugin_id}/frontend/{asset_path:path}")

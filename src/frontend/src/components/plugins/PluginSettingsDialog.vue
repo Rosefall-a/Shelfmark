@@ -4,7 +4,7 @@ import type {
   PluginPermissionGrant,
   PluginPermissionRequest,
 } from "../../services/pluginPermissions";
-import type { PluginSummary } from "../../services/plugins";
+import type { PluginDiagnostics, PluginSummary } from "../../services/plugins";
 import type {
   PluginUiDocument,
   UiAction,
@@ -17,7 +17,7 @@ const props = defineProps<{
   document: PluginUiDocument | null;
   grants: PluginPermissionGrant[];
   requests: PluginPermissionRequest[];
-  logs: string[];
+  diagnostics: PluginDiagnostics | null;
   loading: boolean;
   busy: boolean;
 }>();
@@ -235,7 +235,35 @@ watch(
                 Refresh
               </button>
             </div>
-            <pre v-if="logs.length">{{ logs.join("\n") }}</pre>
+            <dl v-if="diagnostics" class="diagnostic-summary">
+              <div>
+                <dt>Status</dt>
+                <dd>{{ diagnostics.status }}</dd>
+              </div>
+              <div>
+                <dt>Last exit code</dt>
+                <dd>{{ diagnostics.last_exit_code ?? "—" }}</dd>
+              </div>
+            </dl>
+            <ol v-if="diagnostics?.events.length" class="event-list">
+              <li
+                v-for="event in diagnostics.events"
+                :key="event.sequence"
+                :class="`level-${event.level}`"
+              >
+                <div class="event-heading">
+                  <time :datetime="event.timestamp">{{
+                    new Date(event.timestamp).toLocaleString()
+                  }}</time>
+                  <strong>{{ event.level }}</strong>
+                  <code>{{ event.event }}</code>
+                </div>
+                <p>{{ event.message }}</p>
+                <small v-if="event.correlation_id">
+                  Correlation: {{ event.correlation_id }}
+                </small>
+              </li>
+            </ol>
             <p v-else class="state">No runtime diagnostics are available.</p>
           </section>
         </template>
@@ -369,14 +397,48 @@ nav button.active {
   border-color: #8b3434;
   color: #fecaca;
 }
-.diagnostics pre {
-  max-height: 360px;
+.diagnostic-summary {
+  display: flex;
+  gap: 24px;
+}
+.diagnostic-summary dd {
+  margin: 2px 0 0;
+}
+.event-list {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
   overflow: auto;
-  white-space: pre-wrap;
-  padding: 14px;
+  padding: 0;
+  list-style: none;
+}
+.event-list li {
+  padding: 12px;
+  border-left: 3px solid #666;
+  border-radius: 6px;
   background: #080808;
-  border-radius: 9px;
-  color: #d9e6d9;
+}
+.event-list li.level-warning {
+  border-left-color: #d68a34;
+}
+.event-list li.level-error {
+  border-left-color: #d65a5a;
+}
+.event-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.event-heading time,
+.event-heading code {
+  color: #aaa;
+}
+.event-heading strong {
+  text-transform: uppercase;
+}
+.event-list p {
+  margin: 8px 0 0;
 }
 button:disabled {
   opacity: 0.55;
