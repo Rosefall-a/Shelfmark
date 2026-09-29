@@ -46,6 +46,20 @@ async function removePlugin(plugin: PluginSummary){
     error.value = err instanceof Error ? err.message : "Plugin deletion failed.";
   } finally { action.value = ""; }
 }
+async function confirmUntrustedInstall(){
+  if (!untrustedFile.value) return;
+  installingUntrusted.value = true; error.value = ""; installMessage.value = "";
+  try {
+    const result = await installPlugin(untrustedFile.value, true);
+    installMessage.value = "Installed " + result.name + " v" + result.version + " as untrusted.";
+    selectedFile.value = null; untrustedFile.value = null; untrustedDetails.value = null;
+    await load();
+    if (result.permissions_requested > 0) await router.push({ path: "/settings", query: { section: "plugin-permissions", plugin: result.plugin_id } });
+  } catch(err) {
+    error.value = err instanceof Error ? err.message : "Plugin installation failed.";
+  } finally { installingUntrusted.value = false; }
+}
+function cancelUntrustedInstall(){ untrustedFile.value = null; untrustedDetails.value = null; }
 async function installSelected(){ 
   if(!selectedFile.value) return;
   installing.value=true; error.value=""; installMessage.value="";
