@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, updatePlugin, deletePlugin, retryPlugin, revokePluginPermissions, fetchPluginLogs, type PluginSummary } from "../../services/plugins";
+import { disablePlugin, enablePlugin, fetchPlugins, installPlugin, updatePlugin, deletePlugin, retryPlugin, revokePluginPermissions, fetchPluginLogs, UntrustedPluginError, type PluginSummary } from "../../services/plugins";
 import PluginUiHost from "../plugins/PluginUiHost.vue";
 import { fetchPluginUi, type PluginUiDocument, type UiAction, type UiValues } from "../../services/pluginUi";
 const router=useRouter();
 const plugins=ref<PluginSummary[]>([]), loading=ref(true), error=ref(""), action=ref(""), selectedFile=ref<File|null>(null), installing=ref(false), installMessage=ref("");
 const selected=ref<PluginSummary|null>(null), pluginUi=ref<PluginUiDocument|null>(null), pluginLogs=ref<string[]>([]), popupLoading=ref(false);
+const untrustedFile=ref<File|null>(null), untrustedDetails=ref<{plugin_id:string;name:string;version:string;publisher:string|null}|null>(null), installingUntrusted=ref(false);
 async function load(){loading.value=true;error.value="";try{plugins.value=await fetchPlugins()}catch(err){error.value=err instanceof Error?err.message:"Plugin manager is unavailable."}finally{loading.value=false}}
 async function run(id:string,operation:(id:string)=>Promise<void>){action.value=id;try{await operation(id);await load()}catch(err){error.value=err instanceof Error?err.message:"Plugin action failed."}finally{action.value=""}}
 function selectFile(event: Event){ selectedFile.value=(event.target as HTMLInputElement).files?.[0] ?? null; installMessage.value=""; }
