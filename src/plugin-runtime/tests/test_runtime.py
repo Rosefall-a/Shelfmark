@@ -173,6 +173,20 @@ def test_runtime_rejects_missing_declared_frontend(tmp_path):
             for info in source.infolist()
             if info.filename != "payload/frontend/index.html"
         }
+    manifest = json.loads(files["manifest.json"])
+    payload = sorted(
+        (name.removeprefix("payload/"), data)
+        for name, data in files.items()
+        if name.startswith("payload/")
+    )
+    digest = hashlib.sha256()
+    for name, data in payload:
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\\0")
+        digest.update(data)
+        digest.update(b"\\0")
+    manifest["integrity"]["sha256"] = digest.hexdigest()
+    files["manifest.json"] = json.dumps(manifest).encode("utf-8")
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         for name, data in files.items():
