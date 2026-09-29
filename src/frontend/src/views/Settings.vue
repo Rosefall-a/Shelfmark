@@ -25,6 +25,7 @@ import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import PluginPermissionsSection from "../components/settings/PluginPermissionsSection.vue";
+import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -72,6 +73,7 @@ const groups = computed<SettingsGroup[]>(() => {
       ? [{ id: "server-integrations", label: "Server Integrations" }]
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
+    ...(currentUser.value?.is_admin ? [{ id: "plugins", label: "Plugins" }] : []),
     ...(currentUser.value?.is_admin ? [{ id: "plugin-permissions", label: "Plugin Permissions" }] : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
@@ -163,6 +165,9 @@ watch(activeSection, async () => {
           />
           <AdminSection
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
+          />
+          <PluginManagerSection
+            v-else-if="activeSection === 'plugins' && currentUser?.is_admin"
           />
           <PluginPermissionsSection
             v-else-if="activeSection === 'plugin-permissions' && currentUser?.is_admin"

@@ -140,6 +140,7 @@ const router = createRouter({
       component: () => import("../views/Setup.vue"),
     },
     { path: "/profile", redirect: "/settings" },
+    { path: "/plugins/:pluginId/:pageId?", name: "plugin-host", component: () => import("../views/PluginHost.vue") },
     {
       path: "/settings",
       name: "settings",
