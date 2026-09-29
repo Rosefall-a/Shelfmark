@@ -8,7 +8,7 @@ The lifecycle manager statically discovers and validates manifests, verifies and
 
 The manager distinguishes discovery, validation, installation, starting/running, stopping/disabling, install/start/stop failures, unhealthy state, and quarantine. Invalid or incompatible manifests never activate. Installation failures and runtime stop failures remain observable failure states instead of being silently rewritten as successful lifecycle transitions.
 
-Repeated start, install, stop, or health failures reach the configured quarantine threshold; quarantine disables the plugin and requires explicit administrator recovery.
+Repeated start, install, stop, or health failures reach the configured quarantine threshold; quarantine disables the plugin, stops its runtime process when one is running, and requires explicit administrator recovery.
 
 ## Health and recovery
 
