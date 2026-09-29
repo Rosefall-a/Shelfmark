@@ -12,6 +12,7 @@ services:
       PRIMARY_USER_PASSWORD: ${PRIMARY_USER_PASSWORD:?Set PRIMARY_USER_PASSWORD in .env}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       PLUGIN_RUNTIME_URL: http://plugin-runtime:8000
+      PLUGIN_GATEWAY_URL: http://app
       PLUGIN_RUNTIME_TOKEN: ${PLUGIN_RUNTIME_TOKEN:?Set PLUGIN_RUNTIME_TOKEN in .env}
     volumes:
       - ./data:/data
