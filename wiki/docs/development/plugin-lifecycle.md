@@ -21,3 +21,7 @@ Execution is delegated through the isolated runtime boundary from #267. The life
 ## Safe mode and diagnostics
 
 Global plugin safe mode prevents activation while keeping the core application available for diagnosis. Startup activation contains individual plugin failures so a broken extension cannot block core startup. Structured lifecycle logs provide bounded administrator diagnostics without exposing plugin secrets.
+
+## Application integration
+
+The application exposes the lifecycle endpoints under /api/plugins and delegates execution to plugin-runtime through src/backend/src/plugin_api/runtime_client.py. The runtime persists enabled state in its plugin volume and restores enabled packages after restart. Plugin failures are returned as contained lifecycle errors and do not make core application startup depend on plugin health.

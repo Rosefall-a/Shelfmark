@@ -1,128 +1,37 @@
-# Plugin Runtime Isolation
+# Plugin Runtime
 
-Issue #267 defines the complete production runtime isolation contract. The
-outer Docker boundary was introduced by #287; this page documents the
-additional per-plugin process and network controls now implemented by the
-runtime supervisor.
+The plugin runtime is a separate, unprivileged service. The application backend is the only core component that can reach its management API.
 
-## Topology
+## Runtime topology
 
-Production Compose keeps the Plugin Runtime on a dedicated Docker network
-marked internal:
+Browser -> Vue frontend -> FastAPI backend -> authenticated HTTP -> plugin-runtime -> bubblewrap -> isolated plugin process.
 
-    core application + PostgreSQL
-             |
-             | no shared runtime network
-             X
-             |
-       Plugin Runtime
-             |
-             +-- plugin_runtime (internal Docker network)
-                    |
-                    +-- per-plugin bubblewrap sandbox
+Compose places plugin-runtime and the backend on an internal Docker network that is not shared with PostgreSQL or the frontend. The runtime is not published to the host. Its /health endpoint is unauthenticated only for the container health check; management endpoints require PLUGIN_RUNTIME_TOKEN.
 
-Docker's internal network has no default route to external networks, and the
-runtime is not attached to the core application's network. This prevents
-Docker service discovery from becoming an accidental backend/database access
-path.
+Set the same high-entropy PLUGIN_RUNTIME_TOKEN for backend and plugin-runtime. The development Compose file supplies a development fallback, which must be replaced for production.
 
-## Per-plugin process isolation
+## Discovery and integrity
 
-PluginSupervisor launches every plugin separately. Plugin IDs are validated,
-duplicate processes are rejected, and each plugin receives a private
-directory.
+Installed packages live under the plugin_data volume. Each package directory contains manifest.json, the declared entrypoint, and optionally ui.json. The runtime validates the plugin ID and entrypoint before execution and computes a deterministic SHA-256 digest. Manifest metadata and runtime-owned settings are excluded from that digest so the expected hash remains stable.
 
-Bubblewrap creates separate mount, user, PID, IPC, UTS and network namespaces.
-The plugin sees only the runtime libraries explicitly mounted read-only, its
-own working directory, a minimal device/proc view and a private /tmp.
+A package whose digest does not match its manifest is reported as incompatible and cannot be started.
 
-Each process also gets:
-- CPU time limit;
-- address-space limit;
-- open-file limit;
-- child-process limit;
-- independent process group for termination;
-- parent-death handling through bubblewrap.
+## Process isolation
 
-The outer Docker service retains its container-level PID, CPU and memory
-limits, so the process-level limits are defense in depth.
+Every plugin gets its own process and bubblewrap sandbox. The sandbox uses private mount, PID, IPC, UTS and network namespaces. Package files are read-only; a private writable process-data directory is provided separately.
 
-## Environment and data isolation
+The subprocess receives only a minimal environment. Core credentials, database credentials, Docker configuration and gateway credentials are explicitly rejected. CPU time, address space, open files and process count are bounded.
 
-Plugin subprocesses receive a fresh environment rather than inheriting the
-runtime environment. Core credentials such as DATABASE_URL, SECRET_KEY,
-database passwords, Docker host configuration and gateway credentials are
-explicitly rejected.
+## Lifecycle and recovery
 
-There are no host filesystem mounts, application-data mounts or Docker socket
-mounts on the production runtime service. Plugin storage is a separate
-contract owned by #268.
+The runtime implements discovery/listing, start, stop, health, settings storage, declarative UI retrieval and declarative action dispatch. Enabled state is stored in the runtime volume and enabled plugins are restored after a runtime restart. A broken plugin during restore is contained so it cannot prevent runtime startup.
 
-## Outbound network policy
+The application-level lifecycle manager remains the policy owner. The runtime is an execution boundary, not a replacement for host compatibility, permission or gateway contracts.
 
-Outbound access is default-deny.
+## UI boundary
 
-A plugin may declare:
-- allowed DNS hostnames;
-- allowed destination ports;
-- the network.outbound capability requested for administrator approval.
+GET /api/plugins/{plugin_id}/ui is served through the backend. The browser never talks directly to the runtime. Settings and actions use the same authenticated host-to-runtime path, and plugin code is never imported into the core backend process.
 
-A declaration without an active gateway grant is rejected. An empty
-declaration remains valid and receives no external network.
+## Testing
 
-The sandbox uses an isolated network namespace, which means the plugin cannot
-directly reach PostgreSQL, the core backend, Docker DNS, the host network or
-the public internet. Docker's internal runtime network also has no external
-default gateway.
-
-Approved external access must be implemented through a dedicated egress
-broker/proxy. The runtime contract does not grant direct network sharing to a
-plugin merely because its manifest requests it. This prevents a future
-network implementation from accidentally turning an approved host list into
-unrestricted socket access.
-
-DNS is therefore deny-by-default rather than merely filtered after
-resolution. This also prevents a plugin from using an unapproved Docker
-service name or raw IP address as an alternate route.
-
-## Gateway and permission boundaries
-
-The runtime does not replace the authenticated gateway:
-
-- #265 authenticates application-to-gateway traffic and binds trusted
-  application/plugin/installation context.
-- #266 evaluates capability grants using that authenticated context.
-- The runtime consumes the resulting policy and never treats a manifest
-  declaration as authorization.
-
-Plugin UI/browser traffic must continue through the authenticated gateway;
-plugin processes are never published as browser-facing ports.
-
-## Failure and compatibility behavior
-
-Invalid plugin IDs, empty commands, reserved environment variables, invalid
-resource limits and unapproved network declarations are rejected before a
-process is started.
-
-Stopping a plugin terminates its process group and removes its private
-working directory. A crashed plugin therefore does not share a process group
-with another plugin.
-
-The runtime image is deliberately independent of the core backend Python
-environment. Future plugin SDK/gateway changes can evolve behind the
-existing #263-#266 contracts without granting plugins direct application
-access.
-
-## Tests and CI
-
-src/plugin-runtime/tests/test_runtime.py covers:
-- core-secret environment rejection;
-- plugin ID and command validation;
-- default-deny networking;
-- administrator capability requirement for declared outbound access;
-- port validation;
-- resource-limit validation.
-
-The backend CI job runs this suite in addition to the existing backend tests,
-migration validation, mypy and pylint. Production Docker CI also builds the
-runtime image, including its bubblewrap dependency.
+Runtime policy tests run in src/plugin-runtime/tests/. Backend CI runs the runtime policy suite in addition to backend tests. With the supplied Compose stack, an empty plugin volume produces an empty plugin list instead of a 404 or a backend startup failure.
