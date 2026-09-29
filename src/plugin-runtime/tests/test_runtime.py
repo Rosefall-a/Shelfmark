@@ -118,8 +118,10 @@ def test_nonbubble_flag_is_off_by_default(monkeypatch) -> None:
     assert PluginSupervisor._nonbubble_enabled() is False
 
 
-def _package_bytes(plugin_id: str = "example.upload") -> bytes:
+def _package_bytes(plugin_id: str = "example.upload", frontend: bool = False) -> bytes:
     files = {"plugin.py": b"def main():\n    return None\n", "sdk/plugin_protocol.py": b"API_VERSION = 1\n"}
+    if frontend:
+        files["frontend/index.html"] = b"<!doctype html><html><body>ok</body></html>"
     digest = hashlib.sha256()
     for name, data in sorted(files.items()):
         digest.update(name.encode("utf-8")); digest.update(b"\0"); digest.update(data); digest.update(b"\0")
@@ -129,6 +131,8 @@ def _package_bytes(plugin_id: str = "example.upload") -> bytes:
         "capabilities": [], "permissions": [], "dependencies": [],
         "integrity": {"sha256": digest.hexdigest()},
     }
+    if frontend:
+        manifest["frontend"] = {"entry": "frontend/index.html"}
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr("manifest.json", json.dumps(manifest))
@@ -144,6 +148,41 @@ def test_runtime_installs_verified_utp_atomically(tmp_path):
     assert result["plugin_id"] == "example.upload"
     assert (tmp_path / "plugins" / "example.upload" / "manifest.json").is_file()
     assert (tmp_path / "plugins" / "example.upload" / "plugin.py").is_file()
+
+
+def test_runtime_installs_and_serves_declared_frontend(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    registry.install_package(_package_bytes(frontend=True), "frontend.utp")
+    asset = registry.frontend("example.upload", "frontend/index.html")
+    assert asset["path"] == "frontend/index.html"
+    assert "ok" in asset["content"]
+
+
+def test_runtime_rejects_missing_declared_frontend(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    package = _package_bytes(frontend=True)
+    with zipfile.ZipFile(io.BytesIO(package)) as source:
+        files = {
+            info.filename: source.read(info)
+            for info in source.infolist()
+            if info.filename != "payload/frontend/index.html"
+        }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    with pytest.raises(RuntimePolicyError, match="frontend entry is missing"):
+        registry.install_package(output.getvalue(), "missing-frontend.utp")
 
 
 def test_runtime_rejects_tampered_utp(tmp_path):
