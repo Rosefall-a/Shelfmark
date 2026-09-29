@@ -31,6 +31,32 @@ services:
       db:
         condition: service_healthy
 
+  plugin-runtime:
+    build:
+      context: .
+      dockerfile: src/plugin-runtime/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    cpus: 1.0
+    expose:
+      - "8000"
+    volumes:
+      - plugin_data:/var/lib/unnamed-tracking/plugins
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8000/health" ]
+      interval: 10s
+      timeout: 3s
+      start_period: 2s
+      retries: 3
+
   frontend:
     build:
       context: ./src/frontend
@@ -61,3 +87,4 @@ services:
 
 volumes:
   pgdata:
+  plugin_data:
