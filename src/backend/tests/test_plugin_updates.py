@@ -178,7 +178,7 @@ def test_failed_activation_restores_previous_version(tmp_path: Path) -> None:
 
     first_package = tmp_path / "first.utp"
     write_package(first_package, manifest_data(version="1.0.0", digest=digest), files)
-    first = manager.stage(first_package)
+    manager.stage(first_package)
     store.atomically_set_active("example.plugin", "1.0.0", None)
     first_path = store.version_path("example.plugin", "1.0.0")
     first_path.mkdir(parents=True, exist_ok=True)
