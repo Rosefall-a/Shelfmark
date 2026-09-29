@@ -82,7 +82,10 @@ def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> N
     (package / "ui.json").write_text(json.dumps({"plugin_id": "example.plugin", "settings": [], "actions": [{"id": "announce", "handler": "main:action"}]}), encoding="utf-8")
     digest = package_digest(package)
     (package / "manifest.json").write_text(json.dumps({"plugin_id": "example.plugin", "name": "Example", "version": "1.0.0", "entrypoint": "main:main", "capabilities": [{"name": "notifications.send", "version": 1}], "integrity": {"sha256": digest}}), encoding="utf-8")
-    registry = PluginRegistry(root, PluginSupervisor(root=tmp_path / "processes"))
+    registry = PluginRegistry(
+        root,
+        PluginSupervisor(root=tmp_path / "processes", storage_root=tmp_path / "storage"),
+    )
     monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
     registry.supervisor._storage("example.plugin").put(
         "secrets/discord_webhook",
