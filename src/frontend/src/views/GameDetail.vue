@@ -2289,7 +2289,7 @@ function formatPlaytime(minutes: number) {
 
     <PluginExtensionSlot
       v-if="activeTab === 'Overview'"
-      slot="game.overview.after-header"
+      slot-name="game.overview.after-header"
       :context="{ host_page: 'game.overview', game_id: game.id }"
     />
 

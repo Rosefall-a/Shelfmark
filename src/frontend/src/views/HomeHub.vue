@@ -741,7 +741,7 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
       </section>
 
       <PluginExtensionSlot
-        slot="home.after-widgets"
+        slot-name="home.after-widgets"
         :context="{ host_page: 'home' }"
       />
 
