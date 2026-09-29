@@ -201,6 +201,7 @@ def manifest_data(
         "sdk_version_range": sdk_range,
         "application_version_range": app_range,
         "dependencies": dependencies,
+        "capabilities": (CapabilityRef(name=Capability.MEDIA_READ),),
         "permissions": (
             PermissionDeclaration(
                 capability=CapabilityRef(name=Capability.MEDIA_READ),
@@ -298,3 +299,16 @@ def test_dependency_resolution_is_dependency_first_and_detects_cycles() -> None:
     )
     with pytest.raises(DependencyResolutionError, match="dependency cycle"):
         resolve_plugin_dependencies((first, second))
+
+
+def test_manifest_permissions_must_match_declared_capabilities() -> None:
+    with pytest.raises(ValidationError):
+        PluginManifest.model_validate({
+            **manifest_data(),
+            "capabilities": (CapabilityRef(name=Capability.GAMES_READ),),
+        })
+    with pytest.raises(ValidationError):
+        PluginManifest.model_validate({
+            **manifest_data(),
+            "capabilities": (CapabilityRef(name=Capability.MEDIA_READ, version=2),),
+        })
