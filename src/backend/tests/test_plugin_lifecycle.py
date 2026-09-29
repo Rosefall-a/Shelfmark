@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 
 from src.plugin_api.contracts import PluginManifest
-from src.plugin_api.lifecycle import LifecycleState, NoopPackageInstaller, PluginLifecycleManager
+from src.plugin_api.lifecycle import LifecycleState, NoopPackageInstaller, PluginLifecycleManager, Sha256PackageVerifier
+from src.plugin_api.updates import canonical_payload_digest
 
 
 def manifest_data(plugin_id: str = "example.plugin", app_range: str = "*") -> dict:
@@ -215,3 +216,70 @@ def test_health_quarantine_stops_running_plugin(tmp_path: Path) -> None:
     asyncio.run(lifecycle.health_check("example.plugin"))
     assert lifecycle.health("example.plugin").state == LifecycleState.QUARANTINED
     assert runtime.stopped == ["example.plugin"]
+
+
+def test_disable_running_plugin_stops_before_disabled_state(tmp_path: Path) -> None:
+    runtime = FakeRuntime()
+    lifecycle = manager(runtime)
+    discover(lifecycle, tmp_path)
+    install(lifecycle)
+    asyncio.run(lifecycle.start("example.plugin"))
+    record = asyncio.run(lifecycle.disable("example.plugin"))
+    assert record.state == LifecycleState.DISABLED
+    assert runtime.stopped == ["example.plugin"]
+
+
+def test_uninstall_cleans_plugin_storage_before_removing_record(tmp_path: Path) -> None:
+    class FakeStorage:
+        def __init__(self) -> None:
+            self.uninstalled: list[str] = []
+
+        def uninstall(self, plugin_id: str) -> None:
+            self.uninstalled.append(plugin_id)
+
+    runtime = FakeRuntime()
+    storage = FakeStorage()
+    lifecycle = manager(runtime, storage_cleanup=storage)
+    discover(lifecycle, tmp_path)
+    install(lifecycle)
+    asyncio.run(lifecycle.uninstall("example.plugin"))
+    assert storage.uninstalled == ["example.plugin"]
+    assert lifecycle.records() == ()
+
+
+def test_uninstall_keeps_record_when_storage_cleanup_fails(tmp_path: Path) -> None:
+    class FailingStorage:
+        def uninstall(self, plugin_id: str) -> None:
+            raise RuntimeError(f"cannot remove {plugin_id}")
+
+    runtime = FakeRuntime()
+    lifecycle = manager(runtime, storage_cleanup=FailingStorage())
+    discover(lifecycle, tmp_path)
+    install(lifecycle)
+    try:
+        asyncio.run(lifecycle.uninstall("example.plugin"))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("uninstall should report storage cleanup failure")
+    assert lifecycle.records()[0].manifest.plugin_id == "example.plugin"
+
+
+def test_default_verifier_uses_v1_payload_digest(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "manifest.json").write_text("{}", encoding="utf-8")
+    (package / "plugin.py").write_bytes(b"print('ok')")
+    expected = canonical_payload_digest([("plugin.py", b"print('ok')")])
+    assert Sha256PackageVerifier().verify(package, expected)
+    assert not Sha256PackageVerifier().verify(package, "0" * 64)
+
+
+def test_default_verifier_ignores_manifest_bytes(tmp_path: Path) -> None:
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "manifest.json").write_text("one", encoding="utf-8")
+    (package / "plugin.py").write_bytes(b"payload")
+    expected = canonical_payload_digest([("plugin.py", b"payload")])
+    (package / "manifest.json").write_text("different", encoding="utf-8")
+    assert Sha256PackageVerifier().verify(package, expected)
