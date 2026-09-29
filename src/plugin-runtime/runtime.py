@@ -995,7 +995,7 @@ class PluginRegistry:
                     raise RuntimePolicyError(
                         "Discord delivery requires a non-empty message"
                     )
-                webhook_bytes = self._storage(plugin_id).get("secrets/discord_webhook")
+                webhook_bytes = self.supervisor._storage(plugin_id).get("secrets/discord_webhook")
                 webhook = webhook_bytes.decode("utf-8").strip() if webhook_bytes else ""
                 if not webhook:
                     raise RuntimePolicyError(
