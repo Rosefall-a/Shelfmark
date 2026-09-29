@@ -61,12 +61,19 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
     )
     upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example-upload.utp")
 
-    result = asyncio.run(plugins.install_plugin(upload, object()))
+    class FakeDb:
+        def add_all(self, rows): self.rows = rows
+        async def commit(self): pass
+        async def rollback(self): pass
+
+    result = asyncio.run(plugins.install_plugin(upload, object(), FakeDb()))
 
     assert result["plugin_id"] == "example.upload"
     assert result["version"] == "1.0.0"
     assert client.package == package_bytes()
     assert client.filename == "example-upload.utp"
+    assert result["trust_status"] == "untrusted"
+    assert "Untrusted signing key" in result["trust_warning"]
 
 
 def test_upload_endpoint_rejects_non_utp() -> None:
