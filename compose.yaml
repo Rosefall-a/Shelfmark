@@ -60,6 +60,7 @@ services:
       PLUGIN_RUNTIME_HOST: 0.0.0.0
       PLUGIN_RUNTIME_PORT: "8000"
       PLUGIN_RUNTIME_DISCORD_EGRESS: "true"
+      NONBUBBLE_ENV: ${NONBUBBLE_ENV:-}
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
