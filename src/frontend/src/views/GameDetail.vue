@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  createGameNote,
   deleteGame,
   deleteGameNote,
   fetchGame,
@@ -10,6 +11,7 @@ import {
   fetchGameFieldChanges,
   fetchGameNote,
   fetchGames,
+  renameGameNote,
   listGameNotes,
   saveGameNote,
   setFavorite,
@@ -198,11 +200,14 @@ async function saveDraft() {
   noteError.value = null;
 
   try {
-    await saveGameNote(game.value.id, newName, draftContent.value);
-    // renaming an existing note, the backend has no rename endpoint,
-    // so simulate it by creating the new name and deleting the old one
-    if (editingNoteName.value && editingNoteName.value !== newName) {
-      await deleteGameNote(game.value.id, editingNoteName.value);
+    if (editingNoteName.value) {
+      const originalName = editingNoteName.value;
+      await saveGameNote(game.value.id, originalName, draftContent.value);
+      if (originalName !== newName) {
+        await renameGameNote(game.value.id, originalName, newName);
+      }
+    } else {
+      await createGameNote(game.value.id, newName, draftContent.value);
     }
     editingNoteName.value = null;
     draftName.value = "";
@@ -2808,8 +2813,8 @@ function formatPlaytime(minutes: number) {
             <input
               v-model="draftName"
               type="text"
-              placeholder="meeting-notes"
-              pattern="[A-Za-z0-9_-]+"
+              placeholder="Meeting notes"
+              autocomplete="off"
             />
           </label>
 
@@ -2831,7 +2836,7 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : "Save" }}
+              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
             </button>
           </div>
         </div>
