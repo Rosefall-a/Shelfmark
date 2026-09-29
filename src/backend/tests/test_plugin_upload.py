@@ -51,6 +51,45 @@ class FakeClient:
         return {"status": "installed"}
 
 
+def frontend_package_bytes() -> bytes:
+    files = {
+        "plugin.py": b"def main():\\n    pass\\n",
+        "sdk/plugin_protocol.py": b"API_VERSION = 1\\n",
+        "frontend/index.html": b"<!doctype html><html><body>playground</body></html>",
+    }
+    digest = hashlib.sha256()
+    for name, data in sorted(files.items()):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\\0")
+        digest.update(data)
+        digest.update(b"\\0")
+    manifest = {
+        "manifest_version": 1,
+        "plugin_id": "example.ui-playground",
+        "name": "Plugin UI Playground",
+        "version": "1.0.0",
+        "entrypoint": "plugin:main",
+        "sdk_version_range": "^1.0.0",
+        "application_version_range": "*",
+        "capabilities": [{"name": "notifications.send", "version": 1}],
+        "permissions": [{
+            "capability": {"name": "notifications.send", "version": 1},
+            "rationale": "Send page announcements.",
+        }],
+        "dependencies": [],
+        "ui": {"settings": ["filters"], "actions": ["announce-page"], "pages": ["overview"]},
+        "storage": {"quota_mb": 1},
+        "integrity": {"sha256": digest.hexdigest(), "signature": None, "key_id": None},
+        "frontend": {"entry": "frontend/index.html"},
+    }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for name, data in files.items():
+            archive.writestr("payload/" + name, data)
+    return output.getvalue()
+
+
 def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
     client = FakeClient()
     monkeypatch.setattr(plugins, "_client", client)
@@ -83,6 +122,32 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
     assert client.filename == "example-upload.utp"
     assert result["trust_status"] == "untrusted"
     assert "Untrusted signing key" in result["trust_warning"]
+
+
+def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) -> None:
+    client = FakeClient()
+    monkeypatch.setattr(plugins, "_client", client)
+    monkeypatch.setattr(
+        plugins,
+        "_plugin_package_verifier",
+        lambda: PluginPackageVerifier(require_signature=True),
+    )
+    upload = UploadFile(
+        file=io.BytesIO(frontend_package_bytes()),
+        filename="example.ui-playground-1.0.0.utp",
+    )
+
+    class FakeDb:
+        def add_all(self, rows): self.rows = rows
+        async def commit(self): pass
+        async def rollback(self): pass
+
+    result = asyncio.run(
+        plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb())
+    )
+    assert result["plugin_id"] == "example.ui-playground"
+    assert result["trust_status"] == "untrusted"
+    assert client.package == frontend_package_bytes()
 
 
 def test_upload_endpoint_rejects_non_utp() -> None:
