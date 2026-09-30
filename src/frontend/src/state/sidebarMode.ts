@@ -17,3 +17,39 @@ function readStored(): SidebarMode {
 export const sidebarMode = ref<SidebarMode>(readStored());
 
 watch(sidebarMode, (mode) => localStorage.setItem(STORAGE_KEY, mode));
+
+// Drag-resizable width for overlay and pinned modes (and rail's own
+// hover-expanded width). The icon rail's collapsed width is fixed at 56px
+// on purpose — that's the "just icons" point of the mode.
+export const SIDEBAR_MIN_WIDTH = 200;
+export const SIDEBAR_MAX_WIDTH = 440;
+const WIDTH_STORAGE_KEY = "sidebarWidth";
+const DEFAULT_WIDTH = 270;
+
+function clampWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+}
+
+function readStoredWidth(): number {
+  const stored = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
+  return stored ? clampWidth(stored) : DEFAULT_WIDTH;
+}
+
+export const sidebarWidth = ref<number>(readStoredWidth());
+
+watch(sidebarWidth, (width) =>
+  localStorage.setItem(WIDTH_STORAGE_KEY, String(width)),
+);
+
+export function setSidebarWidth(width: number) {
+  sidebarWidth.value = clampWidth(width);
+}
+
+export function resetSidebarWidth() {
+  sidebarWidth.value = DEFAULT_WIDTH;
+}
+
+// True for the duration of a resize drag, so App.vue can turn off its
+// content margin transition too — otherwise the page trails behind the
+// pointer instead of tracking it while dragging.
+export const sidebarResizing = ref(false);

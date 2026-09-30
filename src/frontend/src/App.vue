@@ -7,7 +7,11 @@ import CommandPalette from "./components/CommandPalette.vue";
 import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { loadSharedPreferences } from "./state/preferences";
-import { sidebarMode } from "./state/sidebarMode";
+import {
+  sidebarMode,
+  sidebarWidth,
+  sidebarResizing,
+} from "./state/sidebarMode";
 import { computed, watch } from "vue";
 
 const route = useRoute();
@@ -27,11 +31,14 @@ const sidebarShown = computed(
 );
 // Pinned and rail modes sit in the page's own layout, so content needs to
 // make room for them. Overlay floats above everything and reserves nothing.
-const contentClass = computed(() => {
-  if (!sidebarShown.value) return "";
-  if (sidebarMode.value === "pinned") return "content-pinned";
-  if (sidebarMode.value === "rail") return "content-rail";
-  return "";
+// Pinned's reserved width tracks the sidebar's own (resizable) width;
+// rail's collapsed width is fixed, since that's the "just icons" point.
+const contentStyle = computed(() => {
+  if (!sidebarShown.value) return {};
+  if (sidebarMode.value === "pinned")
+    return { marginLeft: `${sidebarWidth.value}px` };
+  if (sidebarMode.value === "rail") return { marginLeft: "56px" };
+  return {};
 });
 const KEPT_ALIVE = [
   "MovieLibrary",
@@ -58,7 +65,11 @@ const KEPT_ALIVE = [
     <!-- Library, calendar and list pages stay mounted when you leave them, so
          switching tabs is instant instead of reloading from empty. Detail
          pages are deliberately not kept: they must reload per title. -->
-    <div class="app-content" :class="contentClass">
+    <div
+      class="app-content"
+      :class="{ resizing: sidebarResizing }"
+      :style="contentStyle"
+    >
       <router-view v-slot="{ Component }">
         <KeepAlive :include="KEPT_ALIVE" :max="8">
           <component :is="Component" />
@@ -102,10 +113,7 @@ const KEPT_ALIVE = [
 .app-content {
   transition: margin-left 0.18s ease;
 }
-.content-pinned {
-  margin-left: 270px;
-}
-.content-rail {
-  margin-left: 56px;
+.app-content.resizing {
+  transition: none;
 }
 </style>

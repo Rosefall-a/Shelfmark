@@ -2703,7 +2703,13 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
+              {{
+                noteSaving
+                  ? "Saving…"
+                  : editingNoteName
+                    ? "Save changes"
+                    : "Create note"
+              }}
             </button>
           </div>
         </div>

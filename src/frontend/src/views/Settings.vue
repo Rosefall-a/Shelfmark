@@ -123,8 +123,7 @@ function openSection(id: string) {
 watch(
   () => route.query.section,
   (section) => {
-    const next =
-      typeof section === "string" && section ? section : "profile";
+    const next = typeof section === "string" && section ? section : "profile";
     if (activeSection.value !== next) activeSection.value = next;
   },
 );

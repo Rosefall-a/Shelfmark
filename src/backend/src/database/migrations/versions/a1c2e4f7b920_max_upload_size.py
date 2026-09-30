@@ -1,7 +1,7 @@
 """Add admin-editable max upload size override
 
 Revision ID: a1c2e4f7b920
-Revises: f186cf8aa5c4
+Revises: 7b2d4a9e8c11
 Create Date: 2026-09-28 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "a1c2e4f7b920"
-down_revision: Union[str, None] = "f186cf8aa5c4"
+down_revision: Union[str, None] = "7b2d4a9e8c11"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
