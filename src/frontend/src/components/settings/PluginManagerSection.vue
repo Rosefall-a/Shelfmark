@@ -88,7 +88,7 @@ function saveCatalogEndpoints() {
 
 function addCatalogEndpoint() {
   const url = newCatalogEndpoint.value.trim();
-  if (!/^https?:\\/\\//i.test(url) || catalogEndpoints.value.includes(url)) return;
+  if (!/^https?:\/\/i.test(url) || catalogEndpoints.value.includes(url)) return;
   catalogEndpoints.value.push(url);
   enabledCatalogEndpoints.value.push(url);
   newCatalogEndpoint.value = "";
