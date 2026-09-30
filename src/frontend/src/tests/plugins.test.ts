@@ -173,7 +173,18 @@ describe("plugin management service", () => {
 describe("remote plugin installation", () => {
   it("loads the official catalogue", async () => {
     const mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ plugin_id: "example.test", name: "Test", description: "Demo", version: "1.0.0", url: "https://example.com/test.utp" }]), { status: 200 }),
+      new Response(
+        JSON.stringify([
+          {
+            plugin_id: "example.test",
+            name: "Test",
+            description: "Demo",
+            version: "1.0.0",
+            url: "https://example.com/test.utp",
+          },
+        ]),
+        { status: 200 },
+      ),
     );
     await expect(fetchPluginCatalog()).resolves.toHaveLength(1);
     expect(mock.mock.calls[0][0]).toBe("/api/plugins/catalog");
@@ -181,12 +192,26 @@ describe("remote plugin installation", () => {
   });
 
   it("previews and installs a package from a URL", async () => {
-    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-      if (String(url).endsWith("/preview-url")) return new Response(JSON.stringify({ plugin_id: "example.test" }), { status: 200 });
-      return new Response(JSON.stringify({ plugin_id: "example.test", version: "1.0.0" }), { status: 201 });
-    });
+    const mock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (url) => {
+        if (String(url).endsWith("/preview-url")) {
+          return new Response(
+            JSON.stringify({ plugin_id: "example.test" }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({ plugin_id: "example.test", version: "1.0.0" }),
+          { status: 201 },
+        );
+      });
     await previewPluginInstallUrl("https://example.com/test.utp");
-    await installPluginFromUrl("https://example.com/test.utp", [], "a".repeat(64));
+    await installPluginFromUrl(
+      "https://example.com/test.utp",
+      [],
+      "a".repeat(64),
+    );
     expect(String(mock.mock.calls[0][0])).toContain("/preview-url");
     expect(String(mock.mock.calls[1][0])).toContain("/install/url");
     mock.mockRestore();
