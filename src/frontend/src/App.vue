@@ -55,7 +55,7 @@ const KEPT_ALIVE = [
         <component :is="Component" />
       </KeepAlive>
     </router-view>
-    <PluginExtensionSlot slot-id="app.global" :context="{ host_page: route.path }" />
+    <PluginExtensionSlot v-if="currentUser" slot-id="app.global" :context="{ host_page: route.path }" />
     <TaskProgressToast
       v-if="route.path !== '/setup' && route.path !== '/login/oidcstart'"
     />
