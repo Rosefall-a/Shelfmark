@@ -6,7 +6,6 @@ import {
   deletePlugin,
   disablePlugin,
   enablePlugin,
-  fetchPluginCatalog,
   fetchPluginCatalogFromSource,
   fetchPluginLogs,
   fetchPlugins,
