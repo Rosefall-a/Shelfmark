@@ -162,8 +162,10 @@ export const installPlugin = async (
   return response.json();
 };
 
-export const fetchPluginCatalog = () =>
-  request<PluginCatalogEntry[]>("/api/plugins/catalog");
+export const fetchPluginCatalog = (source?: string) => {
+  const query = source ? `?source=${encodeURIComponent(source)}` : "";
+  return request<PluginCatalogEntry[]>(`/api/plugins/catalog${query}`);
+};
 
 export const previewPluginInstallUrl = async (
   url: string,
