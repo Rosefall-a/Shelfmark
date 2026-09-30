@@ -120,13 +120,13 @@ def test_documents_read_returns_bounded_safe_content(tmp_path, monkeypatch) -> N
     assert str(tmp_path) not in str(result)
 
 
-def test_documents_read_rejects_active_content(tmp_path, monkeypatch) -> None:
+def test_documents_read_supports_html_representation(tmp_path, monkeypatch) -> None:
     user_id = uuid4()
     game_id = uuid4()
     document_id = uuid4()
     document_root = tmp_path / str(user_id) / "games" / "example" / "docs"
     document_root.mkdir(parents=True)
-    (document_root / "page.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+    (document_root / "page.html").write_text("<h1>Safe</h1><script>alert(1)</script>", encoding="utf-8")
     game = Game(
         id=game_id,
         user_id=user_id,
@@ -144,14 +144,15 @@ def test_documents_read_rejects_active_content(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(gateway, "_DATA_ROOT", tmp_path)
     db = FakeDb(execute_results=[FakeResult(one=(item, game))])
 
-    with pytest.raises(ValueError, match="not supported"):
-        dispatch(
-            db,
-            method="documents.read",
-            capability="documents.read",
-            payload={"document_id": str(document_id)},
-            user_id=user_id,
-        )
+    result = dispatch(
+        db,
+        method="documents.read",
+        capability="documents.read",
+        payload={"document_id": str(document_id)},
+        user_id=user_id,
+    )
+    assert result["document"]["media_type"] == "text/html"
+    assert base64.b64decode(result["content"]) == b"<h1>Safe</h1><script>alert(1)</script>"
 
 
 def test_session_access_exposes_no_credentials_and_revoke_is_user_scoped() -> None:
