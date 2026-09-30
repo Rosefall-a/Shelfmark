@@ -55,7 +55,17 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest
+        run: |
+          set -o pipefail
+          pytest 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics-${{ github.run_id }}
+          path: src/backend/pytest-output.txt
+          if-no-files-found: warn
 
       - name: Test plugin runtime policy
         working-directory: src/plugin-runtime
