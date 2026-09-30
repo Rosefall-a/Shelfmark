@@ -7,6 +7,7 @@ import {
   disablePlugin,
   enablePlugin,
   fetchPluginCatalog,
+  fetchPluginCatalogFromSource,
   fetchPluginLogs,
   fetchPlugins,
   installPlugin,
@@ -125,7 +126,7 @@ function toggleCatalogEndpoint(url: string, enabled: boolean) {
 }
 
 async function loadCatalogues() {
-  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalog(url).catch(() => [])));
+  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalogFromSource(url).catch(() => [])));
   const seen = new Set<string>();
   catalog.value = results.flat().filter((entry) => {
     if (seen.has(entry.plugin_id)) return false;
