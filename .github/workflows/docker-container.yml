@@ -36,6 +36,25 @@ jobs:
           echo "IMAGE_NAME=$IMAGE_NAME" >> "$GITHUB_ENV"
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build production image
+        shell: bash
+        run: |
+          set -o pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            docker buildx build --progress=plain --load --file src/docker-container/Dockerfile --tag unnamed_tracking_app:ci . 2>&1 | tee docker-build.log
+          else
+            docker buildx build --progress=plain --push --file src/docker-container/Dockerfile \
+              --tag "${IMAGE_NAME}:${IMAGE_TAG}" \
+              --tag "${IMAGE_NAME}:sha-${GITHUB_SHA}" . 2>&1 | tee docker-build.log
+          fi
+
       - name: Build production image
         shell: bash
         run: |
