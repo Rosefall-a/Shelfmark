@@ -42,6 +42,10 @@ class Capability(StrEnum):
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
     NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
     EVENTS_SUBSCRIBE = "events.subscribe"
+    TASKS_BACKGROUND = "tasks.background"
+    SESSIONS_ADMIN_READ = "sessions.admin.read"
+    SESSIONS_ADMIN_REVOKE = "sessions.admin.revoke"
+    MEDIA_IMPORT = "media.import"
     PLUGIN_STORAGE = "plugin.storage"
     PLUGIN_SETTINGS = "plugin.settings"
 
@@ -666,6 +670,8 @@ class HostExtensionSlot(StrEnum):
 
     HOME_AFTER_WIDGETS = "home.after-widgets"
     GAME_OVERVIEW_AFTER_HEADER = "game.overview.after-header"
+    APP_GLOBAL = "app.global"
+    HOME_REPLACE = "home.replace"
 
 
 class UiPageNavigation(ContractModel):
