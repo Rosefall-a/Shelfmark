@@ -12,7 +12,7 @@ from typing import Any
 from uuid import UUID, NAMESPACE_URL, uuid5
 
 from pydantic import ValidationError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
