@@ -214,7 +214,8 @@ async def preview_plugin_install(
     finally:
         if path is not None:
             path.unlink(missing_ok=True)
-        await file.close()
+        if resolved_file is not None:
+            await resolved_file.close()
 
 
 @router.post("/install", status_code=201)
