@@ -114,9 +114,7 @@ def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
 
 
 async def _store_plugin_upload(file: StarletteUploadFile, prefix: str) -> tuple[Path, str, int]:
-    filename = file.filename or ""
-    if Path(filename).suffix.lower() not in {".utp", ".zip"}:
-        raise HTTPException(status_code=400, detail="Plugin packages must use the .utp or .zip extension.")
+    filename = file.filename or "plugin-package"
     with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".utp", delete=False) as handle:
         path = Path(handle.name)
         total = 0
@@ -295,23 +293,6 @@ async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> S
             if isinstance(value, StarletteUploadFile):
                 return value
     raise HTTPException(status_code=400, detail={"code": "plugin_file_missing", "message": "Upload a .utp package as a multipart file."})
-
-
-@router.get("/catalog", response_model=list[PluginCatalogEntry])
-async def plugin_catalog(admin: User = Depends(get_current_admin)) -> list[PluginCatalogEntry]:
-    """Return the current official plugin catalogue."""
-    del admin
-    path: Path | None = None
-    try:
-        path, _, _ = await _download_remote_file(_PLUGIN_CATALOG_URL, json_document=True)
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail="Official plugin catalogue could not be read.") from exc
-        return [PluginCatalogEntry.model_validate(entry) for entry in _catalog_entries(payload)]
-    finally:
-        if path is not None:
-            path.unlink(missing_ok=True)
 
 
 @router.post("/install/preview-url")
