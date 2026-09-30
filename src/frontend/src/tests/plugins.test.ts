@@ -10,6 +10,7 @@ import {
   previewPluginInstall,
   UntrustedPluginError,
   fetchPluginCatalog,
+    fetchPluginCatalogFromSource,
   previewPluginInstallUrl,
   installPluginFromUrl,
 } from "../services/plugins";
@@ -188,7 +189,7 @@ describe("remote plugin installation", () => {
     );
     await expect(fetchPluginCatalog()).resolves.toHaveLength(1);
     expect(mock.mock.calls[0][0]).toBe("/api/plugins/catalog");
-    await fetchPluginCatalog("https://example.com/other-list.json");
+    await fetchPluginCatalogFromSource("https://example.com/other-list.json");
     expect(String(mock.mock.calls[1][0])).toContain("source=https%3A%2F%2Fexample.com%2Fother-list.json");
     mock.mockRestore();
   });
