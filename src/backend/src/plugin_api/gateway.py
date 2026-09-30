@@ -22,6 +22,7 @@ from src.api.routes.settings import (
 from src.core.integrations import resolve_integrations
 from src.database.models.auth import UserSession
 from src.database.models.game import Game
+from src.database.models.movies import Movie, MovieStatus
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
@@ -48,6 +49,11 @@ _METHOD_CAPABILITIES = {
     "documents.read": "documents.read",
     "sessions.list": "sessions.read",
     "sessions.revoke": "sessions.revoke",
+    "sessions.admin.list": "sessions.admin.read",
+    "sessions.admin.revoke": "sessions.admin.revoke",
+    "sessions.admin.revoke_all": "sessions.admin.revoke",
+    "media.import": "media.write",
+    "events.poll": "events.subscribe",
     "notifications.send": "notifications.send",
     "notification_providers.register": "notification_providers.register",
     "notification_providers.unregister": "notification_providers.register",
@@ -300,6 +306,60 @@ async def dispatch_gateway_request(
             raise LookupError("session not found")
         await db.commit()
         return {"revoked": True, "session_id": str(session_id)}
+
+    if method == "sessions.admin.list":
+        from src.database.models.user import User
+        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
+        if admin is None:
+            raise PermissionError("administrator access is required")
+        limit = max(1, min(int(payload.get("limit", 100)), 200))
+        rows = (await db.execute(select(UserSession, User.username).join(User, User.id == UserSession.user_id).order_by(UserSession.last_seen_at.desc()).limit(limit))).all()
+        now = int(time.time())
+        return {"sessions": [{"id": str(s.id), "user_id": str(s.user_id), "username": u, "ip_address": s.ip_address, "user_agent": s.user_agent, "created_at": s.created_at, "last_seen_at": s.last_seen_at, "expires_at": s.expires_at, "revoked_at": s.revoked_at, "active": s.revoked_at is None and s.expires_at > now, "state": "revoked" if s.revoked_at is not None else ("active" if s.expires_at > now else "expired"), "location": {"country": s.geo_country, "region": s.geo_region, "city": s.geo_city, "latitude": s.geo_latitude, "longitude": s.geo_longitude, "network_label": s.geo_network_label, "network_number": s.geo_network_number, "network_organization": s.geo_network_organization}, "anomaly": {"reason": s.anomaly_reason, "previous_location": s.anomaly_previous_location}} for s, u in rows]}
+
+    if method == "sessions.admin.revoke":
+        from src.database.models.user import User
+        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
+        if admin is None:
+            raise PermissionError("administrator access is required")
+        session_id = UUID(str(payload.get("session_id", "")))
+        result = await db.execute(delete(UserSession).where(UserSession.id == session_id))
+        if not result.rowcount:
+            raise LookupError("session not found")
+        await db.commit()
+        return {"revoked": True, "session_id": str(session_id)}
+
+    if method == "sessions.admin.revoke_all":
+        from src.database.models.user import User
+        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
+        if admin is None:
+            raise PermissionError("administrator access is required")
+        result = await db.execute(delete(UserSession))
+        await db.commit()
+        return {"revoked": result.rowcount}
+
+    if method == "media.import":
+        imported = []
+        for item in payload.get("items", []):
+            title = str(item.get("title", "")).strip()
+            if not title:
+                continue
+            movie = await db.scalar(select(Movie).where(Movie.user_id == user_id, Movie.deleted_at.is_(None), Movie.source == "jellyfin", Movie.title == title))
+            if movie is None:
+                movie = Movie(user_id=user_id, title=title, sort_title=title.lower(), source="jellyfin")
+                db.add(movie)
+            movie.runtime_minutes = item.get("runtime_minutes")
+            movie.genres = list(item.get("genres") or [])
+            if item.get("poster_url"):
+                movie.poster_url = str(item["poster_url"])
+            if item.get("played"):
+                movie.status = MovieStatus.WATCHED
+            imported.append({"id": str(movie.id), "title": movie.title, "external_id": item.get("external_id")})
+        await db.commit()
+        return {"imported": imported}
+
+    if method == "events.poll":
+        return {"events": []}
 
     if method == "notifications.send":
         title = str(payload.get("title", "")).strip()
