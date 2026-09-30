@@ -67,8 +67,12 @@ function loadCatalogEndpoints() {
     const endpoints = Array.isArray(stored) ? stored : stored?.endpoints;
     if (Array.isArray(endpoints)) {
       catalogEndpoints.value = [officialCatalogUrl, ...endpoints.filter((value: unknown): value is string => typeof value === "string" && value.trim() && value !== officialCatalogUrl)];
-      const enabled = Array.isArray(stored?.enabled) ? stored.enabled : catalogEndpoints.value;
-      enabledCatalogEndpoints.value = [...new Set([officialCatalogUrl, ...enabled])].filter((url) => catalogEndpoints.value.includes(url));
+      const enabled = Array.isArray(stored?.enabled)
+        ? stored.enabled
+        : catalogEndpoints.value;
+      enabledCatalogEndpoints.value = [...new Set(enabled)].filter((url) =>
+        catalogEndpoints.value.includes(url),
+      );
       return;
     }
   } catch {
@@ -134,11 +138,8 @@ async function load() {
   error.value = "";
   try {
     plugins.value = await fetchPlugins();
-    try {
-      catalog.value = await fetchPluginCatalog();
-    } catch {
-      catalog.value = [];
-    }
+    if (!catalogEndpoints.value.length) loadCatalogEndpoints();
+    await loadCatalogues();
     if (selected.value) {
       selected.value =
         plugins.value.find(
@@ -209,7 +210,7 @@ async function previewRemoteUrl(url = remoteUrl.value) {
 }
 
 async function previewCatalogEntry(url: string) {
-  installOpen.value = false;
+  error.value = "";
   await previewRemoteUrl(url);
 }
 
