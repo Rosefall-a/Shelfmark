@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -93,6 +93,7 @@ async def test_action_result_cannot_spoof_host_identity(monkeypatch) -> None:
 
     assert result["plugin_id"] == "example.plugin"
     assert result["action"] == "revoke-session"
+    assert UUID(result["request_id"])
     runtime.action.assert_awaited_once()
 
 

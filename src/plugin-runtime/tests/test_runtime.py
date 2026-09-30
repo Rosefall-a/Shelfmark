@@ -418,6 +418,136 @@ def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
     }
 
 
+def test_runtime_discord_provider_returns_core_delivery_result(
+    tmp_path, monkeypatch
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "entrypoint": "plugin:main",
+                "capabilities": [
+                    {"name": "notification_providers.deliver", "version": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+    registry.supervisor._storage_quotas["example.provider"] = 1024
+    registry.supervisor._storage("example.provider").put(
+        "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
+    )
+    registry.supervisor.execute = lambda *_args: b'{"discord":true,"content":"hello"}'
+    delivered = []
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    monkeypatch.setattr(
+        registry,
+        "_discord_webhook",
+        lambda url, content: delivered.append((url, content)),
+    )
+
+    assert registry.action("example.provider", "deliver", {}) == {
+        "success": True,
+        "retryable": False,
+        "error": None,
+    }
+    assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
+
+
+def test_action_handler_can_use_the_mediated_plugin_gateway(
+    tmp_path, monkeypatch
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    supervisor = PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage")
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    package = tmp_path / "plugins" / "example.documents"
+    (package / "sdk").mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "entrypoint": "plugin:main",
+                "capabilities": [{"name": "documents.read", "version": 1}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "actions": [
+                    {
+                        "id": "list",
+                        "handler": "plugin:list_documents",
+                        "capability": {"name": "documents.read", "version": 1},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "sdk" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "sdk" / "plugin_protocol.py").write_text(
+        "import json,sys\n"
+        "def request(method,capability,payload):\n"
+        " print(json.dumps({'api_version':'v1','method':method,'capability':capability,'payload':payload}),flush=True)\n"
+        " response=json.loads(sys.stdin.readline())\n"
+        " if response.get('error'): raise RuntimeError(response['error'])\n"
+        " return response.get('payload',{})\n",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "from sdk.plugin_protocol import request\n"
+        "def main(): pass\n"
+        "def list_documents(values):\n"
+        " return request('documents.list','documents.read',{'limit':values.get('limit',50)})\n",
+        encoding="utf-8",
+    )
+    registry._save_state(
+        {
+            "example.documents": {
+                "enabled": True,
+                "installation_id": str(uuid.uuid4()),
+            }
+        }
+    )
+    calls = []
+
+    def dispatch(plugin_id, message):
+        calls.append((plugin_id, message))
+        return {"payload": {"documents": [{"id": "document-1"}]}}
+
+    monkeypatch.setattr(supervisor, "_handle_gateway_request", dispatch)
+
+    result = registry.action("example.documents", "list", {"limit": 10})
+
+    assert result == {"documents": [{"id": "document-1"}]}
+    assert calls[0][0] == "example.documents"
+    assert calls[0][1]["method"] == "documents.list"
+    assert calls[0][1]["capability"] == "documents.read"
+
+
 def test_runtime_rejects_actions_for_disabled_installed_plugin(tmp_path) -> None:
     from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
 

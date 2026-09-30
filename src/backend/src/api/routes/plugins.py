@@ -63,7 +63,7 @@ _MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
 _PLUGIN_FRONTEND_CSP = (
     "default-src 'self'; script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; "
-    "object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
+    "frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'"
 )
 
 
@@ -671,6 +671,7 @@ async def plugin_action(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
+    request_id = uuid4()
     document = await _client.plugin_ui(quote(plugin_id, safe=""))
     action = next(
         (item for item in document.get("actions", []) if item.get("id") == action_id), None
@@ -708,13 +709,19 @@ async def plugin_action(
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     logger.info(
-        "Plugin action completed: plugin_id=%s installation_id=%s action_id=%s user_id=%s",
+        "Plugin action completed: request_id=%s plugin_id=%s installation_id=%s action_id=%s user_id=%s",
+        request_id,
         plugin_id,
         installation_id,
         action_id,
         user.id,
     )
-    return {**(result or {"completed": True}), "plugin_id": plugin_id, "action": action_id}
+    return {
+        **(result or {"completed": True}),
+        "plugin_id": plugin_id,
+        "action": action_id,
+        "request_id": str(request_id),
+    }
 
 
 class PluginGatewayIn(BaseModel):

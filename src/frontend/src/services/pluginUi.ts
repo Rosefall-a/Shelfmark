@@ -106,6 +106,13 @@ export interface PluginUiDocument {
 export type UiValue = string | number | boolean | string[];
 export type UiValues = Record<string, UiValue>;
 
+export function approvePluginAction(
+  action: UiAction,
+  confirm: (message: string) => boolean,
+): boolean {
+  return !action.confirmation || confirm(action.confirmation);
+}
+
 export function validateField(
   field: UiField,
   value: UiValue | undefined,

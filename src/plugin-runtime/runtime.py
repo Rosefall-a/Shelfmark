@@ -11,11 +11,13 @@ import hashlib
 import io
 import json
 import os
+import queue
 import re
 import signal
 import shutil
 import stat
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -506,7 +508,7 @@ class PluginSupervisor:
     def execute(
         self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0
     ) -> bytes:
-        """Run a bounded, one-shot action handler in an isolated sandbox."""
+        """Run a bounded action while mediating its Plugin API requests."""
         spec.validate()
         if len(payload) > 64 * 1024:
             raise RuntimePolicyError("plugin action payload exceeds 64 KiB")
@@ -516,9 +518,10 @@ class PluginSupervisor:
         workdir.mkdir(mode=0o700, parents=True, exist_ok=False)
         started_at = time.monotonic()
         self._log(spec.plugin_id, "Plugin action started.", event="action.started")
+        process: subprocess.Popen[bytes] | None = None
         try:
             self._storage(spec.plugin_id)
-            result = subprocess.run(
+            process = subprocess.Popen(
                 self._sandbox_command(spec, workdir, package_dir),
                 cwd=package_dir if self._nonbubble_enabled() else workdir,
                 env={
@@ -532,35 +535,116 @@ class PluginSupervisor:
                     "PYTHONDONTWRITEBYTECODE": "1",
                     **spec.environment,
                 },
-                input=payload,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 start_new_session=True,
-                timeout=timeout,
-                check=False,
                 preexec_fn=lambda: self._limits(spec.resources),
             )
+            if (
+                process.stdin is None
+                or process.stdout is None
+                or process.stderr is None
+            ):
+                raise RuntimePolicyError("plugin action pipes are unavailable")
+
+            lines: queue.Queue[tuple[str, bytes | None]] = queue.Queue()
+
+            def read_stream(name: str, stream: Any) -> None:
+                for line in iter(stream.readline, b""):
+                    lines.put((name, line))
+                lines.put((name, None))
+
+            threading.Thread(
+                target=read_stream, args=("stdout", process.stdout), daemon=True
+            ).start()
+            threading.Thread(
+                target=read_stream, args=("stderr", process.stderr), daemon=True
+            ).start()
+            process.stdin.write(payload + b"\n")
+            process.stdin.flush()
+
+            deadline = time.monotonic() + timeout
+            output: bytes | None = None
+            stdout_closed = False
+            while time.monotonic() < deadline:
+                try:
+                    stream_name, line = lines.get(
+                        timeout=max(0.01, min(0.25, deadline - time.monotonic()))
+                    )
+                except queue.Empty:
+                    if process.poll() is not None and stdout_closed:
+                        break
+                    continue
+                if line is None:
+                    if stream_name == "stdout":
+                        stdout_closed = True
+                    continue
+                if stream_name == "stderr":
+                    message = line.decode("utf-8", errors="replace").rstrip()
+                    if message:
+                        self._log(
+                            spec.plugin_id,
+                            message,
+                            level="warning",
+                            event="plugin.stderr",
+                            source="plugin",
+                        )
+                    continue
+                try:
+                    message = json.loads(line)
+                except (UnicodeDecodeError, ValueError) as exc:
+                    raise RuntimePolicyError(
+                        "plugin action emitted invalid protocol output"
+                    ) from exc
+                if not isinstance(message, dict):
+                    raise RuntimePolicyError(
+                        "plugin action protocol output must be an object"
+                    )
+                if "plugin_action_result" in message:
+                    output = json.dumps(message["plugin_action_result"]).encode("utf-8")
+                    break
+                try:
+                    response = self._handle_gateway_request(spec.plugin_id, message)
+                except Exception as exc:
+                    self._log(
+                        spec.plugin_id,
+                        f"Gateway request failed: {exc}",
+                        level="error",
+                        event="gateway.request_failed",
+                    )
+                    response = {"error": str(exc)}
+                process.stdin.write(
+                    (json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8")
+                )
+                process.stdin.flush()
+
+            if output is None:
+                if process.poll() is None:
+                    process.kill()
+                    self._log(
+                        spec.plugin_id,
+                        "Plugin action timed out.",
+                        level="error",
+                        event="action.timed_out",
+                        metadata={"timeout_seconds": timeout},
+                    )
+                    raise RuntimePolicyError("plugin action timed out")
+                raise RuntimePolicyError("plugin action did not return a result")
+            process.stdin.close()
+            return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
+            if return_code:
+                raise RuntimePolicyError("plugin action handler failed")
         except subprocess.TimeoutExpired as exc:
-            self._log(
-                spec.plugin_id,
-                "Plugin action timed out.",
-                level="error",
-                event="action.timed_out",
-                metadata={"timeout_seconds": timeout},
-            )
+            if process is not None:
+                process.kill()
             raise RuntimePolicyError("plugin action timed out") from exc
         finally:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
             shutil.rmtree(workdir, ignore_errors=True)
-        if result.returncode:
-            self._log(
-                spec.plugin_id,
-                "Plugin action handler failed.",
-                level="error",
-                event="action.failed",
-                metadata={"return_code": result.returncode},
-            )
-            raise RuntimePolicyError("plugin action handler failed")
-        output = result.stdout or b""
+        assert output is not None
         if len(output) > 64 * 1024:
             raise RuntimePolicyError("plugin action output exceeds 64 KiB")
         self._log(
@@ -1013,7 +1097,7 @@ class PluginRegistry:
             f"m=importlib.import_module({module!r}); "
             f"f=getattr(m,{function!r}); f()"
         )
-        return ("python", "-c", script)
+        return (sys.executable, "-c", script)
 
     @staticmethod
     def _action_command(handler: str) -> tuple[str, ...]:
@@ -1025,11 +1109,12 @@ class PluginRegistry:
             "import importlib,json,sys; "
             f"m=importlib.import_module({module!r}); "
             f"f=getattr(m,{function!r}); "
-            "result=f(json.load(sys.stdin)); "
-            "json.dump(result if isinstance(result,dict) else {'completed':result is not False},sys.stdout); "
+            "result=f(json.loads(sys.stdin.readline())); "
+            "json.dump({'plugin_action_result':result if isinstance(result,dict) else {'completed':result is not False}},sys.stdout); "
+            "sys.stdout.write('\\n');sys.stdout.flush(); "
             "raise SystemExit(0 if result is not False else 1)"
         )
-        return ("python", "-c", script)
+        return (sys.executable, "-c", script)
 
     def start(self, plugin_id: str, user_id: str | None = None) -> None:
         package, manifest = self.package(plugin_id)
@@ -1185,9 +1270,10 @@ class PluginRegistry:
                 capabilities = {
                     item.get("name") for item in manifest.get("capabilities", [])
                 }
-                if "notifications.send" not in capabilities:
+                delivery_provider = "notification_providers.deliver" in capabilities
+                if "notifications.send" not in capabilities and not delivery_provider:
                     raise RuntimePolicyError(
-                        "plugin action requested Discord delivery without notifications.send"
+                        "plugin action requested Discord delivery without an approved delivery capability"
                     )
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
@@ -1210,7 +1296,11 @@ class PluginRegistry:
                         "Discord egress is disabled in this runtime"
                     )
                 self._discord_webhook(webhook, content)
-                result = {"completed": True}
+                result = (
+                    {"success": True, "retryable": False, "error": None}
+                    if delivery_provider
+                    else {"completed": True}
+                )
         return result
 
     def delete(self, plugin_id: str) -> None:

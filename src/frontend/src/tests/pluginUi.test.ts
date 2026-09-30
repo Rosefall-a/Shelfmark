@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvePluginAction,
   buildInitialValues,
   validateDocument,
   validateField,
@@ -63,6 +64,19 @@ describe("plugin UI host contract", () => {
     expect(validateField(document.settings[0].fields[0], "")).toBe(
       "This field is required.",
     );
+  });
+
+  it("requires host confirmation for destructive actions", () => {
+    const action = {
+      id: "revoke-session",
+      label: "Revoke",
+      confirmation: "Revoke this session?",
+    };
+    expect(approvePluginAction(action, () => false)).toBe(false);
+    expect(approvePluginAction(action, () => true)).toBe(true);
+    expect(
+      approvePluginAction({ id: "refresh", label: "Refresh" }, () => false),
+    ).toBe(true);
   });
 
   it("rejects incorrect select and multiselect value shapes", () => {
