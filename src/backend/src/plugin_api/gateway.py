@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import hmac
 import base64
+import hmac
 import mimetypes
 import os
 import time
 from pathlib import Path
 from typing import Any
-from uuid import UUID, NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import ValidationError
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.settings import (
@@ -22,15 +22,16 @@ from src.api.routes.settings import (
 from src.core.integrations import resolve_integrations
 from src.database.models.auth import UserSession
 from src.database.models.game import Game
-from src.database.models.movies import Movie, MovieStatus
-from src.database.models.media_item import MediaItem
 from src.database.models.game_file_item import GameFileItem
+from src.database.models.media_item import MediaItem
+from src.database.models.movies import Movie, MovieStatus
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
 from src.features.metadata.games.search import search_game_metadata
 from src.features.notification_providers.delivery import ensure_deliveries
+from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
     DocumentContentRepresentation,
     DocumentRepresentation,
@@ -38,7 +39,6 @@ from src.plugin_api.contracts import (
     SessionRepresentation,
 )
 from src.plugin_api.grants import has_capability_grant
-
 
 _DATA_ROOT = Path("/data/users")
 _MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
@@ -128,8 +128,11 @@ async def dispatch_gateway_request(
     required_capability = _METHOD_CAPABILITIES.get(method)
     if required_capability is None:
         raise ValueError(f"unsupported plugin gateway method: {method}")
-    full_api = capability == "api.full"
-    if not full_api and capability != required_capability:
+    try:
+        authorizes_method = capability_implies(capability, required_capability)
+    except ValueError:
+        authorizes_method = False
+    if not authorizes_method:
         raise PermissionError(f"method {method} requires capability {required_capability}")
     if not await has_capability_grant(
         db,

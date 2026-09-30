@@ -1,6 +1,20 @@
 # Plugin capability APIs
 
-Plugin API v1 maps every gateway method to exactly one capability. The runtime attaches plugin ID, installation ID, user ID, request ID, and the requested capability; the backend then requires a matching active grant for that installation, version, and user scope.
+Plugin API v1 maps every gateway method to exactly one capability. The runtime attaches plugin ID, installation ID, user ID, request ID, and the requested capability; the backend then requires an active grant for that installation, version, and user scope. This check is performed by the backend for every privileged operation. Browser controls, runtime process isolation, and bubblewrap are defense in depth, not authorization boundaries.
+
+## Hierarchical grants
+
+Capabilities use a canonical hierarchy. An administrator can grant one leaf, such as `games.read`, or its parent, `games`, which authorizes all current children in that subtree. A leaf never authorizes its parent or a sibling. The grant remains scoped to the installation, capability version, and optional user/device identity.
+
+The principal families are:
+
+- user data: `users`, `games`, `media`, `documents`, and `sessions`;
+- frontend: navigation locations, Settings sections, overlays/dialogs, page extensions, page-scoped replacements, plugin routes, and `frontend.native`;
+- backend: namespaced plugin routes and privileged host routes;
+- notifications: sending notifications and registering/delivering through providers;
+- external access: `network.outbound`.
+
+`api.full` is a critical, exceptional backend grant. It implies the registered backend/domain API capabilities, but deliberately does not imply `frontend.native`, frontend contributions, or unrestricted network access. The install and permission-review APIs return the canonical category, hierarchy, risk, and high-privilege metadata so clients do not maintain a competing permission catalogue.
 
 ## Domain APIs
 
@@ -13,7 +27,7 @@ Plugin API v1 maps every gateway method to exactly one capability. The runtime a
 | `notification_providers.register` | `notification_providers.register`, `notification_providers.unregister` | Registers a provider ID namespaced below the plugin ID and one declared action ID. |
 | `notification_providers.deliver` | Core invokes the registered action | Allows minimized eligible delivery work after core preference/grant checks. It does not allow querying notification tables or controlling retries. |
 
-Existing families include `users.read`, `users.profile.read`, `games.read`, `games.write`, `media.read`, `media.write`, `events.subscribe`, `plugin.storage`, and `plugin.settings`. `home.replace` and `app.global` are host-owned UI extension slots. A plugin can contribute declarative UI to those slots but cannot mutate Vue components or the DOM. External navigation actions must explicitly declare `external_navigation` and are limited to HTTP(S) URLs. The `api.full` capability bypasses individual method capability matching, but still uses the authenticated gateway and its DTO/error boundaries. It is never implied by a scoped grant.
+Existing leaves include `users.read`, `users.profile.read`, `games.read`, `games.write`, `media.read`, `media.write`, `events.subscribe`, `plugin.storage`, and `plugin.settings`. `home.replace` and `app.global` remain host-owned legacy UI extension slots. A plugin can contribute declarative UI to those slots but cannot mutate Vue components or the DOM. External navigation actions must explicitly declare `external_navigation` and are limited to HTTP(S) URLs.
 
 Only methods present in the gateway dispatch table are callable; presenting a different capability string does not change the method's authorization requirement.
 

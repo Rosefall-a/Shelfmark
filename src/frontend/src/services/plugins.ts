@@ -9,6 +9,9 @@ export interface PluginSummary {
   compatibility_reason: string;
   health: "healthy" | "degraded" | "unhealthy" | "unknown";
   permissions: string[];
+  permission_refs?: Array<{ name: string; version: number }>;
+  granted_capabilities: string[];
+  effective_capabilities: string[];
   enabled: boolean;
 }
 export interface PluginInstallPermission {
@@ -16,6 +19,12 @@ export interface PluginInstallPermission {
   capability: string;
   capability_version: number;
   rationale: string;
+  title: string;
+  category: string;
+  parent: string | null;
+  children: string[];
+  risk: "low" | "medium" | "high" | "critical";
+  highly_privileged: boolean;
 }
 export interface PluginInstallPreview {
   plugin_id: string;
@@ -174,7 +183,13 @@ export const fetchPluginCatalogFromSource = (source: string) =>
 
 export const previewPluginInstallUrl = async (
   url: string,
-): Promise<PluginInstallPreview & { source_url: string; download_filename: string; download_bytes: number }> => {
+): Promise<
+  PluginInstallPreview & {
+    source_url: string;
+    download_filename: string;
+    download_bytes: number;
+  }
+> => {
   const response = await fetch("/api/plugins/install/preview-url", {
     method: "POST",
     credentials: "include",
@@ -183,8 +198,13 @@ export const previewPluginInstallUrl = async (
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;
-    throw new Error(detail ? `Plugin URL preview failed (${response.status}): ${detail}` : `Plugin URL preview failed (${response.status}).`);
+    const detail =
+      typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(
+      detail
+        ? `Plugin URL preview failed (${response.status}): ${detail}`
+        : `Plugin URL preview failed (${response.status}).`,
+    );
   }
   return response.json();
 };
@@ -195,8 +215,11 @@ export const installPluginFromUrl = async (
   expectedDigest: string,
   allowUntrusted = false,
 ): Promise<PluginInstallResult> => {
-  const query = new URLSearchParams({ allow_untrusted: allowUntrusted ? "true" : "false" });
-  for (const permission of approvedPermissions) query.append("approved_permissions", permission);
+  const query = new URLSearchParams({
+    allow_untrusted: allowUntrusted ? "true" : "false",
+  });
+  for (const permission of approvedPermissions)
+    query.append("approved_permissions", permission);
   const response = await fetch(`/api/plugins/install/url?${query.toString()}`, {
     method: "POST",
     credentials: "include",
@@ -205,12 +228,18 @@ export const installPluginFromUrl = async (
   });
   if (response.status === 409) {
     const body = await response.json().catch(() => null);
-    if (body?.detail?.code === "untrusted_plugin") throw new UntrustedPluginError(body.detail);
+    if (body?.detail?.code === "untrusted_plugin")
+      throw new UntrustedPluginError(body.detail);
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;
-    throw new Error(detail ? `Plugin installation failed (${response.status}): ${detail}` : `Plugin installation failed (${response.status}).`);
+    const detail =
+      typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(
+      detail
+        ? `Plugin installation failed (${response.status}): ${detail}`
+        : `Plugin installation failed (${response.status}).`,
+    );
   }
   return response.json();
 };

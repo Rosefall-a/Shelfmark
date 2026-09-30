@@ -211,14 +211,18 @@ def test_upload_preview_is_static_and_lists_requested_permissions(monkeypatch) -
 
     assert preview["plugin_id"] == "example.ui-playground"
     assert preview["trust_status"] == "untrusted"
-    assert preview["permissions"] == [
-        {
-            "key": "notifications.send:v1",
-            "capability": "notifications.send",
-            "capability_version": 1,
-            "rationale": "Send page announcements.",
-        }
-    ]
+    assert preview["permissions"][0] == {
+        "key": "notifications.send:v1",
+        "capability": "notifications.send",
+        "capability_version": 1,
+        "rationale": "Send page announcements.",
+        "title": "Notifications / Send",
+        "category": "Notifications",
+        "parent": "notifications",
+        "children": [],
+        "risk": "high",
+        "highly_privileged": False,
+    }
     assert client.package is None
 
 

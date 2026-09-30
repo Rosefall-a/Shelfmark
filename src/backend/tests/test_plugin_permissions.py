@@ -3,8 +3,19 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from src.plugin_api.contracts import Capability, CapabilityRef, PluginIdentity, RequestContext, UserContext
-from src.plugin_api.permissions import PermissionDecision, PermissionGrant, authorize_request, issue_client_credential
+from src.plugin_api.contracts import (
+    Capability,
+    CapabilityRef,
+    PluginIdentity,
+    RequestContext,
+    UserContext,
+)
+from src.plugin_api.permissions import (
+    PermissionDecision,
+    PermissionGrant,
+    authorize_request,
+    issue_client_credential,
+)
 
 
 def make_context(*, user_id=None, device_id=None):
@@ -79,3 +90,32 @@ def test_plugin_installation_mismatch_is_denied():
         update={"plugin": context.plugin.model_copy(update={"installation_id": uuid4()})}
     )
     assert authorize_request(other, (grant,)).decision is PermissionDecision.DENIED
+
+def test_parent_grant_authorizes_children_but_leaf_grant_does_not_authorize_parent():
+    context = make_context(user_id=uuid4())
+    parent_grant = make_grant(context).model_copy(
+        update={"capability": CapabilityRef(name=Capability.GAMES)}
+    )
+    assert authorize_request(context, (parent_grant,)).decision is PermissionDecision.ALLOWED
+
+    parent_request = context.model_copy(
+        update={"requested_capability": CapabilityRef(name=Capability.GAMES)}
+    )
+    leaf_grant = make_grant(context)
+    assert authorize_request(parent_request, (leaf_grant,)).decision is PermissionDecision.DENIED
+
+
+def test_same_plugin_id_does_not_transfer_grant_to_another_installation():
+    context = make_context(user_id=uuid4())
+    grant = make_grant(context)
+    unrelated_installation = context.model_copy(
+        update={
+            "plugin": PluginIdentity(
+                plugin_id=context.plugin.plugin_id,
+                installation_id=uuid4(),
+                version=context.plugin.version,
+            )
+        }
+    )
+
+    assert authorize_request(unrelated_installation, (grant,)).decision is PermissionDecision.DENIED

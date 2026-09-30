@@ -11,48 +11,53 @@ import socket
 import tempfile
 import time
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
 from typing import Any
+from urllib.parse import quote, urljoin, urlparse
 from uuid import UUID, uuid4
-from urllib.parse import quote
-
-from starlette.datastructures import UploadFile as StarletteUploadFile
 
 import httpx
-
 from fastapi import (
     APIRouter,
     Body,
     Depends,
     File,
-    Request,
     Header,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
 )
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select, update as sql_update
+from sqlalchemy import or_, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from src.core.auth import get_current_admin, get_current_user
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
-from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
+from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
 from src.database.session import get_db
-from src.plugin_api.contracts import PluginUiDocument
+from src.plugin_api.capabilities import (
+    calculate_permission_delta,
+    capability_children,
+    capability_definition,
+    expand_capabilities,
+    package_identity_can_retain_grants,
+)
+from src.plugin_api.contracts import CapabilityRef, PluginPackageIdentity, PluginUiDocument
+from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
+from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
     PluginRuntimeRequestError,
     PluginRuntimeUnavailable,
 )
-from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
-from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
-from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.updates import (
     PackageFormatError,
     PackageVerificationError,
@@ -141,16 +146,23 @@ def _validate_remote_url(raw_url: str) -> str:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid plugin download URL.") from exc
     if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
-        raise HTTPException(status_code=400, detail="Plugin download URLs must use HTTP(S) without embedded credentials.")
+        raise HTTPException(
+            status_code=400,
+            detail="Plugin download URLs must use HTTP(S) without embedded credentials.",
+        )
     hostname = parsed.hostname
     if not hostname:
         raise HTTPException(status_code=400, detail="Plugin download URL has no hostname.")
     try:
         port = parsed.port
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Plugin download URL has an invalid port.") from exc
+        raise HTTPException(
+            status_code=400, detail="Plugin download URL has an invalid port."
+        ) from exc
     if port is not None and port not in {80, 443}:
-        raise HTTPException(status_code=400, detail="Plugin download URLs may only use ports 80 and 443.")
+        raise HTTPException(
+            status_code=400, detail="Plugin download URLs may only use ports 80 and 443."
+        )
     try:
         addresses = {
             ipaddress.ip_address(info[4][0])
@@ -159,13 +171,20 @@ def _validate_remote_url(raw_url: str) -> str:
             )
         }
     except OSError as exc:
-        raise HTTPException(status_code=400, detail="Plugin download hostname could not be resolved.") from exc
+        raise HTTPException(
+            status_code=400, detail="Plugin download hostname could not be resolved."
+        ) from exc
     if not addresses or not all(address.is_global for address in addresses):
-        raise HTTPException(status_code=400, detail="Plugin download URL must resolve only to public internet addresses.")
+        raise HTTPException(
+            status_code=400,
+            detail="Plugin download URL must resolve only to public internet addresses.",
+        )
     return parsed.geturl()
 
 
-async def _download_remote_file(raw_url: str, *, json_document: bool = False) -> tuple[Path, str, int]:
+async def _download_remote_file(
+    raw_url: str, *, json_document: bool = False
+) -> tuple[Path, str, int]:
     """Download a bounded public resource without following unvalidated redirects."""
     url = _validate_remote_url(raw_url)
     for _ in range(_MAX_REMOTE_REDIRECTS + 1):
@@ -181,20 +200,28 @@ async def _download_remote_file(raw_url: str, *, json_document: bool = False) ->
         if response.is_redirect:
             location = response.headers.get("location")
             if not location:
-                raise HTTPException(status_code=502, detail="Plugin download redirect has no destination.")
+                raise HTTPException(
+                    status_code=502, detail="Plugin download redirect has no destination."
+                )
             url = _validate_remote_url(urljoin(url, location))
             continue
         if response.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Plugin download returned HTTP {response.status_code}.")
+            raise HTTPException(
+                status_code=502, detail=f"Plugin download returned HTTP {response.status_code}."
+            )
         data = response.content
         max_bytes = 1 * 1024 * 1024 if json_document else _MAX_PLUGIN_PACKAGE_BYTES
         if len(data) > max_bytes:
-            raise HTTPException(status_code=413, detail="Remote plugin resource exceeds the allowed size.")
+            raise HTTPException(
+                status_code=413, detail="Remote plugin resource exceeds the allowed size."
+            )
         suffix = ".json" if json_document else ".utp"
         filename = Path(urlparse(url).path).name or f"plugin-download{suffix}"
         if not json_document and Path(filename).suffix.lower() not in {".utp", ".zip"}:
             filename = f"{filename}.utp"
-        with tempfile.NamedTemporaryFile(prefix="plugin-remote-", suffix=suffix, delete=False) as handle:
+        with tempfile.NamedTemporaryFile(
+            prefix="plugin-remote-", suffix=suffix, delete=False
+        ) as handle:
             handle.write(data)
             return Path(handle.name), filename, len(data)
     raise HTTPException(status_code=502, detail="Plugin download followed too many redirects.")
@@ -202,7 +229,11 @@ async def _download_remote_file(raw_url: str, *, json_document: bool = False) ->
 
 def _catalog_entries(payload: Any) -> list[dict[str, str]]:
     """Validate the small, host-consumed catalogue contract."""
-    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("plugins"), list):
+    if (
+        not isinstance(payload, dict)
+        or payload.get("version") != 1
+        or not isinstance(payload.get("plugins"), list)
+    ):
         raise HTTPException(status_code=502, detail="Official plugin catalogue is invalid.")
     entries: list[dict[str, str]] = []
     for raw_entry in payload["plugins"]:
@@ -210,7 +241,9 @@ def _catalog_entries(payload: Any) -> list[dict[str, str]]:
             entry = PluginCatalogEntry.model_validate(raw_entry)
             _validate_remote_url(entry.url)
         except (ValidationError, HTTPException) as exc:
-            raise HTTPException(status_code=502, detail="Official plugin catalogue contains an invalid entry.") from exc
+            raise HTTPException(
+                status_code=502, detail="Official plugin catalogue contains an invalid entry."
+            ) from exc
         entries.append(entry.model_dump())
     return entries
 
@@ -239,6 +272,25 @@ def _permission_key(name: str, version: int) -> str:
     return f"{name}:v{version}"
 
 
+def _permission_preview(permission: Any) -> dict[str, Any]:
+    definition = capability_definition(permission.capability.name)
+    return {
+        "key": _permission_key(
+            permission.capability.name.value,
+            permission.capability.version,
+        ),
+        "capability": permission.capability.name.value,
+        "capability_version": permission.capability.version,
+        "rationale": permission.rationale,
+        "title": definition.title,
+        "category": definition.category,
+        "parent": definition.parent.value if definition.parent else None,
+        "children": [child.value for child in capability_children(permission.capability.name)],
+        "risk": definition.risk.value,
+        "highly_privileged": definition.highly_privileged,
+    }
+
+
 def _install_preview(verified: Any, trust_status: str, trust_warning: str | None) -> dict[str, Any]:
     manifest = verified.manifest
     return {
@@ -260,18 +312,7 @@ def _install_preview(verified: Any, trust_status: str, trust_warning: str | None
             }
             for dependency in manifest.dependencies
         ],
-        "permissions": [
-            {
-                "key": _permission_key(
-                    permission.capability.name.value,
-                    permission.capability.version,
-                ),
-                "capability": permission.capability.name.value,
-                "capability_version": permission.capability.version,
-                "rationale": permission.rationale,
-            }
-            for permission in manifest.permissions
-        ],
+        "permissions": [_permission_preview(permission) for permission in manifest.permissions],
         "ui": {
             "pages": list(manifest.ui.pages),
             "menus": list(manifest.ui.menus),
@@ -292,11 +333,19 @@ async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> S
         for value in form.values():
             if isinstance(value, StarletteUploadFile):
                 return value
-    raise HTTPException(status_code=400, detail={"code": "plugin_file_missing", "message": "Upload a .utp package as a multipart file."})
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "code": "plugin_file_missing",
+            "message": "Upload a .utp package as a multipart file.",
+        },
+    )
 
 
 @router.post("/install/preview-url")
-async def preview_plugin_install_url(request: PluginInstallUrl, admin: User = Depends(get_current_admin)) -> dict[str, Any]:
+async def preview_plugin_install_url(
+    request: PluginInstallUrl, admin: User = Depends(get_current_admin)
+) -> dict[str, Any]:
     """Download and statically inspect a remote .utp/.zip package."""
     del admin
     path: Path | None = None
@@ -328,8 +377,14 @@ async def install_plugin_url(
     try:
         path, filename, _ = await _download_remote_file(request.url)
         verified, _, _ = _inspect_install_candidate(path)
-        if request.expected_digest and verified.manifest.integrity.sha256.lower() != request.expected_digest.lower():
-            raise HTTPException(status_code=409, detail="The remote plugin changed after preview; review it again before installing.")
+        if (
+            request.expected_digest
+            and verified.manifest.integrity.sha256.lower() != request.expected_digest.lower()
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The remote plugin changed after preview; review it again before installing.",
+            )
         upload = UploadFile(path.open("rb"), filename=filename)
         return await install_plugin(
             upload,
@@ -511,14 +566,44 @@ async def plugin_catalog(
 
 
 @router.get("", response_model=list[dict])
-async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
-    del user
+async def list_plugins(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
     try:
-        return sorted(await _client.plugins(), key=lambda value: value["plugin_id"])
+        plugins = await _client.plugins()
     except PluginRuntimeRequestError as exc:
         raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
+    result: list[dict] = []
+    for plugin in plugins:
+        granted: list[str] = []
+        installation_id = plugin.get("installation_id")
+        if installation_id:
+            rows = await db.execute(
+                select(
+                    PluginPermissionGrant.capability,
+                    PluginPermissionGrant.capability_version,
+                ).where(
+                    PluginPermissionGrant.plugin_id == plugin.get("plugin_id"),
+                    PluginPermissionGrant.installation_id == UUID(str(installation_id)),
+                    PluginPermissionGrant.revoked_at.is_(None),
+                    or_(
+                        PluginPermissionGrant.user_id.is_(None),
+                        PluginPermissionGrant.user_id == user.id,
+                    ),
+                )
+            )
+            granted = [str(capability) for capability, version in rows if version == 1]
+        result.append(
+            {
+                **plugin,
+                "granted_capabilities": sorted(set(granted)),
+                "effective_capabilities": list(expand_capabilities(granted)),
+            }
+        )
+    return sorted(result, key=lambda value: value["plugin_id"])
 
 
 @router.delete("/{plugin_id}", status_code=204)
@@ -629,26 +714,65 @@ async def update_plugin(
         if installed is None or not installed.get("installation_id"):
             raise HTTPException(status_code=409, detail="Plugin installation identity is missing.")
         installation_id = UUID(str(installed["installation_id"]))
-        active_grants = set(
-            await db.scalars(
-                select(PluginPermissionGrant.capability).where(
+        previous_identity = PluginPackageIdentity(
+            plugin_id=plugin_id,
+            publisher_key_id=installed.get("publisher"),
+        )
+        candidate_identity = PluginPackageIdentity(
+            plugin_id=verified.manifest.plugin_id,
+            publisher_key_id=(
+                verified.manifest.integrity.key_id
+                if verified.manifest.integrity.signature is not None
+                else None
+            ),
+        )
+        if not package_identity_can_retain_grants(previous_identity, candidate_identity):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "The update publisher does not match the installed package. "
+                    "Install it as a new lifecycle instance and review permissions again."
+                ),
+            )
+        grant_rows = (
+            await db.execute(
+                select(
+                    PluginPermissionGrant.capability,
+                    PluginPermissionGrant.capability_version,
+                ).where(
                     PluginPermissionGrant.plugin_id == plugin_id,
                     PluginPermissionGrant.installation_id == installation_id,
                     PluginPermissionGrant.revoked_at.is_(None),
                 )
             )
+        ).all()
+        existing_grants = tuple(
+            CapabilityRef(name=capability, version=version) for capability, version in grant_rows
+        )
+        previous_requested = tuple(
+            CapabilityRef.model_validate(reference)
+            for reference in installed.get("permission_refs", [])
+        )
+        new_requested = tuple(permission.capability for permission in verified.manifest.permissions)
+        permission_delta = calculate_permission_delta(
+            previous_requested,
+            new_requested,
+            existing_grants,
         )
         permission_requests = [
             PluginPermissionRequest(
                 plugin_id=plugin_id,
                 installation_id=installation_id,
-                capability=permission.capability.name.value,
-                capability_version=permission.capability.version,
-                rationale=permission.rationale,
+                capability=capability.name.value,
+                capability_version=capability.version,
+                rationale=next(
+                    permission.rationale
+                    for permission in verified.manifest.permissions
+                    if permission.capability == capability
+                ),
                 status="pending",
             )
-            for permission in verified.manifest.permissions
-            if permission.capability.name.value not in active_grants
+            for capability in permission_delta.newly_requested_grants
         ]
         db.add_all(permission_requests)
         try:
@@ -664,11 +788,24 @@ async def update_plugin(
         except PluginRuntimeUnavailable as exc:
             await db.rollback()
             raise _runtime_error(exc) from exc
+        removed_keys = {
+            (capability.name.value, capability.version) for capability in permission_delta.removed
+        }
+        for grant in await db.scalars(
+            select(PluginPermissionGrant).where(
+                PluginPermissionGrant.plugin_id == plugin_id,
+                PluginPermissionGrant.installation_id == installation_id,
+                PluginPermissionGrant.revoked_at.is_(None),
+            )
+        ):
+            if (grant.capability, grant.capability_version) in removed_keys:
+                grant.revoked_at = int(time.time())
         await db.commit()
         return {
             "plugin_id": plugin_id,
             "version": verified.manifest.version,
             "permissions_requested": len(permission_requests),
+            "permission_delta": permission_delta.model_dump(mode="json"),
             "status": result.get("status", "updated"),
         }
     finally:
@@ -783,6 +920,8 @@ async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> d
     except ValidationError as exc:
         logger.warning("Rejected invalid plugin UI document: plugin_id=%s", plugin_id)
         raise HTTPException(status_code=422, detail="Plugin UI document is invalid.") from exc
+    if document.plugin_id != plugin_id:
+        raise HTTPException(status_code=422, detail="Plugin UI document identity is invalid.")
     return document.model_dump(mode="json")
 
 

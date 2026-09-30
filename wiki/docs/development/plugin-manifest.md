@@ -15,6 +15,7 @@ A manifest declares:
 - human-readable permission rationales;
 - required and optional plugin dependencies;
 - declarative settings, actions, pages and menu identifiers;
+- an optional sandboxed `frontend` bundle and optional privileged `native_frontend` bundle;
 - namespaced storage quota;
 - SHA-256 package integrity and optional signature metadata.
 
@@ -49,3 +50,7 @@ Dependency resolution must complete before plugin activation.
 ## Security boundary
 
 Manifest metadata does not grant capabilities. Gateway authorization remains responsible for enforcing grants. The application verifies package digest/signature/trust before installation, and the runtime independently verifies the archive/digest before atomically installing it. Plugin code is not imported during either verification pass.
+
+The existing `frontend` declaration always means a sandboxed iframe bundle. A `native_frontend` declaration is a separate, privileged contract and is valid only when the manifest requests `frontend.native`. The current host records and validates this contract but does not load the native bundle; native bundle loading also requires an explicit host trust policy.
+
+These fields and capability names are additive Plugin API v1 contracts. Existing v1 manifests remain valid. Any future incompatible contract must use an explicit manifest/API migration rather than changing v1 interpretation in place.

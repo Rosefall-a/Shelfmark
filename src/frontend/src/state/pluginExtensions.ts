@@ -4,14 +4,32 @@ import {
   fetchPluginUi,
   type HostExtensionSlot,
   type PluginUiDocument,
+  type UiAction,
+  type UiDialog,
+  type UiNavigationLocation,
   type UiPage,
 } from "../services/pluginUi";
 
 export interface PluginNavigationContribution {
   pluginId: string;
+  contributionId: string;
+  location: UiNavigationLocation;
   pageId: string;
   label: string;
+  icon?: string;
   order: number;
+  adminOnly: boolean;
+}
+
+export interface PluginSettingsContribution {
+  pluginId: string;
+  contributionId: string;
+  pageId: string;
+  label: string;
+  icon?: string;
+  order: number;
+  adminOnly: boolean;
+  document: PluginUiDocument;
 }
 
 export interface PluginSlotContribution {
@@ -23,9 +41,89 @@ export interface PluginSlotContribution {
   document: PluginUiDocument;
 }
 
+export interface PluginOverlayContribution {
+  pluginId: string;
+  contributionId: string;
+  page: UiPage;
+  order: number;
+  document: PluginUiDocument;
+}
+
+export interface PluginDialogContribution {
+  pluginId: string;
+  contributionId: string;
+  dialog: UiDialog;
+  document: PluginUiDocument;
+}
+
+export interface PluginContextualActionContribution {
+  pluginId: string;
+  contributionId: string;
+  location: "game" | "media";
+  label: string;
+  action: UiAction;
+  icon?: string;
+  order: number;
+  document: PluginUiDocument;
+}
+
+export interface PluginRouteContribution {
+  pluginId: string;
+  contributionId: string;
+  path: string;
+  page: UiPage;
+  document: PluginUiDocument;
+}
+
+export interface PluginPageReplacementContribution {
+  pluginId: string;
+  contributionId: string;
+  hostPage: "home" | "settings";
+  page: UiPage;
+  order: number;
+  document: PluginUiDocument;
+}
+
 export interface PluginContributions {
   navigation: PluginNavigationContribution[];
+  settings: PluginSettingsContribution[];
   slots: PluginSlotContribution[];
+  overlays: PluginOverlayContribution[];
+  dialogs: PluginDialogContribution[];
+  contextualActions: PluginContextualActionContribution[];
+  routes: PluginRouteContribution[];
+  replacements: PluginPageReplacementContribution[];
+}
+
+const emptyContributions = (): PluginContributions => ({
+  navigation: [],
+  settings: [],
+  slots: [],
+  overlays: [],
+  dialogs: [],
+  contextualActions: [],
+  routes: [],
+  replacements: [],
+});
+
+function hasCapability(plugin: PluginSummary, capability: string): boolean {
+  return plugin.effective_capabilities.includes(capability);
+}
+
+function navigationCapability(location: UiNavigationLocation): string {
+  return {
+    "main.sidebar": "frontend.navigation.main",
+    "settings.sidebar": "frontend.navigation.settings",
+    administration: "frontend.navigation.admin",
+    "game.context": "frontend.context.game",
+    "media.context": "frontend.context.media",
+  }[location];
+}
+
+function extensionCapability(slot: HostExtensionSlot): string {
+  if (slot === "home.replace") return "frontend.page.replace.home";
+  if (slot === "app.global") return "frontend.overlay";
+  return "frontend.page.extend";
 }
 
 export function derivePluginContributions(
@@ -37,17 +135,52 @@ export function derivePluginContributions(
     !plugin.compatible ||
     document.plugin_id !== plugin.plugin_id
   )
-    return { navigation: [], slots: [] };
+    return emptyContributions();
 
-  const navigation = document.pages
-    .filter((page) => page.navigation?.sidebar)
-    .map((page) => ({
-      pluginId: plugin.plugin_id,
-      pageId: page.id,
-      label: page.navigation?.label ?? page.title,
-      order: page.navigation?.order ?? 0,
-    }));
+  const legacyNavigation = hasCapability(plugin, "frontend.navigation.main")
+    ? document.pages
+        .filter((page) => page.navigation?.sidebar)
+        .map((page) => ({
+          pluginId: plugin.plugin_id,
+          contributionId: `legacy:${page.id}`,
+          location: "main.sidebar" as const,
+          pageId: page.id,
+          label: page.navigation?.label ?? page.title,
+          order: page.navigation?.order ?? 0,
+          adminOnly: false,
+        }))
+    : [];
+  const navigation = [
+    ...legacyNavigation,
+    ...(document.navigation ?? [])
+      .filter((item) =>
+        hasCapability(plugin, navigationCapability(item.location)),
+      )
+      .map((item) => ({
+        pluginId: plugin.plugin_id,
+        contributionId: item.id,
+        location: item.location,
+        pageId: item.page_id,
+        label: item.label,
+        icon: item.icon,
+        order: item.order,
+        adminOnly: item.visibility.admin_only,
+      })),
+  ];
+  const settings = hasCapability(plugin, "frontend.settings")
+    ? (document.settings_sections ?? []).map((item) => ({
+        pluginId: plugin.plugin_id,
+        contributionId: item.id,
+        pageId: item.page_id,
+        label: item.label,
+        icon: item.icon,
+        order: item.order,
+        adminOnly: item.visibility.admin_only,
+        document,
+      }))
+    : [];
   const slots = (document.extensions ?? []).flatMap((extension) => {
+    if (!hasCapability(plugin, extensionCapability(extension.slot))) return [];
     const page = document.pages.find((item) => item.id === extension.page_id);
     return page
       ? [
@@ -62,15 +195,142 @@ export function derivePluginContributions(
         ]
       : [];
   });
-  return { navigation, slots };
+  const overlays = hasCapability(plugin, "frontend.overlay")
+    ? (document.overlays ?? []).flatMap((item) => {
+        const page = document.pages.find(
+          (candidate) => candidate.id === item.page_id,
+        );
+        return page
+          ? [
+              {
+                pluginId: plugin.plugin_id,
+                contributionId: item.id,
+                page,
+                order: item.order,
+                document,
+              },
+            ]
+          : [];
+      })
+    : [];
+  const dialogs = hasCapability(plugin, "frontend.dialog")
+    ? (document.dialog_contributions ?? []).flatMap((item) => {
+        const dialog = document.dialogs.find(
+          (candidate) => candidate.id === item.dialog_id,
+        );
+        return dialog
+          ? [
+              {
+                pluginId: plugin.plugin_id,
+                contributionId: item.id,
+                dialog,
+                document,
+              },
+            ]
+          : [];
+      })
+    : [];
+  const contextualActions = (document.contextual_actions ?? []).flatMap(
+    (item) => {
+      const capability =
+        item.location === "game"
+          ? "frontend.context.game"
+          : "frontend.context.media";
+      const action = document.actions.find(
+        (candidate) => candidate.id === item.action_id,
+      );
+      return hasCapability(plugin, capability) && action
+        ? [
+            {
+              pluginId: plugin.plugin_id,
+              contributionId: item.id,
+              location: item.location,
+              label: item.label,
+              action,
+              icon: item.icon,
+              order: item.order,
+              document,
+            },
+          ]
+        : [];
+    },
+  );
+  const routes = hasCapability(plugin, "frontend.routes")
+    ? (document.routes ?? []).flatMap((item) => {
+        const page = document.pages.find(
+          (candidate) => candidate.id === item.page_id,
+        );
+        return page
+          ? [
+              {
+                pluginId: plugin.plugin_id,
+                contributionId: item.id,
+                path: item.path,
+                page,
+                document,
+              },
+            ]
+          : [];
+      })
+    : [];
+  const replacements = (document.page_replacements ?? []).flatMap((item) => {
+    const capability = `frontend.page.replace.${item.page}`;
+    const page = document.pages.find(
+      (candidate) => candidate.id === item.page_id,
+    );
+    return hasCapability(plugin, capability) && page
+      ? [
+          {
+            pluginId: plugin.plugin_id,
+            contributionId: item.id,
+            hostPage: item.page,
+            page,
+            order: item.order,
+            document,
+          },
+        ]
+      : [];
+  });
+  return {
+    navigation,
+    settings,
+    slots,
+    overlays,
+    dialogs,
+    contextualActions,
+    routes,
+    replacements,
+  };
 }
 
 const navigationState = ref<PluginNavigationContribution[]>([]);
+const settingsState = ref<PluginSettingsContribution[]>([]);
 const slotState = ref<PluginSlotContribution[]>([]);
+const overlayState = ref<PluginOverlayContribution[]>([]);
+const dialogState = ref<PluginDialogContribution[]>([]);
+const contextualActionState = ref<PluginContextualActionContribution[]>([]);
+const routeState = ref<PluginRouteContribution[]>([]);
+const replacementState = ref<PluginPageReplacementContribution[]>([]);
 let loading: Promise<void> | null = null;
 
 export const pluginNavigation = shallowReadonly(navigationState);
+export const pluginSettingsSections = shallowReadonly(settingsState);
 export const pluginSlots = shallowReadonly(slotState);
+export const pluginOverlays = shallowReadonly(overlayState);
+export const pluginDialogs = shallowReadonly(dialogState);
+export const pluginContextualActions = shallowReadonly(contextualActionState);
+export const pluginRoutes = shallowReadonly(routeState);
+export const pluginPageReplacements = shallowReadonly(replacementState);
+
+function byOrderAndId(
+  first: { order: number; contributionId: string },
+  second: { order: number; contributionId: string },
+): number {
+  return (
+    first.order - second.order ||
+    first.contributionId.localeCompare(second.contributionId)
+  );
+}
 
 export function refreshPluginExtensions(): Promise<void> {
   if (loading) return loading;
@@ -87,19 +347,44 @@ export function refreshPluginExtensions(): Promise<void> {
             await fetchPluginUi(plugin.plugin_id),
           );
         } catch {
-          return { navigation: [], slots: [] } satisfies PluginContributions;
+          return emptyContributions();
         }
       }),
     );
     navigationState.value = contributions
       .flatMap((item) => item.navigation)
-      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
-    slotState.value = contributions
-      .flatMap((item) => item.slots)
-      .sort(
-        (a, b) =>
-          a.order - b.order || a.extensionId.localeCompare(b.extensionId),
-      );
+      .sort(byOrderAndId);
+    settingsState.value = contributions
+      .flatMap((item) => item.settings)
+      .sort(byOrderAndId);
+    const replacementSlots = contributions
+      .flatMap((item) => item.replacements)
+      .filter((item) => item.hostPage === "home")
+      .map((item) => ({
+        pluginId: item.pluginId,
+        extensionId: item.contributionId,
+        slot: "home.replace" as const,
+        page: item.page,
+        order: item.order,
+        document: item.document,
+      }));
+    slotState.value = [
+      ...contributions.flatMap((item) => item.slots),
+      ...replacementSlots,
+    ].sort(
+      (a, b) => a.order - b.order || a.extensionId.localeCompare(b.extensionId),
+    );
+    overlayState.value = contributions
+      .flatMap((item) => item.overlays)
+      .sort(byOrderAndId);
+    dialogState.value = contributions.flatMap((item) => item.dialogs);
+    contextualActionState.value = contributions
+      .flatMap((item) => item.contextualActions)
+      .sort(byOrderAndId);
+    routeState.value = contributions.flatMap((item) => item.routes);
+    replacementState.value = contributions
+      .flatMap((item) => item.replacements)
+      .sort(byOrderAndId);
   })().finally(() => {
     loading = null;
   });

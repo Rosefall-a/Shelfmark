@@ -6,11 +6,17 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from src.plugin_api.capabilities import (
+    calculate_permission_delta,
+    package_identity_can_retain_grants,
+)
 from src.plugin_api.contracts import (
     API_VERSION,
     ApiVersion,
     Capability,
     CapabilityRef,
+    CompatibilityStatus,
+    DependencyResolutionError,
     DocumentContentRepresentation,
     DocumentRepresentation,
     ErrorCode,
@@ -24,18 +30,17 @@ from src.plugin_api.contracts import (
     NotificationProviderRegistration,
     Page,
     Pagination,
+    PermissionDeclaration,
+    PluginDependency,
     PluginIdentity,
+    PluginManifest,
+    PluginPackageIdentity,
     RequestContext,
     SessionRepresentation,
     UserContext,
     UserRepresentation,
     VersionNegotiationRequest,
     VersionNegotiationResponse,
-    CompatibilityStatus,
-    DependencyResolutionError,
-    PluginManifest,
-    PluginDependency,
-    PermissionDeclaration,
     evaluate_manifest_compatibility,
     migrate_manifest_data,
     resolve_plugin_dependencies,
@@ -367,7 +372,13 @@ def test_manifest_permissions_must_match_declared_capabilities() -> None:
 
 
 def test_full_api_capability_is_explicit_and_versioned() -> None:
-    from src.plugin_api.contracts import Capability, CapabilityRef, PermissionDeclaration, PluginManifest, IntegrityMetadata
+    from src.plugin_api.contracts import (
+        Capability,
+        CapabilityRef,
+        IntegrityMetadata,
+        PermissionDeclaration,
+        PluginManifest,
+    )
 
     manifest = PluginManifest(
         plugin_id="example.full-access",
@@ -390,7 +401,13 @@ def test_full_api_capability_is_explicit_and_versioned() -> None:
 
 
 def test_full_api_is_not_implied_by_other_capabilities() -> None:
-    from src.plugin_api.contracts import Capability, CapabilityRef, PermissionDeclaration, PluginManifest, IntegrityMetadata
+    from src.plugin_api.contracts import (
+        Capability,
+        CapabilityRef,
+        IntegrityMetadata,
+        PermissionDeclaration,
+        PluginManifest,
+    )
 
     manifest = PluginManifest(
         plugin_id="example.scoped",
@@ -409,4 +426,72 @@ def test_full_api_is_not_implied_by_other_capabilities() -> None:
         ),
         integrity=IntegrityMetadata(sha256="0" * 64),
     )
-    assert all(permission.capability.name is not Capability.FULL_API for permission in manifest.permissions)
+    assert all(
+        permission.capability.name is not Capability.FULL_API for permission in manifest.permissions
+    )
+
+
+def test_permission_delta_never_auto_grants_new_requests() -> None:
+    games_read = CapabilityRef(name=Capability.GAMES_READ)
+    media_read = CapabilityRef(name=Capability.MEDIA_READ)
+    delta = calculate_permission_delta(
+        (games_read,),
+        (games_read, media_read),
+        (games_read,),
+    )
+
+    assert delta.retained == (games_read,)
+    assert delta.newly_requested == (media_read,)
+    assert delta.newly_requested_grants == (media_read,)
+
+
+def test_package_identity_requires_verified_publisher_continuity_for_grants() -> None:
+    previous = PluginPackageIdentity(plugin_id="example.plugin", publisher_key_id="publisher-a")
+
+    assert package_identity_can_retain_grants(previous, previous)
+    assert not package_identity_can_retain_grants(
+        previous,
+        PluginPackageIdentity(plugin_id="example.plugin", publisher_key_id="publisher-b"),
+    )
+    assert not package_identity_can_retain_grants(
+        PluginPackageIdentity(plugin_id="example.plugin"),
+        PluginPackageIdentity(plugin_id="example.plugin"),
+    )
+
+
+def test_manifest_supports_sandboxed_and_explicit_native_frontends_together() -> None:
+    capabilities = (
+        CapabilityRef(name=Capability.MEDIA_READ),
+        CapabilityRef(name=Capability.FRONTEND_NATIVE),
+    )
+    permissions = (
+        PermissionDeclaration(
+            capability=CapabilityRef(name=Capability.MEDIA_READ),
+            rationale="Read media.",
+        ),
+        PermissionDeclaration(
+            capability=CapabilityRef(name=Capability.FRONTEND_NATIVE),
+            rationale="Load trusted native UI.",
+        ),
+    )
+    manifest = PluginManifest.model_validate(
+        {
+            **manifest_data(),
+            "capabilities": capabilities,
+            "permissions": permissions,
+            "frontend": {"entry": "frontend/index.html"},
+            "native_frontend": {"entry": "native/index.js", "styles": ["native/style.css"]},
+        }
+    )
+
+    assert manifest.frontend is not None
+    assert manifest.native_frontend is not None
+
+    with pytest.raises(ValidationError, match="frontend.native"):
+        PluginManifest.model_validate(
+            {
+                **manifest_data(),
+                "frontend": {"entry": "frontend/index.html"},
+                "native_frontend": {"entry": "native/index.js"},
+            }
+        )

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { currentUser } from "../state/auth";
 import SettingsNav from "../components/settings/SettingsNav.vue";
@@ -25,9 +25,72 @@ import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
+import PluginUiHost from "../components/plugins/PluginUiHost.vue";
+import type { UiAction, UiValues } from "../services/pluginUi";
+import {
+  pluginSettingsSections,
+  refreshPluginExtensions,
+} from "../state/pluginExtensions";
 
 const router = useRouter();
 const route = useRoute();
+const activeSection = ref((route.query.section as string) || "profile");
+onMounted(() => void refreshPluginExtensions());
+
+const visiblePluginSettings = computed(() =>
+  pluginSettingsSections.value.filter(
+    (item) => !item.adminOnly || currentUser.value?.is_admin,
+  ),
+);
+
+function pluginSettingsId(pluginId: string, contributionId: string): string {
+  return `plugin:${pluginId}:${contributionId}`;
+}
+
+const activePluginSettings = computed(() =>
+  visiblePluginSettings.value.find(
+    (item) =>
+      pluginSettingsId(item.pluginId, item.contributionId) ===
+      activeSection.value,
+  ),
+);
+
+async function savePluginSettings(pluginId: string, values: UiValues) {
+  await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/settings`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(values),
+  });
+}
+
+async function runPluginAction(
+  pluginId: string,
+  action: UiAction,
+  values: UiValues,
+) {
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(action.id)}`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    },
+  );
+  if (!response.ok) throw new Error("Plugin action could not be completed.");
+}
+
+async function saveActivePluginSettings(values: UiValues) {
+  const contribution = activePluginSettings.value;
+  if (contribution) await savePluginSettings(contribution.pluginId, values);
+}
+
+async function runActivePluginAction(action: UiAction, values: UiValues) {
+  const contribution = activePluginSettings.value;
+  if (contribution)
+    await runPluginAction(contribution.pluginId, action, values);
+}
 function goBack() {
   if (window.history.length > 1) router.back();
   else router.push("/");
@@ -84,10 +147,17 @@ const groups = computed<SettingsGroup[]>(() => {
       : []),
   ];
   result.push({ label: "System", sections: systemSections });
+  if (visiblePluginSettings.value.length) {
+    result.push({
+      label: "Plugin sections",
+      sections: visiblePluginSettings.value.map((item) => ({
+        id: pluginSettingsId(item.pluginId, item.contributionId),
+        label: item.label,
+      })),
+    });
+  }
   return result;
 });
-const activeSection = ref((route.query.section as string) || "profile");
-
 watch(
   () => route.query.section,
   (section) => {
@@ -185,6 +255,14 @@ watch(activeSection, async () => {
               'Filter by user, game, or field',
               'Restore a previous value',
             ]"
+          />
+          <PluginUiHost
+            v-else-if="activePluginSettings"
+            :document="activePluginSettings.document"
+            :page-id="activePluginSettings.pageId"
+            embedded
+            @save="saveActivePluginSettings"
+            @action="runActivePluginAction"
           />
         </div>
       </div>

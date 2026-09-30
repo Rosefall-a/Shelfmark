@@ -1,5 +1,17 @@
 """Stable public contracts for Plugin API v1."""
 
+from .capabilities import (
+    CapabilityDefinition,
+    CapabilityRisk,
+    PermissionDelta,
+    calculate_permission_delta,
+    capability_ancestors,
+    capability_children,
+    capability_definition,
+    capability_implies,
+    expand_capabilities,
+    package_identity_can_retain_grants,
+)
 from .contracts import (
     API_VERSION,
     ApiVersion,
@@ -10,34 +22,41 @@ from .contracts import (
     DependencyResolutionError,
     DocumentContentRepresentation,
     DocumentRepresentation,
-    IntegrityMetadata,
-    PermissionDeclaration,
-    NotificationDeliveryRepresentation,
-    NotificationDeliveryResult,
-    NotificationProviderRegistration,
-    PluginDependency,
-    PluginManifest,
-    PluginUiDeclaration,
-    StorageRequirements,
-    StorageEntry,
-    StorageMetadata,
-    evaluate_manifest_compatibility,
-    migrate_manifest_data,
-    resolve_plugin_dependencies,
     ErrorCode,
     ErrorEnvelope,
     EventEnvelope,
+    IntegrityMetadata,
+    NotificationDeliveryRepresentation,
+    NotificationDeliveryResult,
+    NotificationProviderRegistration,
     Page,
     Pagination,
+    PermissionDeclaration,
+    PluginDependency,
     PluginIdentity,
+    PluginManifest,
+    PluginPackageIdentity,
+    PluginUiDeclaration,
     RequestContext,
     SessionRepresentation,
+    StorageEntry,
+    StorageMetadata,
+    StorageRequirements,
     Timestamp,
     VersionNegotiationRequest,
     VersionNegotiationResponse,
+    evaluate_manifest_compatibility,
+    migrate_manifest_data,
     parse_semver,
+    resolve_plugin_dependencies,
     validate_version_range,
     version_satisfies,
+)
+from .coordinators import (
+    MetadataProvider,
+    MetadataProviderRequest,
+    NotificationProvider,
+    NotificationRequest,
 )
 from .gateway_auth import (
     ApplicationIdentity,
@@ -48,15 +67,6 @@ from .gateway_auth import (
     GatewayHandshake,
     GatewayIdentity,
     ReplayError,
-)
-from .permissions import (
-    AuthorizationDecision,
-    ClientIdentity,
-    IssuedClientCredential,
-    PermissionDecision,
-    PermissionGrant,
-    authorize_request,
-    issue_client_credential,
 )
 from .lifecycle import (
     LifecycleLog,
@@ -70,6 +80,15 @@ from .lifecycle import (
     RuntimeController,
     RuntimeUnavailable,
     Sha256PackageVerifier,
+)
+from .permissions import (
+    AuthorizationDecision,
+    ClientIdentity,
+    IssuedClientCredential,
+    PermissionDecision,
+    PermissionGrant,
+    authorize_request,
+    issue_client_credential,
 )
 from .updates import (
     ActiveVersion,
@@ -93,12 +112,6 @@ from .validation import (
     ValidationGateway,
     ValidationGatewayError,
     validation_event,
-)
-from .coordinators import (
-    MetadataProvider,
-    MetadataProviderRequest,
-    NotificationProvider,
-    NotificationRequest,
 )
 
 __all__ = [
@@ -134,11 +147,22 @@ __all__ = [
     "Page",
     "Pagination",
     "PluginIdentity",
+    "PluginPackageIdentity",
     "RequestContext",
     "SessionRepresentation",
     "Timestamp",
     "VersionNegotiationRequest",
     "VersionNegotiationResponse",
+    "CapabilityDefinition",
+    "CapabilityRisk",
+    "PermissionDelta",
+    "calculate_permission_delta",
+    "capability_ancestors",
+    "capability_children",
+    "capability_definition",
+    "capability_implies",
+    "expand_capabilities",
+    "package_identity_can_retain_grants",
     "ApplicationIdentity",
     "BootstrapRequest",
     "CredentialError",
@@ -181,4 +205,11 @@ __all__ = [
     "RuntimeController",
     "RuntimeUnavailable",
     "Sha256PackageVerifier",
+    "DiscordValidationPlugin",
+    "MetadataValidationPlugin",
+    "NotificationValidationPlugin",
+    "PlayniteValidationPlugin",
+    "ValidationGateway",
+    "ValidationGatewayError",
+    "validation_event",
 ]

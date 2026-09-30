@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { logout } from "../services/auth";
 import {
@@ -66,6 +66,13 @@ function close() {
   open.value = false;
 }
 const router = useRouter();
+const mainPluginNavigation = computed(() =>
+  pluginNavigation.value.filter(
+    (item) =>
+      item.location === "main.sidebar" &&
+      (!item.adminOnly || currentUser.value?.is_admin),
+  ),
+);
 
 async function handleLogout() {
   await logout();
@@ -683,7 +690,7 @@ async function handleLogout() {
       </router-link>
 
       <router-link
-        v-for="item in pluginNavigation"
+        v-for="item in mainPluginNavigation"
         :key="`${item.pluginId}:${item.pageId}`"
         :to="{
           name: 'plugin-host',

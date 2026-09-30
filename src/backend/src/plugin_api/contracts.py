@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from enum import StrEnum
-import re
 from typing import Any, Generic, TypeVar, cast
 from uuid import UUID
 
@@ -29,16 +29,24 @@ class ApiVersion(StrEnum):
 class Capability(StrEnum):
     """Stable capability identifiers grouped by capability family."""
 
+    USERS = "users"
     USERS_READ = "users.read"
     USERS_PROFILE_READ = "users.profile.read"
+    GAMES = "games"
     GAMES_READ = "games.read"
     GAMES_WRITE = "games.write"
+    MEDIA = "media"
     MEDIA_READ = "media.read"
     MEDIA_WRITE = "media.write"
+    DOCUMENTS = "documents"
     DOCUMENTS_READ = "documents.read"
+    SESSIONS = "sessions"
     SESSIONS_READ = "sessions.read"
     SESSIONS_REVOKE = "sessions.revoke"
+    SESSIONS_ADMIN = "sessions.admin"
     NOTIFICATIONS_SEND = "notifications.send"
+    NOTIFICATIONS = "notifications"
+    NOTIFICATION_PROVIDERS = "notification_providers"
     NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
     NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
     EVENTS_SUBSCRIBE = "events.subscribe"
@@ -48,6 +56,24 @@ class Capability(StrEnum):
     MEDIA_IMPORT = "media.import"
     PLUGIN_STORAGE = "plugin.storage"
     PLUGIN_SETTINGS = "plugin.settings"
+    FRONTEND_NAVIGATION = "frontend.navigation"
+    FRONTEND_NAVIGATION_MAIN = "frontend.navigation.main"
+    FRONTEND_NAVIGATION_SETTINGS = "frontend.navigation.settings"
+    FRONTEND_NAVIGATION_ADMIN = "frontend.navigation.admin"
+    FRONTEND_CONTEXT_GAME = "frontend.context.game"
+    FRONTEND_CONTEXT_MEDIA = "frontend.context.media"
+    FRONTEND_SETTINGS = "frontend.settings"
+    FRONTEND_OVERLAY = "frontend.overlay"
+    FRONTEND_DIALOG = "frontend.dialog"
+    FRONTEND_PAGE_EXTEND = "frontend.page.extend"
+    FRONTEND_PAGE_REPLACE_HOME = "frontend.page.replace.home"
+    FRONTEND_PAGE_REPLACE_SETTINGS = "frontend.page.replace.settings"
+    FRONTEND_ROUTES = "frontend.routes"
+    FRONTEND_NATIVE = "frontend.native"
+    BACKEND_ROUTES = "backend.routes"
+    BACKEND_ROUTES_PLUGIN = "backend.routes.plugin"
+    BACKEND_ROUTES_HOST = "backend.routes.host"
+    NETWORK_OUTBOUND = "network.outbound"
     FULL_API = "api.full"
 
 
@@ -77,6 +103,13 @@ class PluginIdentity(ContractModel):
     plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     installation_id: UUID
     version: str = Field(min_length=1, max_length=64)
+
+
+class PluginPackageIdentity(ContractModel):
+    """Software identity used when deciding whether installation grants may continue."""
+
+    plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    publisher_key_id: str | None = Field(default=None, min_length=1, max_length=256)
 
 
 class UserRepresentation(ContractModel):
@@ -420,13 +453,28 @@ class IntegrityMetadata(ContractModel):
 
 
 class PluginFrontendDeclaration(ContractModel):
-    """Static frontend entrypoint bundled inside the plugin package."""
+    """Sandboxed frontend entrypoint bundled inside the plugin package."""
 
     entry: str = Field(
         min_length=1,
         max_length=255,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
     )
+
+
+class PluginNativeFrontendDeclaration(ContractModel):
+    """Privileged host-native Vue/JavaScript/CSS bundle declaration.
+
+    Loading this bundle is intentionally reserved for the later native frontend
+    implementation. Merely declaring it never grants native execution.
+    """
+
+    entry: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
+    )
+    styles: tuple[str, ...] = ()
 
 
 class PluginManifest(ContractModel):
@@ -451,6 +499,7 @@ class PluginManifest(ContractModel):
     storage: StorageRequirements = StorageRequirements()
     integrity: IntegrityMetadata
     frontend: PluginFrontendDeclaration | None = None
+    native_frontend: PluginNativeFrontendDeclaration | None = None
 
     @field_validator("version")
     @classmethod
@@ -484,6 +533,8 @@ class PluginManifest(ContractModel):
                     f"permission {permission.capability.name.value} v{permission.capability.version} "
                     "is not declared by the plugin"
                 )
+        if self.native_frontend is not None and Capability.FRONTEND_NATIVE not in capability_names:
+            raise ValueError("native_frontend requires the frontend.native capability")
         return self
 
 
@@ -676,6 +727,36 @@ class HostExtensionSlot(StrEnum):
     HOME_REPLACE = "home.replace"
 
 
+class UiNavigationLocation(StrEnum):
+    """Host-owned navigation locations available to plugin contributions."""
+
+    MAIN_SIDEBAR = "main.sidebar"
+    SETTINGS_SIDEBAR = "settings.sidebar"
+    ADMINISTRATION = "administration"
+    GAME_CONTEXT = "game.context"
+    MEDIA_CONTEXT = "media.context"
+
+
+class UiContextLocation(StrEnum):
+    """Host contexts that can expose a plugin action."""
+
+    GAME = "game"
+    MEDIA = "media"
+
+
+class HostPage(StrEnum):
+    """Host pages with explicit page-scoped replacement permissions."""
+
+    HOME = "home"
+    SETTINGS = "settings"
+
+
+class UiVisibility(ContractModel):
+    """Host-evaluated visibility conditions; plugins cannot evaluate code here."""
+
+    admin_only: bool = False
+
+
 class UiPageNavigation(ContractModel):
     """Optional host navigation metadata for a native plugin page."""
 
@@ -706,6 +787,72 @@ class UiExtension(ContractModel):
     order: int = Field(default=0, ge=-1_000, le=1_000)
 
 
+class UiNavigationContribution(ContractModel):
+    """A first-class host navigation entry targeting a declared plugin page."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    location: UiNavigationLocation
+    label: str = Field(min_length=1, max_length=64)
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+    visibility: UiVisibility = UiVisibility()
+
+
+class UiSettingsContribution(ContractModel):
+    """A plugin-provided Settings section, separate from plugin configuration."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=64)
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+    visibility: UiVisibility = UiVisibility()
+
+
+class UiOverlayContribution(ContractModel):
+    """A host-level overlay rendered from a declared plugin page."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+
+class UiDialogContribution(ContractModel):
+    """A host-level dialog backed by an existing declarative dialog."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    dialog_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+
+
+class UiContextualAction(ContractModel):
+    """An action exposed only in a declared game or media context."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    location: UiContextLocation
+    label: str = Field(min_length=1, max_length=64)
+    action_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    icon: str | None = Field(default=None, min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+
+class UiPluginRoute(ContractModel):
+    """A plugin-owned route under the host-controlled plugin route namespace."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    path: str = Field(min_length=1, max_length=255, pattern=r"^[a-z0-9][a-z0-9/_-]*$")
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+
+
+class UiPageReplacement(ContractModel):
+    """A page-specific replacement with no replace-any-page escape hatch."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    page: HostPage
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+
 class PluginUiDocument(ContractModel):
     """Complete versioned UI document consumed by the native frontend host."""
 
@@ -720,6 +867,13 @@ class PluginUiDocument(ContractModel):
     menus: tuple[UiMenuItem, ...] = ()
     pages: tuple[UiPage, ...] = ()
     extensions: tuple[UiExtension, ...] = ()
+    navigation: tuple[UiNavigationContribution, ...] = ()
+    settings_sections: tuple[UiSettingsContribution, ...] = ()
+    overlays: tuple[UiOverlayContribution, ...] = ()
+    dialog_contributions: tuple[UiDialogContribution, ...] = ()
+    contextual_actions: tuple[UiContextualAction, ...] = ()
+    routes: tuple[UiPluginRoute, ...] = ()
+    page_replacements: tuple[UiPageReplacement, ...] = ()
 
     @model_validator(mode="after")
     def validate_references(self) -> "PluginUiDocument":
@@ -739,6 +893,13 @@ class PluginUiDocument(ContractModel):
         unique(dialog_ids, "dialog")
         unique(page_ids, "page")
         unique(extension_ids, "extension")
+        unique([item.id for item in self.navigation], "navigation contribution")
+        unique([item.id for item in self.settings_sections], "settings contribution")
+        unique([item.id for item in self.overlays], "overlay contribution")
+        unique([item.id for item in self.dialog_contributions], "dialog contribution")
+        unique([item.id for item in self.contextual_actions], "contextual action")
+        unique([item.id for item in self.routes], "plugin route")
+        unique([item.id for item in self.page_replacements], "page replacement")
 
         action_set = set(action_ids)
         table_set = set(table_ids)
@@ -761,11 +922,32 @@ class PluginUiDocument(ContractModel):
                 raise ValueError(f"page {page.id} references an unknown dialog")
         for extension in self.extensions:
             if extension.page_id not in page_set:
+                raise ValueError(f"extension {extension.id} references an unknown page")
+
+        def require_page(contribution_id: str, page_id: str) -> None:
+            if page_id not in page_set:
+                raise ValueError(f"contribution {contribution_id} references an unknown page")
+
+        for navigation in self.navigation:
+            require_page(navigation.id, navigation.page_id)
+        for settings_section in self.settings_sections:
+            require_page(settings_section.id, settings_section.page_id)
+        for overlay in self.overlays:
+            require_page(overlay.id, overlay.page_id)
+        for route in self.routes:
+            require_page(route.id, route.page_id)
+        for replacement in self.page_replacements:
+            require_page(replacement.id, replacement.page_id)
+        for dialog_contribution in self.dialog_contributions:
+            if dialog_contribution.dialog_id not in dialog_set:
                 raise ValueError(
-                    f"extension {extension.id} references an unknown page"
+                    f"dialog contribution {dialog_contribution.id} references an unknown dialog"
                 )
-        if self.frontend is not None and self.extensions:
-            raise ValueError("custom frontends cannot be mounted into host extension slots")
+        for contextual_action in self.contextual_actions:
+            if contextual_action.action_id not in action_set:
+                raise ValueError(
+                    f"contextual action {contextual_action.id} references an unknown action"
+                )
         return self
 
 
@@ -943,6 +1125,7 @@ __all__ = [
     "Page",
     "Pagination",
     "PluginIdentity",
+    "PluginPackageIdentity",
     "RequestContext",
     "Timestamp",
     "UserContext",
@@ -969,6 +1152,21 @@ __all__ = [
     "UiPage",
     "PluginUiDocument",
     "PluginFrontendDeclaration",
+    "PluginNativeFrontendDeclaration",
+    "HostExtensionSlot",
+    "HostPage",
+    "UiContextLocation",
+    "UiContextualAction",
+    "UiDialogContribution",
+    "UiExtension",
+    "UiNavigationContribution",
+    "UiNavigationLocation",
+    "UiOverlayContribution",
+    "UiPageNavigation",
+    "UiPageReplacement",
+    "UiPluginRoute",
+    "UiSettingsContribution",
+    "UiVisibility",
     "CompatibilityStatus",
     "CompatibilityDecision",
     "evaluate_manifest_compatibility",

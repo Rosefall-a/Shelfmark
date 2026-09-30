@@ -79,6 +79,60 @@ export interface UiPage {
     order: number;
   };
 }
+export type UiNavigationLocation =
+  | "main.sidebar"
+  | "settings.sidebar"
+  | "administration"
+  | "game.context"
+  | "media.context";
+export interface UiVisibility {
+  admin_only: boolean;
+}
+export interface UiNavigationContribution {
+  id: string;
+  location: UiNavigationLocation;
+  label: string;
+  page_id: string;
+  icon?: string;
+  order: number;
+  visibility: UiVisibility;
+}
+export interface UiSettingsContribution {
+  id: string;
+  label: string;
+  page_id: string;
+  icon?: string;
+  order: number;
+  visibility: UiVisibility;
+}
+export interface UiOverlayContribution {
+  id: string;
+  page_id: string;
+  order: number;
+}
+export interface UiDialogContribution {
+  id: string;
+  dialog_id: string;
+}
+export interface UiContextualAction {
+  id: string;
+  location: "game" | "media";
+  label: string;
+  action_id: string;
+  icon?: string;
+  order: number;
+}
+export interface UiPluginRoute {
+  id: string;
+  path: string;
+  page_id: string;
+}
+export interface UiPageReplacement {
+  id: string;
+  page: "home" | "settings";
+  page_id: string;
+  order: number;
+}
 export const HOST_EXTENSION_SLOTS = [
   "home.after-widgets",
   "game.overview.after-header",
@@ -104,6 +158,13 @@ export interface PluginUiDocument {
   menus: UiMenuItem[];
   pages: UiPage[];
   extensions?: UiExtension[];
+  navigation?: UiNavigationContribution[];
+  settings_sections?: UiSettingsContribution[];
+  overlays?: UiOverlayContribution[];
+  dialog_contributions?: UiDialogContribution[];
+  contextual_actions?: UiContextualAction[];
+  routes?: UiPluginRoute[];
+  page_replacements?: UiPageReplacement[];
 }
 
 export type UiValue = string | number | boolean | string[];
@@ -203,7 +264,15 @@ export function validateDocument(document: PluginUiDocument): string[] {
   const dialogs = new Set(document.dialogs.map((item) => item.id));
   const pages = new Set(document.pages.map((item) => item.id));
   const extensions = document.extensions ?? [];
+  const navigation = document.navigation ?? [];
+  const settingsSections = document.settings_sections ?? [];
+  const overlays = document.overlays ?? [];
+  const dialogContributions = document.dialog_contributions ?? [];
+  const contextualActions = document.contextual_actions ?? [];
+  const routes = document.routes ?? [];
+  const pageReplacements = document.page_replacements ?? [];
   const extensionIds = new Set<string>();
+  const contributionIds = new Set<string>();
 
   for (const menu of document.menus) {
     if (menu.page_id && !pages.has(menu.page_id))
@@ -238,10 +307,35 @@ export function validateDocument(document: PluginUiDocument): string[] {
     if (extension.order < -1000 || extension.order > 1000)
       errors.push(`Extension ${extension.id} has an invalid order.`);
   }
-  if (document.frontend && extensions.length)
-    errors.push(
-      "Custom frontends cannot be mounted into host extension slots.",
-    );
+  for (const contribution of [
+    ...navigation,
+    ...settingsSections,
+    ...overlays,
+    ...routes,
+    ...pageReplacements,
+  ]) {
+    if (contributionIds.has(contribution.id))
+      errors.push(
+        `Contribution ${contribution.id} is declared more than once.`,
+      );
+    contributionIds.add(contribution.id);
+    if (!pages.has(contribution.page_id))
+      errors.push(
+        `Contribution ${contribution.id} references an unknown page.`,
+      );
+  }
+  for (const contribution of dialogContributions) {
+    if (!dialogs.has(contribution.dialog_id))
+      errors.push(
+        `Dialog contribution ${contribution.id} references an unknown dialog.`,
+      );
+  }
+  for (const contribution of contextualActions) {
+    if (!actions.has(contribution.action_id))
+      errors.push(
+        `Contextual action ${contribution.id} references an unknown action.`,
+      );
+  }
   return errors;
 }
 

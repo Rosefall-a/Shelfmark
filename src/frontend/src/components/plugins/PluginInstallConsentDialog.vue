@@ -23,22 +23,15 @@ watch(
   { immediate: true },
 );
 
-const fullApiRequested = computed(() => props.preview.permissions.some((permission) => permission.capability === "api.full"));
+const fullApiRequested = computed(() =>
+  props.preview.permissions.some(
+    (permission) => permission.capability === "api.full",
+  ),
+);
 
 const canInstall = computed(
   () => props.preview.trust_status === "trusted" || trustAccepted.value,
 );
-
-function risk(capability: string): "High" | "Medium" | "Low" {
-  if (capability === "api.full") return "High";
-  if (capability.endsWith(".write") || capability === "notifications.send") {
-    return "High";
-  }
-  if (capability.endsWith(".read") || capability === "events.subscribe") {
-    return "Medium";
-  }
-  return "Low";
-}
 
 function toggle(key: string, checked: boolean) {
   const next = new Set(approved.value);
@@ -118,9 +111,17 @@ function close() {
           </label>
         </div>
 
-        <div v-if="fullApiRequested" class="warning full-api-warning" role="alert">
+        <div
+          v-if="fullApiRequested"
+          class="warning full-api-warning"
+          role="alert"
+        >
           <strong>Full API access is extremely broad.</strong>
-          <p>Full API access allows plugins to read and modify all user data. Only enable this for plugins you trust. It is disabled unless you explicitly select this permission.</p>
+          <p>
+            Full API access allows plugins to read and modify all user data.
+            Only enable this for plugins you trust. It is disabled unless you
+            explicitly select this permission.
+          </p>
         </div>
 
         <section
@@ -160,18 +161,21 @@ function close() {
             />
             <span class="permission-copy">
               <span class="permission-title">
-                <strong>{{ permission.capability }}</strong>
-                <span
-                  class="risk"
-                  :class="risk(permission.capability).toLowerCase()"
-                >
-                  {{ risk(permission.capability) }} risk
+                <strong>{{ permission.title }}</strong>
+                <span class="risk" :class="permission.risk">
+                  {{ permission.risk }} risk
                 </span>
               </span>
               <small
-                >v{{ permission.capability_version }} ·
-                {{ permission.rationale }}</small
+                >{{ permission.category }} · {{ permission.capability }} v{{
+                  permission.capability_version
+                }}
+                · {{ permission.rationale }}</small
               >
+              <small v-if="permission.children.length">
+                Parent permission includes:
+                {{ permission.children.join(", ") }}
+              </small>
             </span>
           </label>
         </section>
@@ -277,7 +281,8 @@ small {
   color: #9ae6b4;
 }
 .trust.untrusted,
-.risk.high {
+.risk.high,
+.risk.critical {
   background: #571d1d;
   color: #fecaca;
 }

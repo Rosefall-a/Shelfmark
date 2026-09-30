@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-import secrets
-
 from pydantic import Field
 
-from .contracts import Capability, CapabilityRef, ContractModel, RequestContext
-from src.database.models.plugin_permission_audit import PluginPermissionAudit
-from src.database.models.plugin_permissions import PluginPermissionGrant
+from .capabilities import capability_implies
+from .contracts import CapabilityRef, ContractModel, RequestContext
 
 
 class PermissionDecision(StrEnum):
@@ -61,7 +57,9 @@ def authorize_request(context: RequestContext, grants: tuple[PermissionGrant, ..
             continue
         if grant.plugin_id != context.plugin.plugin_id or grant.installation_id != context.plugin.installation_id:
             continue
-        if grant.capability.name is not requested.name or grant.capability.version != requested.version:
+        if grant.capability.version != requested.version or not capability_implies(
+            grant.capability.name, requested.name
+        ):
             continue
         if grant.user_id is not None and (
             context.user is None or not context.user.authenticated or grant.user_id != context.user.user_id

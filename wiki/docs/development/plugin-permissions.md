@@ -18,11 +18,15 @@ Supported integrations can create a client identity bound to a plugin installati
 The client identity is deliberately separate from plugin installation identity (#283) and gateway authentication (#265).
 
 ## Policy
-The authorization function requires exact plugin/installation/capability/version matches and enforces optional user/device scope. No matching grant means denial.
+The authorization function requires exact plugin, installation, and capability-version identity and enforces optional user/device scope. A matching parent grant may authorize a child capability from the canonical hierarchy; a child grant does not authorize its parent or siblings. No exact or parent grant means denial.
+
+`plugin_id` identifies software, while `installation_id` identifies one installed lifecycle instance. Grants belong to the installation and do not transfer to a different package or installation merely because it declares the same `plugin_id`. An in-place update can retain grants only when the candidate has the same plugin ID and the same verified publisher key. Unsigned packages and publisher changes require a fresh installation/review boundary.
+
+Update review compares the previous manifest requests, candidate requests, current grants, and newly requested grants as exact capability/version identities. Retained grants stay scoped to the installation, removed requests have their grants revoked, and every newly requested capability creates a pending request. Additions are never copied into the grant set automatically.
 
 
 ## Audit and security
-Permission requests, grants, revocations, and audit records are persisted. The production gateway resolves the current installed package and requires an active grant matching plugin ID, installation ID, capability, capability version, and optional user scope. Disabled installations cannot dispatch actions.
+Permission requests, grants, revocations, and audit records are persisted. The production gateway resolves the current installed package and requires an active exact or hierarchical grant matching plugin ID, installation ID, capability version, and optional user scope. Disabled installations cannot dispatch actions.
 
 The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
 
@@ -30,10 +34,7 @@ The permission layer is intentionally independent of transport. Gateway authenti
 
 
 ## Permission risk display
-The administrator approval view classifies requested capabilities before approval:
-- **High risk:** write/destructive capabilities, session revocation, external delivery, and notification sending.
-- **Medium risk:** document/session reads and event subscriptions.
-- **Low risk:** plugin-owned settings/storage capabilities.
+The administrator approval view uses the canonical registry's low, medium, high, and critical risk bands. `api.full`, privileged host routes, and `frontend.native` are explicitly marked highly privileged. Risk is returned by the backend with the capability's category, parent, and children.
 
 Risk is a presentation aid for administrator review; it never changes authorization. The gateway still requires an explicit grant and applies the same default-deny policy regardless of the displayed risk.
 

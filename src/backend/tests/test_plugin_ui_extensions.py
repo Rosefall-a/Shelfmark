@@ -56,9 +56,25 @@ def test_ui_document_rejects_unknown_slots_and_pages(field: str, value: str) -> 
         PluginUiDocument.model_validate(data)
 
 
-def test_custom_frontend_cannot_mount_in_host_page() -> None:
+def test_sandboxed_frontend_can_coexist_with_declarative_host_contributions() -> None:
     data = document_data()
     data["frontend"] = {"entry": "frontend/index.html"}
 
+    document = PluginUiDocument.model_validate(data)
+
+    assert document.frontend is not None
+    assert document.extensions[0].slot.value == "home.after-widgets"
+
+
+def test_page_replacements_are_page_scoped_and_reference_declared_pages() -> None:
+    data = document_data()
+    data["page_replacements"] = [
+        {"id": "replace-home", "page": "home", "page_id": "dashboard", "order": 1}
+    ]
+    document = PluginUiDocument.model_validate(data)
+
+    assert document.page_replacements[0].page.value == "home"
+
+    data["page_replacements"][0]["page"] = "everything"
     with pytest.raises(ValidationError):
         PluginUiDocument.model_validate(data)

@@ -817,6 +817,12 @@ class PluginRegistry:
             "plugin_id": plugin_id,
             "name": data.get("name", plugin_id),
             "version": data.get("version", "0.0.0"),
+            "publisher": (
+                data.get("integrity", {}).get("key_id")
+                if data.get("integrity", {}).get("signature")
+                else None
+            ),
+            "digest": data.get("integrity", {}).get("sha256"),
             "installation_id": raw_state.get("installation_id")
             if isinstance(raw_state, dict)
             else None,
@@ -826,6 +832,11 @@ class PluginRegistry:
             else "package integrity verification failed",
             "permissions": [
                 p.get("capability", {}).get("name") for p in data.get("permissions", [])
+            ],
+            "permission_refs": [
+                p.get("capability")
+                for p in data.get("permissions", [])
+                if isinstance(p.get("capability"), dict)
             ],
             "enabled": enabled,
             "health": "healthy"
