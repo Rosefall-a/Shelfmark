@@ -12,6 +12,8 @@ from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
+from starlette.datastructures import UploadFile as StarletteUploadFile
+
 from fastapi import (
     APIRouter,
     Body,
@@ -175,15 +177,15 @@ def _install_preview(verified: Any, trust_status: str, trust_warning: str | None
 
 async def _resolve_plugin_upload(request: Request | UploadFile, file: UploadFile | None) -> UploadFile:
     """Resolve HTTP uploads while remaining compatible with direct route tests."""
-    if isinstance(request, UploadFile):
+    if isinstance(request, StarletteUploadFile):
         return request
-    if isinstance(file, UploadFile):
+    if isinstance(file, StarletteUploadFile):
         return file
     content_type = (request.headers.get("content-type") or "").lower()
     if content_type.startswith("multipart/"):
         form = await request.form()
         for value in form.values():
-            if isinstance(value, UploadFile):
+            if isinstance(value, StarletteUploadFile):
                 return value
     raise HTTPException(status_code=400, detail={"code": "plugin_file_missing", "message": "Upload a .utp package as a multipart file."})
 
