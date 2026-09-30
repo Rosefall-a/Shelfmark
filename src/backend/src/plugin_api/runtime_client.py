@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 from typing import Any
 from urllib.parse import quote
@@ -89,6 +90,8 @@ class PluginRuntimeClient:
         *,
         installation_id: str,
         replace: bool = False,
+        source_metadata: dict[str, Any] | None = None,
+        trust_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "PUT",
@@ -99,6 +102,12 @@ class PluginRuntimeClient:
                 "X-Plugin-Package-Name": filename,
                 "X-Plugin-Installation-ID": installation_id,
                 "X-Plugin-Replace": "true" if replace else "false",
+                "X-Plugin-Source": base64.urlsafe_b64encode(
+                    json.dumps(source_metadata or {}, separators=(",", ":")).encode("utf-8")
+                ).decode("ascii"),
+                "X-Plugin-Trust": base64.urlsafe_b64encode(
+                    json.dumps(trust_metadata or {}, separators=(",", ":")).encode("utf-8")
+                ).decode("ascii"),
             },
         )
 

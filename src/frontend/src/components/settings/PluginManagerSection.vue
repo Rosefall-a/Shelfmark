@@ -4,21 +4,33 @@ import PluginInstallConsentDialog from "../plugins/PluginInstallConsentDialog.vu
 import PluginSettingsDialog from "../plugins/PluginSettingsDialog.vue";
 import {
   deletePlugin,
+  deletePluginCatalogue,
   disablePlugin,
   enablePlugin,
+  createPluginCatalogue,
   fetchPluginCatalogFromSource,
+  fetchPluginCatalogues,
   fetchPluginLogs,
   fetchPlugins,
+  checkPluginUpdates,
   installPlugin,
   installPluginFromUrl,
   previewPluginInstall,
   previewPluginInstallUrl,
+  previewPluginUpdate,
+  previewPluginUpdateUrl,
   retryPlugin,
+  updatePluginCatalogue,
   updatePlugin,
+  updatePluginFromUrl,
+  type PluginCatalogue,
+  type PluginInstallConfirmation,
   type PluginInstallPreview,
+  type PluginSourceMetadata,
   type PluginCatalogEntry,
   type PluginDiagnostics,
   type PluginSummary,
+  type PluginUpdateCheck,
 } from "../../services/plugins";
 import {
   approvePluginPermission,
@@ -56,87 +68,71 @@ const pluginGrants = ref<PluginPermissionGrant[]>([]);
 const pluginRequests = ref<PluginPermissionRequest[]>([]);
 const popupLoading = ref(false);
 const installOpen = ref(false);
-const catalogEndpoints = ref<string[]>([]);
-const enabledCatalogEndpoints = ref<string[]>([]);
+const catalogues = ref<PluginCatalogue[]>([]);
 const newCatalogEndpoint = ref("");
-const officialCatalogUrl = "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json";
+const installSource = ref<Partial<PluginSourceMetadata>>({ type: "upload" });
+const updateTarget = ref<PluginSummary | null>(null);
+const updateFile = ref<File | null>(null);
+const updateUrl = ref<string | null>(null);
+const updateSource = ref<Partial<PluginSourceMetadata>>({});
+const availableUpdates = ref<Record<string, PluginUpdateCheck>>({});
+const checkingUpdates = ref(false);
 
-function loadCatalogEndpoints() {
-  try {
-    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}") as
-      | { endpoints?: unknown; enabled?: unknown }
-      | unknown[];
-    const endpoints = Array.isArray(stored) ? stored : stored.endpoints;
-    if (Array.isArray(endpoints)) {
-      catalogEndpoints.value = [
-        officialCatalogUrl,
-        ...endpoints.filter(
-          (value: unknown): value is string =>
-            typeof value === "string" &&
-            value.trim().length > 0 &&
-            value !== officialCatalogUrl,
-        ),
-      ];
-      const enabled = Array.isArray(stored)
-        ? stored
-        : Array.isArray(stored.enabled)
-          ? stored.enabled
-          : catalogEndpoints.value;
-      enabledCatalogEndpoints.value = [...new Set(enabled)].filter(
-        (url): url is string =>
-          typeof url === "string" && catalogEndpoints.value.includes(url),
-      );
-      return;
-    }
-  } catch {
-    // Fall back to the official source.
-  }
-  catalogEndpoints.value = [officialCatalogUrl];
-  enabledCatalogEndpoints.value = [officialCatalogUrl];
-}
-
-function saveCatalogEndpoints() {
-  localStorage.setItem("plugin-catalog-endpoints", JSON.stringify({ endpoints: catalogEndpoints.value.filter((url) => url !== officialCatalogUrl), enabled: enabledCatalogEndpoints.value }));
-}
-
-function addCatalogEndpoint() {
+async function addCatalogEndpoint() {
   const url = newCatalogEndpoint.value.trim();
-  if (!/^https?:\/\//i.test(url) || catalogEndpoints.value.includes(url)) return;
-  catalogEndpoints.value.push(url);
-  enabledCatalogEndpoints.value.push(url);
+  if (!/^https?:\/\//i.test(url)) return;
+  await createPluginCatalogue({
+    name: new URL(url).hostname,
+    url,
+    enabled: true,
+    priority: 100,
+  });
   newCatalogEndpoint.value = "";
-  saveCatalogEndpoints();
-  void loadCatalogues();
+  await loadCatalogues();
 }
 
-function removeCatalogEndpoint(url: string) {
-  if (url === officialCatalogUrl) return;
-  catalogEndpoints.value = catalogEndpoints.value.filter((item) => item !== url);
-  enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);
-  saveCatalogEndpoints();
-  void loadCatalogues();
+async function removeCatalogEndpoint(catalogue: PluginCatalogue) {
+  if (catalogue.id === "official") return;
+  await deletePluginCatalogue(catalogue.id);
+  await loadCatalogues();
 }
 
-function toggleCatalogEndpoint(url: string, enabled: boolean) {
-  if (enabled && !enabledCatalogEndpoints.value.includes(url)) enabledCatalogEndpoints.value.push(url);
-  if (!enabled) enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);
-  saveCatalogEndpoints();
-  void loadCatalogues();
+async function toggleCatalogEndpoint(
+  catalogue: PluginCatalogue,
+  enabled: boolean,
+) {
+  await updatePluginCatalogue(catalogue.id, { enabled });
+  await loadCatalogues();
 }
 
 async function loadCatalogues() {
-  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalogFromSource(url).catch(() => [])));
+  catalogues.value = await fetchPluginCatalogues();
+  const enabled = catalogues.value.filter((catalogue) => catalogue.enabled);
+  const results = await Promise.all(
+    enabled.map(async (catalogue) => ({
+      catalogue,
+      entries: await fetchPluginCatalogFromSource(catalogue.url).catch(
+        () => [],
+      ),
+    })),
+  );
   const seen = new Set<string>();
-  catalog.value = results.flat().filter((entry) => {
-    if (seen.has(entry.plugin_id)) return false;
-    seen.add(entry.plugin_id);
-    return true;
-  });
+  catalog.value = results
+    .flatMap((result) =>
+      result.entries.map((entry) => ({
+        ...entry,
+        catalogue_url: result.catalogue.url,
+      })),
+    )
+    .filter((entry) => {
+      if (seen.has(entry.plugin_id)) return false;
+      seen.add(entry.plugin_id);
+      return true;
+    });
 }
 
 function openInstaller() {
   installOpen.value = true;
-  loadCatalogEndpoints();
   void loadCatalogues();
 }
 
@@ -151,7 +147,6 @@ async function load() {
   error.value = "";
   try {
     plugins.value = await fetchPlugins();
-    if (!catalogEndpoints.value.length) loadCatalogEndpoints();
     await loadCatalogues();
     if (selected.value) {
       selected.value =
@@ -192,6 +187,7 @@ async function previewSelected() {
   installMessage.value = "";
   try {
     installUrl.value = null;
+    installSource.value = { type: "upload" };
     installFile.value = selectedFile.value;
     installPreview.value = await previewPluginInstall(selectedFile.value);
   } catch (err) {
@@ -203,7 +199,10 @@ async function previewSelected() {
   }
 }
 
-async function previewRemoteUrl(url = remoteUrl.value) {
+async function previewRemoteUrl(
+  url = remoteUrl.value,
+  source: Partial<PluginSourceMetadata> = { type: "url" },
+) {
   const normalized = url.trim();
   if (!normalized) return;
   previewing.value = true;
@@ -212,19 +211,26 @@ async function previewRemoteUrl(url = remoteUrl.value) {
   try {
     installFile.value = null;
     installUrl.value = normalized;
-    installPreview.value = await previewPluginInstallUrl(normalized);
+    installSource.value = source;
+    installPreview.value = await previewPluginInstallUrl(normalized, source);
   } catch (err) {
     installUrl.value = null;
     installPreview.value = null;
-    error.value = err instanceof Error ? err.message : "Plugin URL preview failed.";
+    error.value =
+      err instanceof Error ? err.message : "Plugin URL preview failed.";
   } finally {
     previewing.value = false;
   }
 }
 
-async function previewCatalogEntry(url: string) {
+async function previewCatalogEntry(entry: PluginCatalogEntry) {
   error.value = "";
-  await previewRemoteUrl(url);
+  await previewRemoteUrl(entry.url, {
+    type: "catalogue",
+    catalogue_url: entry.catalogue_url,
+    release_notes: entry.release_notes,
+    changelog_url: entry.changelog_url,
+  });
 }
 
 function cancelInstall() {
@@ -232,24 +238,66 @@ function cancelInstall() {
   installFile.value = null;
   installUrl.value = null;
   installPreview.value = null;
+  updateTarget.value = null;
+  updateFile.value = null;
+  updateUrl.value = null;
+  updateSource.value = {};
 }
 
-async function confirmInstall(approvedPermissions: string[]) {
-  if (!installFile.value || !installPreview.value) return;
+async function confirmInstall(confirmation: PluginInstallConfirmation) {
+  if (!installPreview.value) return;
   installing.value = true;
   error.value = "";
   try {
-    const result = installUrl.value
-      ? await installPluginFromUrl(installUrl.value, approvedPermissions, installPreview.value.digest, installPreview.value.trust_status === "untrusted")
-      : await installPlugin(installFile.value!, approvedPermissions, installPreview.value.trust_status === "untrusted");
-    installMessage.value =
-      `Installed ${result.name} v${result.version}; ` +
-      `${result.permissions_granted} permission(s) granted and ${result.permissions_denied} denied.`;
+    if (updateTarget.value && (updateFile.value || updateUrl.value)) {
+      const result = updateFile.value
+        ? await updatePlugin(
+            updateTarget.value.plugin_id,
+            updateFile.value,
+            confirmation,
+            installPreview.value.trust_status !== "trusted",
+          )
+        : await updatePluginFromUrl(
+            updateTarget.value.plugin_id,
+            updateUrl.value!,
+            confirmation,
+            installPreview.value.digest,
+            installPreview.value.trust_status !== "trusted",
+            updateSource.value,
+          );
+      installMessage.value =
+        `Updated ${updateTarget.value.name} to v${result.version}; ` +
+        `${result.permissions_requested} new permission(s) reviewed.`;
+    } else if (installUrl.value) {
+      const result = await installPluginFromUrl(
+        installUrl.value,
+        confirmation,
+        installPreview.value.digest,
+        installPreview.value.trust_status !== "trusted",
+        installSource.value,
+      );
+      installMessage.value =
+        `Installed ${result.name} v${result.version}; ` +
+        `${result.permissions_granted} permission(s) granted and ${result.permissions_denied} denied.`;
+    } else if (installFile.value) {
+      const result = await installPlugin(
+        installFile.value,
+        confirmation,
+        installPreview.value.trust_status !== "trusted",
+      );
+      installMessage.value =
+        `Installed ${result.name} v${result.version}; ` +
+        `${result.permissions_granted} permission(s) granted and ${result.permissions_denied} denied.`;
+    }
     selectedFile.value = null;
     installFile.value = null;
     installUrl.value = null;
     remoteUrl.value = "";
     installPreview.value = null;
+    updateTarget.value = null;
+    updateFile.value = null;
+    updateUrl.value = null;
+    updateSource.value = {};
     await load();
   } catch (err) {
     error.value =
@@ -368,19 +416,72 @@ async function updateSelected(plugin: PluginSummary, event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-  action.value = plugin.plugin_id;
+  previewing.value = true;
   error.value = "";
   try {
-    const result = await updatePlugin(plugin.plugin_id, file);
-    installMessage.value =
-      `Updated ${plugin.name} to v${result.version}. ` +
-      `${result.permissions_requested} new permission request(s) require review.`;
-    await load();
+    updateTarget.value = plugin;
+    updateFile.value = file;
+    updateUrl.value = null;
+    updateSource.value = {};
+    installFile.value = file;
+    installUrl.value = null;
+    installPreview.value = await previewPluginUpdate(plugin.plugin_id, file);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Plugin update failed.";
   } finally {
-    action.value = "";
+    previewing.value = false;
     input.value = "";
+  }
+}
+
+async function reviewAvailableUpdate(plugin: PluginSummary) {
+  const update = availableUpdates.value[plugin.plugin_id];
+  if (!update?.url) return;
+  previewing.value = true;
+  error.value = "";
+  try {
+    const source = {
+      ...(update.source ?? {}),
+      release_notes: update.release_notes,
+      changelog_url: update.changelog_url,
+    };
+    updateTarget.value = plugin;
+    updateFile.value = null;
+    updateUrl.value = update.url;
+    updateSource.value = source;
+    installFile.value = null;
+    installUrl.value = null;
+    installPreview.value = await previewPluginUpdateUrl(
+      plugin.plugin_id,
+      update.url,
+      source,
+    );
+  } catch (err) {
+    error.value =
+      err instanceof Error ? err.message : "Plugin update preview failed.";
+  } finally {
+    previewing.value = false;
+  }
+}
+
+async function refreshUpdates() {
+  checkingUpdates.value = true;
+  error.value = "";
+  try {
+    const result = await checkPluginUpdates();
+    availableUpdates.value = Object.fromEntries(
+      result.updates
+        .filter((update) => update.update_available)
+        .map((update) => [update.plugin_id, update]),
+    );
+    installMessage.value = result.available
+      ? `${result.available} plugin update(s) available. Notifications were added for administrators.`
+      : "All update-capable plugins are current.";
+  } catch (err) {
+    error.value =
+      err instanceof Error ? err.message : "Plugin update check failed.";
+  } finally {
+    checkingUpdates.value = false;
   }
 }
 
@@ -402,7 +503,6 @@ async function removePlugin(plugin: PluginSummary) {
 }
 
 onMounted(() => {
-  loadCatalogEndpoints();
   void load();
 });
 </script>
@@ -411,42 +511,178 @@ onMounted(() => {
   <section>
     <h2>Plugins</h2>
     <p class="muted">
-      Upload a plugin package (the filename extension is ignored), review its identity and requested
-      access, then manage it here.
+      Upload a plugin package (the filename extension is ignored), review its
+      identity and requested access, then manage it here.
     </p>
     <div class="installer-launcher">
-      <button type="button" class="primary install-launcher" @click="openInstaller">Install a plugin</button>
-      <p class="muted">Add a package, install from a URL, or browse enabled plugin catalogues.</p>
+      <button
+        type="button"
+        class="primary install-launcher"
+        @click="openInstaller"
+      >
+        Install a plugin
+      </button>
+      <button type="button" :disabled="checkingUpdates" @click="refreshUpdates">
+        {{ checkingUpdates ? "Checking…" : "Check for updates" }}
+      </button>
+      <p class="muted">
+        Add a package, install from a URL, or browse enabled plugin catalogues.
+      </p>
       <p v-if="installMessage" class="success">{{ installMessage }}</p>
     </div>
     <Teleport to="body">
-      <div v-if="installOpen" class="modal-backdrop" @click.self="closeInstaller">
-        <section class="installer-dialog" role="dialog" aria-modal="true" aria-labelledby="plugin-installer-title">
+      <div
+        v-if="installOpen"
+        class="modal-backdrop"
+        @click.self="closeInstaller"
+      >
+        <section
+          class="installer-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="plugin-installer-title"
+        >
           <header class="dialog-header">
-            <div><p class="eyebrow">Plugin manager</p><h2 id="plugin-installer-title">Install a plugin</h2><p class="muted">Choose a package, URL, or enabled catalogue.</p></div>
-            <button type="button" :disabled="installing" @click="closeInstaller">Close</button>
+            <div>
+              <p class="eyebrow">Plugin manager</p>
+              <h2 id="plugin-installer-title">Install a plugin</h2>
+              <p class="muted">Choose a package, URL, or enabled catalogue.</p>
+            </div>
+            <button
+              type="button"
+              :disabled="installing"
+              @click="closeInstaller"
+            >
+              Close
+            </button>
           </header>
           <div class="install-method">
             <strong>Upload package</strong>
-            <input id="plugin-package" type="file" accept="*/*" @change="selectFile" />
-            <button type="button" :disabled="!selectedFile || previewing" @click="previewSelected">{{ previewing ? "Inspecting…" : "Review package" }}</button>
+            <input
+              id="plugin-package"
+              type="file"
+              accept="*/*"
+              @change="selectFile"
+            />
+            <button
+              type="button"
+              :disabled="!selectedFile || previewing"
+              @click="previewSelected"
+            >
+              {{ previewing ? "Inspecting…" : "Review package" }}
+            </button>
           </div>
           <div class="install-method">
             <strong>Install from URL</strong>
-            <div class="url-row"><input v-model="remoteUrl" type="url" placeholder="https://example.com/plugin.utp" @keyup.enter="previewRemoteUrl()" /><button type="button" :disabled="!remoteUrl.trim() || previewing" @click="previewRemoteUrl()">Review URL</button></div>
+            <div class="url-row">
+              <input
+                v-model="remoteUrl"
+                type="url"
+                placeholder="https://example.com/plugin.utp"
+                @keyup.enter="previewRemoteUrl()"
+              /><button
+                type="button"
+                :disabled="!remoteUrl.trim() || previewing"
+                @click="previewRemoteUrl()"
+              >
+                Review URL
+              </button>
+            </div>
           </div>
           <section class="catalogue">
-            <div class="catalogue-header"><div><strong>Plugin catalogues</strong><p class="muted">The official catalogue is enabled by default. Add other trusted catalogue URLs as needed.</p></div></div>
-            <div v-for="endpoint in catalogEndpoints" :key="endpoint" class="endpoint-row">
-              <label><input type="checkbox" :checked="enabledCatalogEndpoints.includes(endpoint)" @change="toggleCatalogEndpoint(endpoint, ($event.target as HTMLInputElement).checked)" /> {{ endpoint === officialCatalogUrl ? "Official" : endpoint }}</label>
-              <button v-if="endpoint !== officialCatalogUrl" type="button" class="danger" @click="removeCatalogEndpoint(endpoint)">Remove</button>
+            <div class="catalogue-header">
+              <div>
+                <strong>Plugin catalogues</strong>
+                <p class="muted">
+                  The official catalogue is enabled by default. Catalogue
+                  provenance never replaces package signature verification.
+                </p>
+              </div>
             </div>
-            <div class="endpoint-add"><input v-model="newCatalogEndpoint" type="url" placeholder="https://example.com/list.json" @keyup.enter="addCatalogEndpoint" /><button type="button" :disabled="!newCatalogEndpoint.trim()" @click="addCatalogEndpoint">Add catalogue</button></div>
+            <div
+              v-for="catalogueSource in catalogues"
+              :key="catalogueSource.id"
+              class="endpoint-row"
+            >
+              <label
+                ><input
+                  type="checkbox"
+                  :checked="catalogueSource.enabled"
+                  @change="
+                    toggleCatalogEndpoint(
+                      catalogueSource,
+                      ($event.target as HTMLInputElement).checked,
+                    )
+                  "
+                />
+                {{ catalogueSource.name }} · priority
+                {{ catalogueSource.priority }}</label
+              >
+              <span class="muted">{{ catalogueSource.url }}</span>
+              <span v-if="catalogueSource.last_error" class="error">{{
+                catalogueSource.last_error
+              }}</span>
+              <button
+                v-if="catalogueSource.id !== 'official'"
+                type="button"
+                class="danger"
+                @click="removeCatalogEndpoint(catalogueSource)"
+              >
+                Remove
+              </button>
+            </div>
+            <div class="endpoint-add">
+              <input
+                v-model="newCatalogEndpoint"
+                type="url"
+                placeholder="https://example.com/list.json"
+                @keyup.enter="addCatalogEndpoint"
+              /><button
+                type="button"
+                :disabled="!newCatalogEndpoint.trim()"
+                @click="addCatalogEndpoint"
+              >
+                Add catalogue
+              </button>
+            </div>
           </section>
           <section class="catalogue">
-            <div class="catalogue-header"><div><strong>Available plugins</strong><p class="muted">Packages from all enabled catalogues are shown together.</p></div><button type="button" :disabled="previewing" @click="loadCatalogues">Refresh</button></div>
-            <div v-if="!catalog.length" class="muted">No plugins are currently listed by the enabled catalogues.</div>
-            <article v-for="entry in catalog" :key="entry.plugin_id" class="catalogue-entry"><div><strong>{{ entry.name }}</strong><span>{{ entry.plugin_id }} · v{{ entry.version }}</span><p>{{ entry.description }}</p></div><button type="button" :disabled="previewing" @click="previewCatalogEntry(entry.url)">Install</button></article>
+            <div class="catalogue-header">
+              <div>
+                <strong>Available plugins</strong>
+                <p class="muted">
+                  Packages from all enabled catalogues are shown together.
+                </p>
+              </div>
+              <button
+                type="button"
+                :disabled="previewing"
+                @click="loadCatalogues"
+              >
+                Refresh
+              </button>
+            </div>
+            <div v-if="!catalog.length" class="muted">
+              No plugins are currently listed by the enabled catalogues.
+            </div>
+            <article
+              v-for="entry in catalog"
+              :key="entry.plugin_id"
+              class="catalogue-entry"
+            >
+              <div>
+                <strong>{{ entry.name }}</strong
+                ><span>{{ entry.plugin_id }} · v{{ entry.version }}</span>
+                <p>{{ entry.description }}</p>
+              </div>
+              <button
+                type="button"
+                :disabled="previewing"
+                @click="previewCatalogEntry(entry)"
+              >
+                Install
+              </button>
+            </article>
           </section>
         </section>
       </div>
@@ -499,6 +735,15 @@ onMounted(() => {
               :disabled="action === plugin.plugin_id"
               @change="updateSelected(plugin, $event)"
           /></label>
+          <button
+            v-if="availableUpdates[plugin.plugin_id]?.update_available"
+            type="button"
+            :disabled="previewing"
+            @click="reviewAvailableUpdate(plugin)"
+          >
+            Review v{{ availableUpdates[plugin.plugin_id].available_version }}
+            update
+          </button>
           <button
             type="button"
             class="danger"
@@ -553,7 +798,9 @@ onMounted(() => {
 .success {
   color: #8f8;
 }
-.install-launcher { font-size: 1rem; }
+.install-launcher {
+  font-size: 1rem;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;

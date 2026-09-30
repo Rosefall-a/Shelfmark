@@ -13,6 +13,17 @@ export interface PluginSummary {
   granted_capabilities: string[];
   effective_capabilities: string[];
   enabled: boolean;
+  source?: PluginSourceMetadata;
+  trust?: Record<string, unknown>;
+}
+export type PluginTrustStatus =
+  "trusted" | "unknown_publisher" | "invalid_signature" | "unsigned";
+export interface PluginSourceMetadata {
+  type: "upload" | "url" | "catalogue" | "unknown";
+  url?: string;
+  catalogue_url?: string;
+  release_notes?: string | null;
+  changelog_url?: string | null;
 }
 export interface PluginInstallPermission {
   key: string;
@@ -25,6 +36,7 @@ export interface PluginInstallPermission {
   children: string[];
   risk: "low" | "medium" | "high" | "critical";
   highly_privileged: boolean;
+  new?: boolean;
 }
 export interface PluginInstallPreview {
   plugin_id: string;
@@ -32,16 +44,43 @@ export interface PluginInstallPreview {
   description: string;
   version: string;
   publisher: string | null;
+  publisher_key_id: string | null;
   digest: string;
-  trust_status: "trusted" | "untrusted";
+  trust_status: PluginTrustStatus;
   trust_warning: string | null;
+  signature_present: boolean;
+  signature_verified: boolean;
+  installable: boolean;
   sdk_version_range: string;
   application_version_range: string;
   dependencies: Array<{
     plugin_id: string;
     version_range: string;
     optional: boolean;
+    state:
+      | "satisfied"
+      | "missing"
+      | "incompatible"
+      | "optional_missing"
+      | "optional_incompatible"
+      | "available"
+      | "unresolved";
+    installed_version: string | null;
+    available_version: string | null;
+    source_url: string | null;
   }>;
+  dependency_ready: boolean;
+  dependency_order: string[];
+  dependency_conflicts: string[];
+  requires_elevated_reauthentication: boolean;
+  source: PluginSourceMetadata;
+  operation?: "update";
+  installed_version?: string;
+  permission_delta?: Record<string, unknown>;
+  new_permission_keys?: string[];
+  existing_grants_retained?: boolean;
+  identity_warning?: string | null;
+  release_notes?: string | null;
   permissions: PluginInstallPermission[];
   ui: { pages: string[]; menus: string[]; has_custom_frontend: boolean };
 }
@@ -51,6 +90,14 @@ export interface PluginCatalogEntry {
   description: string;
   version: string;
   url: string;
+  release_notes?: string | null;
+  changelog_url?: string | null;
+  catalogue_url?: string;
+  dependencies?: Array<{
+    plugin_id: string;
+    version_range: string;
+    optional?: boolean;
+  }>;
 }
 export interface PluginInstallResult {
   plugin_id: string;
@@ -61,9 +108,36 @@ export interface PluginInstallResult {
   permissions_requested: number;
   permissions_granted: number;
   permissions_denied: number;
-  trust_status: "trusted" | "untrusted";
+  trust_status: PluginTrustStatus;
   trust_warning: string | null;
   status: string;
+}
+export interface PluginInstallConfirmation {
+  approvedPermissions: string[];
+  adminPassword?: string;
+  confirmDangerous?: boolean;
+}
+export interface PluginCatalogue {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  priority: number;
+  trust_metadata: Record<string, string>;
+  last_successful_check: number | null;
+  last_error: string | null;
+}
+export interface PluginUpdateCheck {
+  plugin_id: string;
+  current_version: string;
+  available_version?: string;
+  update_available: boolean;
+  url?: string;
+  release_notes?: string | null;
+  changelog_url?: string | null;
+  source?: PluginSourceMetadata;
+  reason?: string;
+  error?: string;
 }
 export interface PluginDiagnosticEvent {
   sequence: number;
@@ -138,15 +212,18 @@ export const previewPluginInstall = async (
 
 export const installPlugin = async (
   file: File,
-  approvedPermissions: string[],
+  confirmation: PluginInstallConfirmation,
   allowUntrusted = false,
 ): Promise<PluginInstallResult> => {
   const form = new FormData();
   form.append("file", file, file.name);
   const query = new URLSearchParams({
     allow_untrusted: allowUntrusted ? "true" : "false",
+    confirm_dangerous: confirmation.confirmDangerous ? "true" : "false",
   });
-  for (const permission of approvedPermissions)
+  if (confirmation.adminPassword)
+    query.set("admin_password", confirmation.adminPassword);
+  for (const permission of confirmation.approvedPermissions)
     query.append("approved_permissions", permission);
   const response = await fetch(`/api/plugins/install?${query.toString()}`, {
     method: "POST",
@@ -183,6 +260,7 @@ export const fetchPluginCatalogFromSource = (source: string) =>
 
 export const previewPluginInstallUrl = async (
   url: string,
+  source: Partial<PluginSourceMetadata> = {},
 ): Promise<
   PluginInstallPreview & {
     source_url: string;
@@ -194,7 +272,7 @@ export const previewPluginInstallUrl = async (
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...source }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -211,20 +289,27 @@ export const previewPluginInstallUrl = async (
 
 export const installPluginFromUrl = async (
   url: string,
-  approvedPermissions: string[],
+  confirmation: PluginInstallConfirmation,
   expectedDigest: string,
   allowUntrusted = false,
+  source: Partial<PluginSourceMetadata> = {},
 ): Promise<PluginInstallResult> => {
   const query = new URLSearchParams({
     allow_untrusted: allowUntrusted ? "true" : "false",
   });
-  for (const permission of approvedPermissions)
+  for (const permission of confirmation.approvedPermissions)
     query.append("approved_permissions", permission);
   const response = await fetch(`/api/plugins/install/url?${query.toString()}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, expected_digest: expectedDigest }),
+    body: JSON.stringify({
+      url,
+      expected_digest: expectedDigest,
+      admin_password: confirmation.adminPassword,
+      confirm_dangerous: confirmation.confirmDangerous ?? false,
+      ...source,
+    }),
   });
   if (response.status === 409) {
     const body = await response.json().catch(() => null);
@@ -265,9 +350,45 @@ export const revokePluginPermissions = (id: string) =>
 export const fetchPluginLogs = (id: string) =>
   request<PluginDiagnostics>(`/api/plugins/${encodeURIComponent(id)}/logs`);
 
+export const previewPluginUpdate = async (
+  id: string,
+  file: File,
+): Promise<PluginInstallPreview> => {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(id)}/update/preview`,
+    { method: "PUT", credentials: "include", body: form },
+  );
+  if (!response.ok)
+    throw new Error(`Plugin update preview failed (${response.status}).`);
+  return response.json();
+};
+
+export const previewPluginUpdateUrl = async (
+  id: string,
+  url: string,
+  source: Partial<PluginSourceMetadata> = {},
+): Promise<PluginInstallPreview> => {
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(id)}/update/preview-url`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, ...source }),
+    },
+  );
+  if (!response.ok)
+    throw new Error(`Plugin update preview failed (${response.status}).`);
+  return response.json();
+};
+
 export const updatePlugin = async (
   id: string,
   file: File,
+  confirmation: PluginInstallConfirmation,
+  allowUntrusted = false,
 ): Promise<{
   plugin_id: string;
   version: string;
@@ -276,14 +397,120 @@ export const updatePlugin = async (
 }> => {
   const form = new FormData();
   form.append("file", file, file.name);
+  const query = new URLSearchParams({
+    allow_untrusted: allowUntrusted ? "true" : "false",
+    confirm_dangerous: confirmation.confirmDangerous ? "true" : "false",
+  });
+  if (confirmation.adminPassword)
+    query.set("admin_password", confirmation.adminPassword);
+  for (const permission of confirmation.approvedPermissions)
+    query.append("approved_permissions", permission);
   const response = await fetch(
-    `/api/plugins/${encodeURIComponent(id)}/update`,
+    `/api/plugins/${encodeURIComponent(id)}/update?${query.toString()}`,
     { method: "PUT", credentials: "include", body: form },
   );
   if (!response.ok)
     throw new Error(`Plugin update failed (${response.status}).`);
   return response.json();
 };
+
+export const updatePluginFromUrl = async (
+  id: string,
+  url: string,
+  confirmation: PluginInstallConfirmation,
+  expectedDigest: string,
+  allowUntrusted = false,
+  source: Partial<PluginSourceMetadata> = {},
+): Promise<{
+  plugin_id: string;
+  version: string;
+  permissions_requested: number;
+  status: string;
+}> => {
+  const query = new URLSearchParams({
+    allow_untrusted: allowUntrusted ? "true" : "false",
+  });
+  for (const permission of confirmation.approvedPermissions)
+    query.append("approved_permissions", permission);
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(id)}/update/url?${query.toString()}`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        expected_digest: expectedDigest,
+        admin_password: confirmation.adminPassword,
+        confirm_dangerous: confirmation.confirmDangerous ?? false,
+        ...source,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const detail =
+      typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(
+      detail
+        ? `Plugin update failed (${response.status}): ${detail}`
+        : `Plugin update failed (${response.status}).`,
+    );
+  }
+  return response.json();
+};
+
+export const fetchPluginCatalogues = () =>
+  request<PluginCatalogue[]>("/api/plugins/catalogues");
+export const createPluginCatalogue = (catalogue: {
+  name: string;
+  url: string;
+  enabled?: boolean;
+  priority?: number;
+}) =>
+  request<PluginCatalogue>("/api/plugins/catalogues", {
+    method: "POST",
+    body: JSON.stringify(catalogue),
+  });
+export const updatePluginCatalogue = (
+  id: string,
+  changes: Partial<
+    Pick<PluginCatalogue, "name" | "url" | "enabled" | "priority">
+  >,
+) =>
+  request<PluginCatalogue>(
+    `/api/plugins/catalogues/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    },
+  );
+export const deletePluginCatalogue = async (id: string): Promise<void> => {
+  const response = await fetch(
+    `/api/plugins/catalogues/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
+  if (!response.ok && response.status !== 204)
+    throw new Error(`Catalogue removal failed (${response.status}).`);
+};
+export const checkPluginUpdates = () =>
+  request<{
+    updates: PluginUpdateCheck[];
+    available: number;
+    checked_at: number;
+  }>("/api/plugins/updates/check", { method: "POST" });
+export const fetchPluginChangelog = (id: string) =>
+  request<{
+    plugin_id: string;
+    version: string | null;
+    format: "markdown" | "text";
+    source: string;
+    body: string;
+    url?: string;
+  }>(`/api/plugins/${encodeURIComponent(id)}/changelog`);
 
 export const deletePlugin = async (id: string): Promise<void> => {
   const response = await fetch(`/api/plugins/${encodeURIComponent(id)}`, {

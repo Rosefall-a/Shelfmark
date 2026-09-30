@@ -13,6 +13,8 @@ import {
   fetchPluginCatalogFromSource,
   previewPluginInstallUrl,
   installPluginFromUrl,
+  previewPluginUpdateUrl,
+  updatePluginFromUrl,
 } from "../services/plugins";
 
 describe("plugin management service", () => {
@@ -64,9 +66,9 @@ describe("plugin management service", () => {
       [new Uint8Array([80, 75, 3, 4])],
       "example.ui-playground-1.0.0.utp",
     );
-    await expect(installPlugin(file, [])).rejects.toBeInstanceOf(
-      UntrustedPluginError,
-    );
+    await expect(
+      installPlugin(file, { approvedPermissions: [] }),
+    ).rejects.toBeInstanceOf(UntrustedPluginError);
     mock.mockRestore();
   });
 
@@ -117,7 +119,7 @@ describe("plugin management service", () => {
     const file = new File([new Uint8Array([80, 75, 3, 4])], "example.utp");
 
     await expect(previewPluginInstall(file)).resolves.toEqual(preview);
-    await installPlugin(file, ["games.read:v1"]);
+    await installPlugin(file, { approvedPermissions: ["games.read:v1"] });
 
     expect(String(mock.mock.calls[0][0])).toBe("/api/plugins/install/preview");
     expect(String(mock.mock.calls[1][0])).toContain(
@@ -213,11 +215,50 @@ describe("remote plugin installation", () => {
     await previewPluginInstallUrl("https://example.com/test.utp");
     await installPluginFromUrl(
       "https://example.com/test.utp",
-      [],
+      { approvedPermissions: [] },
       "a".repeat(64),
     );
     expect(String(mock.mock.calls[0][0])).toContain("/preview-url");
     expect(String(mock.mock.calls[1][0])).toContain("/install/url");
+    mock.mockRestore();
+  });
+
+  it("previews and applies a discovered update through the canonical URL flow", async () => {
+    const mock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (url) => {
+        if (String(url).endsWith("/update/preview-url")) {
+          return new Response(
+            JSON.stringify({
+              plugin_id: "example.test",
+              digest: "a".repeat(64),
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            plugin_id: "example.test",
+            version: "2.0.0",
+            permissions_requested: 0,
+            status: "running",
+          }),
+          { status: 200 },
+        );
+      });
+    await previewPluginUpdateUrl(
+      "example.test",
+      "https://example.com/test-2.0.0.utp",
+      { type: "catalogue", release_notes: "Security fixes" },
+    );
+    await updatePluginFromUrl(
+      "example.test",
+      "https://example.com/test-2.0.0.utp",
+      { approvedPermissions: [] },
+      "a".repeat(64),
+    );
+    expect(String(mock.mock.calls[0][0])).toContain("/update/preview-url");
+    expect(String(mock.mock.calls[1][0])).toContain("/update/url");
     mock.mockRestore();
   });
 });

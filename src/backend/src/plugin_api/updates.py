@@ -14,17 +14,23 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import stat
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-import shutil
-import tempfile
 from typing import Protocol
-import zipfile
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from .contracts import CompatibilityStatus, PluginManifest, parse_semver, resolve_plugin_dependencies
+from .contracts import (
+    CompatibilityStatus,
+    PluginManifest,
+    parse_semver,
+    resolve_plugin_dependencies,
+)
 
 
 def canonical_payload_digest(entries: list[tuple[str, bytes]]) -> str:
@@ -162,7 +168,15 @@ class PluginPackageVerifier:
     @staticmethod
     def _validate_member(name: str) -> None:
         path = PurePosixPath(name)
-        if not name or path.is_absolute() or ".." in path.parts or "." in path.parts:
+        raw_parts = name.split("/")
+        if name.endswith("/"):
+            raw_parts = raw_parts[:-1]
+        if (
+            not name
+            or path.is_absolute()
+            or any(not part or part in {".", ".."} or part.endswith(":") for part in raw_parts)
+            or any(ord(character) < 32 for character in name)
+        ):
             raise PackageFormatError("package contains an unsafe path")
         if "\\" in name:
             raise PackageFormatError("package paths must use POSIX separators")
@@ -199,12 +213,18 @@ class PluginPackageVerifier:
                 manifest_data: bytes | None = None
                 for info in infos:
                     self._validate_member(info.filename)
+                    mode = (info.external_attr >> 16) & 0o170000
+                    if mode == stat.S_IFLNK:
+                        raise PackageFormatError("package contains a symbolic link")
                     if info.file_size > self.max_file_bytes:
                         raise PackageFormatError("plugin payload file exceeds maximum size")
                     total_uncompressed += info.file_size
                     if total_uncompressed > self.max_uncompressed_bytes:
                         raise PackageFormatError("plugin package exceeds maximum uncompressed size")
-                    if info.compress_size and info.file_size / info.compress_size > self.max_compression_ratio:
+                    if (
+                        info.compress_size
+                        and info.file_size / info.compress_size > self.max_compression_ratio
+                    ):
                         raise PackageFormatError("plugin package exceeds maximum compression ratio")
                     if info.filename in names:
                         raise PackageFormatError("package contains duplicate paths")
@@ -218,7 +238,7 @@ class PluginPackageVerifier:
                     if info.filename == self.MANIFEST:
                         manifest_data = archive.read(info)
                     elif info.filename.startswith(self.PAYLOAD_PREFIX):
-                        relative = info.filename[len(self.PAYLOAD_PREFIX):]
+                        relative = info.filename[len(self.PAYLOAD_PREFIX) :]
                         if not relative:
                             raise PackageFormatError("payload entry must have a filename")
                         payload.append((relative, self._read_bounded(archive, info)))
@@ -239,7 +259,9 @@ class PluginPackageVerifier:
             raise PackageVerificationError("plugin package integrity verification failed")
 
         if not verify_signature:
-            return VerifiedPackage(manifest=manifest, package_path=package_path, payload_digest=digest)
+            return VerifiedPackage(
+                manifest=manifest, package_path=package_path, payload_digest=digest
+            )
 
         signature = manifest.integrity.signature
         if signature is None:
@@ -252,18 +274,24 @@ class PluginPackageVerifier:
             if publisher is None:
                 raise PackageVerificationError("plugin package publisher is not trusted")
             if not publisher.allows_plugin(manifest.plugin_id):
-                raise PackageVerificationError("plugin package publisher is not trusted for this plugin")
+                raise PackageVerificationError(
+                    "plugin package publisher is not trusted for this plugin"
+                )
             try:
                 signature_bytes = base64.b64decode(signature, validate=True)
             except (ValueError, binascii.Error) as exc:
-                raise PackageVerificationError("plugin package signature is not valid base64") from exc
+                raise PackageVerificationError(
+                    "plugin package signature is not valid base64"
+                ) from exc
             try:
                 publisher.verifier().verify(
                     signature_bytes,
                     self.SIGNING_PREFIX + digest.encode("ascii"),
                 )
             except InvalidSignature as exc:
-                raise PackageVerificationError("plugin package signature verification failed") from exc
+                raise PackageVerificationError(
+                    "plugin package signature verification failed"
+                ) from exc
 
         return VerifiedPackage(manifest=manifest, package_path=package_path, payload_digest=digest)
 
@@ -276,7 +304,7 @@ class PluginPackageVerifier:
                 for info in archive.infolist():
                     if info.is_dir() or not info.filename.startswith(self.PAYLOAD_PREFIX):
                         continue
-                    relative = PurePosixPath(info.filename[len(self.PAYLOAD_PREFIX):])
+                    relative = PurePosixPath(info.filename[len(self.PAYLOAD_PREFIX) :])
                     target = destination.joinpath(*relative.parts)
                     target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                     with archive.open(info) as source, target.open("wb") as output:
@@ -296,6 +324,17 @@ class UpdateStore:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        """Persist directory metadata where the platform exposes directory handles."""
+        if os.name == "nt":
+            return
+        directory_fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     def _plugin_root(self, plugin_id: str) -> Path:
         if not plugin_id or not re.fullmatch(r"^[a-z0-9][a-z0-9._-]*$", plugin_id):
@@ -319,9 +358,7 @@ class UpdateStore:
             data = json.loads(pointer.read_text(encoding="utf-8"))
             active_version = str(data["active_version"])
             previous_version = (
-                str(data["previous_version"])
-                if data.get("previous_version") is not None
-                else None
+                str(data["previous_version"]) if data.get("previous_version") is not None else None
             )
             parse_semver(active_version)
             if previous_version is not None:
@@ -336,11 +373,7 @@ class UpdateStore:
         pointer = root / self.POINTER
         if pointer.is_file():
             pointer.unlink()
-            directory_fd = os.open(root, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            self._fsync_directory(root)
 
     def atomically_set_active(
         self,
@@ -356,14 +389,10 @@ class UpdateStore:
             sort_keys=True,
         ).encode("utf-8")
         temporary.write_bytes(payload)
-        with temporary.open("rb") as handle:
+        with temporary.open("rb+") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, pointer)
-        directory_fd = os.open(root, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        self._fsync_directory(root)
 
     def versions(self, plugin_id: str) -> tuple[str, ...]:
         versions = self._plugin_root(plugin_id) / "versions"
@@ -400,13 +429,9 @@ class PluginUpdateManager:
             verified.manifest, self.sdk_version, self.application_version
         )
         if decision.status != CompatibilityStatus.COMPATIBLE:
-            raise PackageVerificationError(
-                f"plugin update is not compatible: {decision.reason}"
-            )
+            raise PackageVerificationError(f"plugin update is not compatible: {decision.reason}")
 
-        target = self.store.version_path(
-            verified.manifest.plugin_id, verified.manifest.version
-        )
+        target = self.store.version_path(verified.manifest.plugin_id, verified.manifest.version)
         if target.exists():
             raise PackageFormatError("plugin version is already staged or installed")
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -420,7 +445,10 @@ class PluginUpdateManager:
         try:
             shutil.copyfile(package_path, package_snapshot)
             snapshot = self.verifier.inspect(package_snapshot)
-            if snapshot.manifest != verified.manifest or snapshot.payload_digest != verified.payload_digest:
+            if (
+                snapshot.manifest != verified.manifest
+                or snapshot.payload_digest != verified.payload_digest
+            ):
                 raise PackageVerificationError("plugin package changed after verification")
             verified_snapshot = VerifiedPackage(
                 manifest=snapshot.manifest,
@@ -497,9 +525,7 @@ class PluginUpdateManager:
                 pass
             if old_version and old_path and old_path.is_dir():
                 previous_version = current.previous_version if current is not None else None
-                self.store.atomically_set_active(
-                    plugin_id, old_version, previous_version
-                )
+                self.store.atomically_set_active(plugin_id, old_version, previous_version)
                 try:
                     await self.runtime.start(plugin_id, old_path)
                 except Exception as rollback_exc:
@@ -544,18 +570,31 @@ class PluginUpdateManager:
             try:
                 await self.runtime.start(plugin_id, recovery_path)
                 if not await self.runtime.health(plugin_id):
-                    raise UpdateActivationError("former active version failed recovery health check")
+                    raise UpdateActivationError(
+                        "former active version failed recovery health check"
+                    )
             except Exception as recovery_exc:
                 raise UpdateActivationError(
                     "rollback target failed and former active version could not be recovered"
                 ) from recovery_exc
-            raise UpdateActivationError("rollback target failed; former active version was recovered") from exc
+            raise UpdateActivationError(
+                "rollback target failed; former active version was recovered"
+            ) from exc
         return ActiveVersion(current.previous_version, current.active_version)
 
 
 __all__ = [
-    "ActiveVersion", "InstalledPlugin", "PackageFormatError",
-    "PackageVerificationError", "PluginPackageVerifier", "PluginUpdateManager",
-    "TrustedPublisher", "UpdateActivationError", "UpdateDependencyError",
-    "UpdatePlan", "UpdateRuntime", "UpdateStore", "VerifiedPackage",
+    "ActiveVersion",
+    "InstalledPlugin",
+    "PackageFormatError",
+    "PackageVerificationError",
+    "PluginPackageVerifier",
+    "PluginUpdateManager",
+    "TrustedPublisher",
+    "UpdateActivationError",
+    "UpdateDependencyError",
+    "UpdatePlan",
+    "UpdateRuntime",
+    "UpdateStore",
+    "VerifiedPackage",
 ]

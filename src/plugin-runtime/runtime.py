@@ -13,26 +13,26 @@ import json
 import os
 import queue
 import re
-import signal
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import threading
 import time
 import zipfile
-from datetime import datetime, timezone
-from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
-
-from storage import PluginStorage
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping
-from urllib.parse import unquote
+from typing import Any
+from urllib.parse import unquote, urlsplit
+from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
+
+from storage import PluginStorage
 
 try:
     import resource
@@ -55,6 +55,11 @@ _SENSITIVE_VALUE = re.compile(
 )
 _WEBHOOK_URL = re.compile(r"https?://[^\s/]+/(?:api/)?webhooks?/[^\s]+", re.IGNORECASE)
 _DIAGNOSTIC_LEVELS = {"debug", "info", "warning", "error"}
+_MAX_PACKAGE_BYTES = 64 * 1024 * 1024
+_MAX_PACKAGE_ENTRIES = 1000
+_MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
+_MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+_MAX_PACKAGE_COMPRESSION_RATIO = 100.0
 
 
 class RuntimePolicyError(ValueError):
@@ -838,6 +843,15 @@ class PluginRegistry:
                 for p in data.get("permissions", [])
                 if isinstance(p.get("capability"), dict)
             ],
+            "dependencies": [
+                dependency
+                for dependency in data.get("dependencies", [])
+                if isinstance(dependency, dict)
+            ],
+            "source": raw_state.get("source", {"type": "unknown"})
+            if isinstance(raw_state, dict)
+            else {"type": "unknown"},
+            "trust": raw_state.get("trust", {}) if isinstance(raw_state, dict) else {},
             "enabled": enabled,
             "health": "healthy"
             if running
@@ -868,12 +882,14 @@ class PluginRegistry:
         *,
         installation_id: str,
         replace: bool = False,
+        source_metadata: dict[str, Any] | None = None,
+        trust_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if not filename.lower().endswith(".utp"):
-            raise RuntimePolicyError("plugin packages must use the .utp extension")
+        # The archive contents, not a user-controlled filename, define the format.
+        del filename
         if not package:
             raise RuntimePolicyError("plugin package is empty")
-        if len(package) > 64 * 1024 * 1024:
+        if len(package) > _MAX_PACKAGE_BYTES:
             raise RuntimePolicyError("plugin package exceeds the 64 MiB upload limit")
         try:
             UUID(installation_id)
@@ -889,13 +905,35 @@ class PluginRegistry:
             names: set[str] = set()
             manifest_data: bytes | None = None
             payload: list[tuple[str, bytes]] = []
-            for info in archive.infolist():
+
+            def read_bounded(info: zipfile.ZipInfo) -> bytes:
+                data = bytearray()
+                with archive.open(info) as source:
+                    while chunk := source.read(1024 * 1024):
+                        data.extend(chunk)
+                        if len(data) > _MAX_PACKAGE_FILE_BYTES:
+                            raise RuntimePolicyError(
+                                "plugin package file exceeds maximum size"
+                            )
+                return bytes(data)
+
+            infos = archive.infolist()
+            if len(infos) > _MAX_PACKAGE_ENTRIES:
+                raise RuntimePolicyError("plugin package exceeds maximum entry count")
+            total_uncompressed = 0
+            for info in infos:
                 path = PurePosixPath(info.filename)
+                raw_parts = info.filename.split("/")
+                if info.filename.endswith("/"):
+                    raw_parts = raw_parts[:-1]
                 if (
                     not info.filename
                     or path.is_absolute()
-                    or ".." in path.parts
-                    or "." in path.parts
+                    or any(
+                        not part or part in {".", ".."} or part.endswith(":")
+                        for part in raw_parts
+                    )
+                    or any(ord(character) < 32 for character in info.filename)
                     or "\\" in info.filename
                 ):
                     raise RuntimePolicyError("plugin package contains an unsafe path")
@@ -905,6 +943,21 @@ class PluginRegistry:
                 mode = (info.external_attr >> 16) & 0o170000
                 if mode == stat.S_IFLNK:
                     raise RuntimePolicyError("plugin package contains a symbolic link")
+                if info.file_size > _MAX_PACKAGE_FILE_BYTES:
+                    raise RuntimePolicyError("plugin package file exceeds maximum size")
+                total_uncompressed += info.file_size
+                if total_uncompressed > _MAX_PACKAGE_UNCOMPRESSED_BYTES:
+                    raise RuntimePolicyError(
+                        "plugin package exceeds maximum uncompressed size"
+                    )
+                if (
+                    info.compress_size
+                    and info.file_size / info.compress_size
+                    > _MAX_PACKAGE_COMPRESSION_RATIO
+                ):
+                    raise RuntimePolicyError(
+                        "plugin package exceeds maximum compression ratio"
+                    )
                 if info.is_dir():
                     if info.filename != "payload/" and not info.filename.startswith(
                         "payload/"
@@ -914,12 +967,12 @@ class PluginRegistry:
                         )
                     continue
                 if info.filename == "manifest.json":
-                    manifest_data = archive.read(info)
+                    manifest_data = read_bounded(info)
                 elif info.filename.startswith("payload/"):
                     relative = info.filename[len("payload/") :]
                     if not relative:
                         raise RuntimePolicyError("payload entry must have a filename")
-                    data = archive.read(info)
+                    data = read_bounded(info)
                     payload.append((relative, data))
                 else:
                     raise RuntimePolicyError(
@@ -1028,12 +1081,18 @@ class PluginRegistry:
             previous_state["installation_id"] = previous_state.get(
                 "installation_id", installation_id
             )
+            if source_metadata:
+                previous_state["source"] = source_metadata
+            if trust_metadata:
+                previous_state["trust"] = trust_metadata
             state[plugin_id] = previous_state
         else:
             state[plugin_id] = {
                 "enabled": False,
                 "user_id": None,
                 "installation_id": installation_id,
+                "source": source_metadata or {"type": "upload"},
+                "trust": trust_metadata or {},
             }
         self._save_state(state)
         self.supervisor._log(
@@ -1466,11 +1525,28 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     )
                     return
                 package = self.rfile.read(length)
+
+                def metadata_header(name: str) -> dict[str, Any]:
+                    raw = self.headers.get(name, "")
+                    if not raw:
+                        return {}
+                    try:
+                        value = json.loads(
+                            base64.urlsafe_b64decode(raw.encode("ascii"))
+                        )
+                    except (ValueError, UnicodeError) as exc:
+                        raise RuntimePolicyError(f"{name} is invalid") from exc
+                    if not isinstance(value, dict):
+                        raise RuntimePolicyError(f"{name} must contain an object")
+                    return value
+
                 result = self.server.registry.install_package(  # type: ignore[attr-defined]
                     package,
                     self.headers.get("X-Plugin-Package-Name", ""),
                     installation_id=self.headers.get("X-Plugin-Installation-ID", ""),
                     replace=self.headers.get("X-Plugin-Replace", "").lower() == "true",
+                    source_metadata=metadata_header("X-Plugin-Source"),
+                    trust_metadata=metadata_header("X-Plugin-Trust"),
                 )
                 self._json(201, result)
             except (RuntimePolicyError, ValueError) as exc:

@@ -6,8 +6,8 @@ import asyncio
 import base64
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -83,9 +83,7 @@ class FakeRuntime:
         return self.healthy
 
 
-def verifier(
-    private_key: Ed25519PrivateKey, digest: str
-) -> tuple[PluginPackageVerifier, str]:
+def verifier(private_key: Ed25519PrivateKey, digest: str) -> tuple[PluginPackageVerifier, str]:
     public = private_key.public_key().public_bytes_raw()
     signature = private_key.sign(b"plugin-package-v1:" + digest.encode())
     return PluginPackageVerifier(
@@ -125,6 +123,19 @@ def test_package_rejects_traversal_and_duplicate_paths(tmp_path: Path) -> None:
         PluginPackageVerifier(require_signature=False).inspect(package)
 
 
+@pytest.mark.parametrize(
+    "member",
+    ["payload//plugin.py", "payload/./plugin.py", "payload/C:/plugin.py"],
+)
+def test_package_rejects_semantically_dangerous_paths(tmp_path: Path, member: str) -> None:
+    package = tmp_path / "bad-path.utp"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest_data(digest="0" * 64)))
+        archive.writestr(member, b"no")
+    with pytest.raises(PackageFormatError, match="unsafe"):
+        PluginPackageVerifier(require_signature=False).inspect(package)
+
+
 def test_stage_does_not_replace_active_version(tmp_path: Path) -> None:
     files = {"plugin.py": b"safe"}
     digest = payload_digest(files)
@@ -133,9 +144,11 @@ def test_stage_does_not_replace_active_version(tmp_path: Path) -> None:
     store = UpdateStore(tmp_path / "store")
     runtime = FakeRuntime()
     manager = PluginUpdateManager(
-        store=store, runtime=runtime,
+        store=store,
+        runtime=runtime,
         verifier=PluginPackageVerifier(require_signature=False),
-        sdk_version="1.0.0", application_version="1.0.0",
+        sdk_version="1.0.0",
+        application_version="1.0.0",
     )
     verified = manager.stage(package)
     assert verified.package_path.is_dir()
@@ -156,9 +169,11 @@ def test_dependency_plan_rejects_incompatible_graph(tmp_path: Path) -> None:
     )
     store = UpdateStore(tmp_path / "store")
     manager = PluginUpdateManager(
-        store=store, runtime=FakeRuntime(),
+        store=store,
+        runtime=FakeRuntime(),
         verifier=PluginPackageVerifier(require_signature=False),
-        sdk_version="1.0.0", application_version="1.0.0",
+        sdk_version="1.0.0",
+        application_version="1.0.0",
     )
     candidate = manager.stage(package)
     with pytest.raises(UpdateDependencyError):
@@ -169,9 +184,11 @@ def test_failed_activation_restores_previous_version(tmp_path: Path) -> None:
     store = UpdateStore(tmp_path / "store")
     runtime = FakeRuntime()
     manager = PluginUpdateManager(
-        store=store, runtime=runtime,
+        store=store,
+        runtime=runtime,
         verifier=PluginPackageVerifier(require_signature=False),
-        sdk_version="1.0.0", application_version="1.0.0",
+        sdk_version="1.0.0",
+        application_version="1.0.0",
     )
     files = {"plugin.py": b"safe"}
     digest = payload_digest(files)
@@ -211,9 +228,11 @@ def test_manual_rollback_health_checks_and_restores_on_failure(tmp_path: Path) -
     store = UpdateStore(tmp_path / "store")
     runtime = FakeRuntime()
     manager = PluginUpdateManager(
-        store=store, runtime=runtime,
+        store=store,
+        runtime=runtime,
         verifier=PluginPackageVerifier(require_signature=False),
-        sdk_version="1.0.0", application_version="1.0.0",
+        sdk_version="1.0.0",
+        application_version="1.0.0",
     )
     for version in ("1.0.0", "2.0.0"):
         path = store.version_path("example.plugin", version)
@@ -247,9 +266,11 @@ def test_failed_rollback_restarts_former_active_version(tmp_path: Path) -> None:
     store = UpdateStore(tmp_path / "store")
     runtime = FakeRuntime()
     manager = PluginUpdateManager(
-        store=store, runtime=runtime,
+        store=store,
+        runtime=runtime,
         verifier=PluginPackageVerifier(require_signature=False),
-        sdk_version="1.0.0", application_version="1.0.0",
+        sdk_version="1.0.0",
+        application_version="1.0.0",
     )
     for version in ("1.0.0", "2.0.0"):
         path = store.version_path("example.plugin", version)
