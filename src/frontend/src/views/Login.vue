@@ -11,8 +11,10 @@ import { checkAuth } from "../state/auth";
 
 const route = useRoute();
 const router = useRouter();
+const localOnly = route.path === "/login/local";
 const usernameOrEmail = ref("");
 const password = ref("");
+const showPassword = ref(false);
 const error = ref<string | null>(null);
 const loading = ref(false);
 const oidcAvailable = ref(false);
@@ -20,6 +22,8 @@ const oidcLoading = ref(false);
 const loginMethod = ref<"sso" | "local">("local");
 const ssoButtonText = ref("Continue with SSO");
 const oidcProviders = ref<OidcLoginProvider[]>([]);
+const passwordResetAvailable = ref(false);
+
 const oidcMessages: Record<string, string> = {
   not_configured: "SSO is not configured yet.",
   provider_unavailable: "The SSO provider is currently unavailable.",
@@ -35,18 +39,28 @@ const oidcMessages: Record<string, string> = {
 };
 
 onMounted(async () => {
+  const resetStatus = await fetch("/api/auth/password-reset/status")
+    .then(async (response) =>
+      response.ok
+        ? (response.json() as Promise<{ enabled: boolean }>)
+        : { enabled: false },
+    )
+    .catch(() => ({ enabled: false }));
+  passwordResetAvailable.value = resetStatus.enabled;
+  if (route.query.oidc === "success") {
+    await checkAuth();
+    await router.replace("/");
+    return;
+  }
+  if (typeof route.query.oidc_error === "string")
+    error.value = oidcMessages[route.query.oidc_error] ?? "SSO sign-in failed.";
+  if (localOnly) return;
   const oidc = await oidcLoginStatus();
   oidcAvailable.value = oidc.enabled;
   oidcProviders.value = oidc.providers;
   ssoButtonText.value = oidc.login_button_text;
   loginMethod.value =
     oidc.enabled && oidc.default_login_method === "sso" ? "sso" : "local";
-  if (route.query.oidc === "success") {
-    await checkAuth();
-    router.replace("/");
-  } else if (typeof route.query.oidc_error === "string") {
-    error.value = oidcMessages[route.query.oidc_error] ?? "SSO sign-in failed.";
-  }
 });
 
 async function submit() {
@@ -59,14 +73,13 @@ async function submit() {
   try {
     await login(usernameOrEmail.value.trim(), password.value);
     await checkAuth();
-    router.push("/");
+    await router.push("/");
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Login failed";
   } finally {
     loading.value = false;
   }
 }
-
 function sso(slug?: string) {
   oidcLoading.value = true;
   error.value = null;
@@ -77,8 +90,18 @@ function sso(slug?: string) {
     oidcLoading.value = false;
   }
 }
+function buttonStyle(provider: OidcLoginProvider) {
+  const hex = (provider.button_color || "#d68a34").slice(1);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return {
+    backgroundColor: provider.button_color || "#d68a34",
+    borderColor: provider.button_color || "#d68a34",
+    color: 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111" : "#fff",
+  };
+}
 </script>
-
 <template>
   <main class="login-page">
     <form class="login-card" @submit.prevent="submit">
@@ -87,31 +110,65 @@ function sso(slug?: string) {
         <h1>Archive</h1>
       </div>
       <p class="login-subtitle">Sign in to your library</p>
-      <template v-if="loginMethod === 'local' || !oidcAvailable">
-        <label class="field"
+      <template v-if="localOnly"
+        ><label class="field"
           ><span>Username or email</span
           ><input
             v-model="usernameOrEmail"
             type="text"
             autocomplete="username"
-            required
-        /></label>
-        <label class="field"
+            required /></label
+        ><label class="field"
           ><span>Password</span
           ><input
             v-model="password"
-            type="password"
+            :type="showPassword ? 'text' : 'password'"
             autocomplete="current-password"
-            required
-        /></label>
+            required /></label
+        ><label class="password-toggle"
+          ><input v-model="showPassword" type="checkbox" /> Show password</label
+        >
+        <div v-if="error" class="login-error">{{ error }}</div>
+        <button type="submit" class="login-button" :disabled="loading">
+          {{ loading ? "Signing in…" : "Sign in" }}</button
+        ><router-link
+          v-if="passwordResetAvailable"
+          class="forgot-link"
+          to="/reset-password"
+          >Forgot your password?</router-link
+        ></template
+      >
+      <template v-else-if="loginMethod === 'local' || !oidcAvailable"
+        ><label class="field"
+          ><span>Username or email</span
+          ><input
+            v-model="usernameOrEmail"
+            type="text"
+            autocomplete="username"
+            required /></label
+        ><label class="field"
+          ><span>Password</span
+          ><input
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            autocomplete="current-password"
+            required /></label
+        ><label class="password-toggle"
+          ><input v-model="showPassword" type="checkbox" /> Show password</label
+        >
         <div v-if="error" class="login-error">{{ error }}</div>
         <button
           type="submit"
           class="login-button"
           :disabled="loading || oidcLoading"
         >
-          {{ loading ? "Signing in…" : "Sign in" }}
-        </button>
+          {{ loading ? "Signing in…" : "Sign in" }}</button
+        ><router-link
+          v-if="passwordResetAvailable"
+          class="forgot-link"
+          to="/reset-password"
+          >Forgot your password?</router-link
+        >
         <div v-if="oidcAvailable" class="sso-divider"><span>or</span></div>
         <div v-if="oidcAvailable" class="provider-buttons">
           <button
@@ -119,8 +176,9 @@ function sso(slug?: string) {
             :key="provider.slug"
             type="button"
             class="oidc-button"
+            :style="buttonStyle(provider)"
             :disabled="oidcLoading"
-            @click="() => sso(provider.slug)"
+            @click="sso(provider.slug)"
           >
             <img
               v-if="provider.button_image_url"
@@ -134,13 +192,13 @@ function sso(slug?: string) {
           type="button"
           class="oidc-button"
           :disabled="oidcLoading"
-          @click="() => sso()"
+          @click="sso()"
         >
-          <span>{{ oidcLoading ? "Opening SSO…" : ssoButtonText }}</span>
-        </button>
-      </template>
-      <template v-else>
-        <div class="sso-heading">
+          {{ oidcLoading ? "Opening SSO…" : ssoButtonText }}
+        </button></template
+      >
+      <template v-else
+        ><div class="sso-heading">
           <span class="sso-icon">◉</span>
           <div>
             <strong>Single sign-on</strong>
@@ -154,8 +212,9 @@ function sso(slug?: string) {
             :key="provider.slug"
             type="button"
             class="oidc-button primary"
+            :style="buttonStyle(provider)"
             :disabled="oidcLoading"
-            @click="() => sso(provider.slug)"
+            @click="sso(provider.slug)"
           >
             <img
               v-if="provider.button_image_url"
@@ -169,7 +228,7 @@ function sso(slug?: string) {
           type="button"
           class="oidc-button primary"
           :disabled="oidcLoading"
-          @click="() => sso()"
+          @click="sso()"
         >
           {{ oidcLoading ? "Opening SSO…" : ssoButtonText }}
         </button>
@@ -181,29 +240,34 @@ function sso(slug?: string) {
               ><input
                 v-model="usernameOrEmail"
                 type="text"
-                autocomplete="username"
-            /></label>
-            <label class="field"
+                autocomplete="username" /></label
+            ><label class="field"
               ><span>Password</span
               ><input
                 v-model="password"
-                type="password"
-                autocomplete="current-password"
-            /></label>
-            <button
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="current-password" /></label
+            ><label class="password-toggle"
+              ><input v-model="showPassword" type="checkbox" /> Show
+              password</label
+            ><button
               type="submit"
               class="login-button"
               :disabled="loading || oidcLoading"
             >
-              {{ loading ? "Signing in…" : "Sign in locally" }}
-            </button>
+              {{ loading ? "Signing in…" : "Sign in locally" }}</button
+            ><router-link
+              v-if="passwordResetAvailable"
+              class="forgot-link"
+              to="/reset-password"
+              >Forgot your password?</router-link
+            >
           </div>
-        </details>
-      </template>
+        </details></template
+      >
     </form>
   </main>
 </template>
-
 <style scoped>
 .login-page {
   min-height: 100vh;
@@ -283,6 +347,13 @@ function sso(slug?: string) {
   outline: none;
   border-color: #d68a34;
 }
+.password-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+  font-size: 12px;
+}
 .login-error {
   color: #fca5a5;
   font-size: 13px;
@@ -308,6 +379,16 @@ function sso(slug?: string) {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.forgot-link {
+  color: #aaa;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+.forgot-link:hover {
+  text-decoration: underline;
+  color: #d68a34;
+}
 .oidc-button {
   background: #2a2a2a;
   color: #fff;
@@ -318,9 +399,7 @@ function sso(slug?: string) {
   gap: 10px;
 }
 .oidc-button.primary {
-  background: #d68a34;
   color: #111;
-  border-color: #d68a34;
 }
 .oidc-button img {
   width: 20px;

@@ -20,6 +20,7 @@ _HASH_BYTES: Final = 32
 _SCRYPT_N: Final = 2**14
 _SCRYPT_R: Final = 8
 _SCRYPT_P: Final = 1
+_DB_DEPENDENCY = Depends(get_db)
 SESSION_COOKIE: Final = "session"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
@@ -89,7 +90,7 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
 
 
 async def get_current_user(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = _DB_DEPENDENCY,
     authorization: str | None = Header(default=None),
     session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> User:

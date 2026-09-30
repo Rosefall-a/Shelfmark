@@ -1,6 +1,4 @@
-// Server-side per-user preferences (calendar options, notification
-// toggles). Defaults live on the server; this only carries the shape.
-
+// Server-side per-user preferences. Defaults live on the server; this only carries the shape.
 export interface Preferences {
   calendar_game_releases: boolean;
   calendar_game_history: boolean;
@@ -20,6 +18,11 @@ export interface Preferences {
   lists_default_sort: "custom" | "name" | "count" | "recent";
   title_language: "english" | "romaji" | "native";
   stats_include_plan: boolean;
+  anilist_import_enabled: boolean;
+  anilist_import_username: string;
+  anilist_import_interval_minutes: number;
+  anilist_import_update_existing: boolean;
+  anilist_import_last_run_at: number | null;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -41,6 +44,11 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lists_default_sort: "custom",
   title_language: "english",
   stats_include_plan: true,
+  anilist_import_enabled: false,
+  anilist_import_username: "",
+  anilist_import_interval_minutes: 1440,
+  anilist_import_update_existing: false,
+  anilist_import_last_run_at: null,
 };
 
 export async function fetchPreferences(): Promise<Preferences> {
@@ -64,10 +72,6 @@ export async function updatePreferences(
   return { ...DEFAULT_PREFERENCES, ...(await response.json()) };
 }
 
-// Saves go one at a time, in the order they were made. Sent together, two
-// changes to the same setting can be handled out of order by the server, so
-// a quick double click could end on the wrong value. `latest` says nothing
-// newer is waiting, which is when the screen may take the server's answer.
 let saveQueue: Promise<unknown> = Promise.resolve();
 let saving = 0;
 export function queuePreferences(

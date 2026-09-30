@@ -1,0 +1,53 @@
+site_name: Unnamed Tracking App
+site_description: Documentation for Unnamed Tracking App
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Setup:
+      - Overview: setup/index.md
+      - Installation: setup/installation.md
+      - Configuration: setup/configuration.md
+      - Environment Variables: setup/environment-variables.md
+  - User Guide:
+      - Overview: user-guide/index.md
+      - Authentication: user-guide/authentication.md
+      - OpenID Connect / SSO: user-guide/oidc.md
+      - Data, Exports & Backups: user-guide/data-and-backups.md
+      - Games: user-guide/games.md
+      - Anime: user-guide/anime.md
+      - AniList Import: user-guide/anilist.md
+      - TV Shows: user-guide/tv-shows.md
+      - Movies: user-guide/movies.md
+  - Integrations:
+      - Overview: integrations/index.md
+      - Playnite: integrations/playnite.md
+      - Metadata Providers: integrations/metadata.md
+  - Administration:
+      - Overview: administration/index.md
+      - Users: administration/users.md
+      - Scheduled Tasks: administration/tasks.md
+  - Deployment:
+      - Overview: deployment/index.md
+      - Production Docker Image: deployment/production-docker.md
+      - Startup & Troubleshooting: deployment/startup-and-troubleshooting.md
+  - Development:
+      - Overview: development/index.md
+      - Architecture: development/architecture.md
+      - API: development/api.md
+      - API Examples: development/api-examples.md
+      - Contributing: development/contributing.md

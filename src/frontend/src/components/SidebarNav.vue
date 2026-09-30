@@ -5,7 +5,13 @@ import { logout } from "../services/auth";
 import { currentUser } from "../state/auth";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
 import { mediaUnread, refreshMediaNotifications } from "../state/notifications";
-import { sidebarMode } from "../state/sidebarMode";
+import {
+  sidebarMode,
+  sidebarWidth,
+  setSidebarWidth,
+  resetSidebarWidth,
+  sidebarResizing,
+} from "../state/sidebarMode";
 import ProfileMenu from "./ProfileMenu.vue";
 
 onMounted(refreshInboxCount);
@@ -24,6 +30,10 @@ onMounted(() => {
   );
 });
 onUnmounted(() => window.clearInterval(notificationTimer));
+onUnmounted(() => {
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", stopResize);
+});
 
 const route = useRoute();
 const open = ref(false);
@@ -52,6 +62,26 @@ function close() {
   open.value = false;
 }
 const router = useRouter();
+
+// Drag-resize: the handle sits on the sidebar's right edge, so the new
+// width is just the pointer's distance from the (fixed, left: 0) edge.
+// Rail mode skips this — its collapsed width is fixed on purpose, and
+// resizing mid-hover would fight the hover-expand transition.
+function startResize(e: MouseEvent) {
+  if (sidebarMode.value === "rail") return;
+  sidebarResizing.value = true;
+  e.preventDefault();
+  document.addEventListener("mousemove", onResizeMove);
+  document.addEventListener("mouseup", stopResize);
+}
+function onResizeMove(e: MouseEvent) {
+  setSidebarWidth(e.clientX);
+}
+function stopResize() {
+  sidebarResizing.value = false;
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", stopResize);
+}
 
 async function handleLogout() {
   await logout();
@@ -100,8 +130,17 @@ async function handleLogout() {
       :class="{
         'pinned-mode': sidebarMode === 'pinned',
         'rail-mode': sidebarMode === 'rail',
+        resizing: sidebarResizing,
       }"
+      :style="{ '--sidebar-w': `${sidebarWidth}px` }"
     >
+      <div
+        v-if="sidebarMode !== 'rail'"
+        class="sidebar-resize-handle"
+        title="Drag to resize, double-click to reset"
+        @mousedown="startResize"
+        @dblclick="resetSidebarWidth"
+      ></div>
       <div class="sidebar-brand">
         <div class="brand-icon">🎮</div>
         <span class="brand-name">Archive</span>
@@ -587,7 +626,7 @@ async function handleLogout() {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 270px;
+  width: var(--sidebar-w, 270px);
   background: #161616;
   border-right: 1px solid #2a2a2a;
   z-index: 110;
@@ -620,6 +659,23 @@ async function handleLogout() {
 .sidebar.pinned-mode {
   box-shadow: none;
 }
+.sidebar.resizing {
+  transition: none;
+  user-select: none;
+}
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+.sidebar-resize-handle:hover,
+.sidebar.resizing .sidebar-resize-handle {
+  background: rgba(214, 138, 52, 0.4);
+}
 .sidebar.rail-mode {
   width: 56px;
   padding-left: 8px;
@@ -630,7 +686,7 @@ async function handleLogout() {
 }
 .sidebar.rail-mode:hover,
 .sidebar.rail-mode:focus-within {
-  width: 270px;
+  width: var(--sidebar-w, 270px);
   padding-left: 14px;
   padding-right: 14px;
 }

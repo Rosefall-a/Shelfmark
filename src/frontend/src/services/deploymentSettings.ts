@@ -11,13 +11,18 @@ export interface OidcProviderSetting {
   user_match_field: string;
   allow_new_users: boolean;
   button_text: string;
+  button_colour: string;
   button_image_url: string | null;
   enabled: boolean;
+  show_on_login: boolean;
+  autostart_enabled: boolean;
   client_secret_configured: boolean;
 }
 export interface DeploymentSettings {
   providers: Record<string, string | boolean | null>;
+  provider_locks: Record<string, boolean>;
   oidc: {
+    enabled: boolean;
     issuer_url: string | null;
     client_id: string | null;
     scopes: string | null;
@@ -30,6 +35,7 @@ export interface DeploymentSettings {
     allow_new_users: boolean;
     client_secret_configured: boolean;
     named_providers: OidcProviderSetting[];
+    locked_fields: Record<string, boolean>;
   };
 }
 export async function fetchDeploymentSettings(): Promise<DeploymentSettings> {
@@ -41,7 +47,7 @@ export async function fetchDeploymentSettings(): Promise<DeploymentSettings> {
   return await response.json();
 }
 export async function updateDeploymentSettings(
-  payload: Record<string, string>,
+  payload: Record<string, string | boolean | null>,
 ): Promise<DeploymentSettings> {
   const response = await fetch("/api/settings/deployment", {
     method: "PUT",
