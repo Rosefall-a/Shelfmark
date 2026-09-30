@@ -8,6 +8,7 @@ import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { loadSharedPreferences } from "./state/preferences";
 import { watch } from "vue";
+import PluginExtensionSlot from "./components/plugins/PluginExtensionSlot.vue";
 
 const route = useRoute();
 // preferences are per user, so load them once someone is signed in
@@ -54,6 +55,7 @@ const KEPT_ALIVE = [
         <component :is="Component" />
       </KeepAlive>
     </router-view>
+    <PluginExtensionSlot slot-id="app.global" :context="{ host_page: route.path }" />
     <TaskProgressToast
       v-if="route.path !== '/setup' && route.path !== '/login/oidcstart'"
     />
