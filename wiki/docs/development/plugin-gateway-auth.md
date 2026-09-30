@@ -1,6 +1,6 @@
 # Plugin Gateway Authentication
 
-This document records the authenticated application-to-gateway trust model implemented for #265 and #282.
+This document records the authenticated application-to-runtime/gateway trust model.
 
 ## Identities
 
@@ -34,8 +34,12 @@ The bootstrap request advertises supported Plugin API major versions. The gatewa
 
 RequestContext includes gateway_id alongside application_id, plugin identity, installation identity, user context, request ID, and capability. This prevents a request from omitting which gateway authenticated it.
 
+## Production runtime transport
+
+The application communicates with `plugin-runtime` over the private runtime network using `PLUGIN_RUNTIME_TOKEN`. Runtime-originated Plugin API requests carry that token back to `/api/plugins/runtime/gateway`; browsers and plugins never receive it. Each forwarded request includes a fresh request UUID plus persisted plugin and installation identity.
+
 ## Security boundary
 
-This implementation does not expose database credentials, environment variables, filesystem paths, Docker objects, or application secrets to plugins. Plugin installation credentials and capability grants remain downstream work for #283 and #266.
+The implementation does not expose database credentials, environment variables, filesystem paths, Docker objects, or application secrets to plugins. Installation identities and permission grants are persisted and checked by the production gateway.
 
-The credential store is an explicit persistence seam rather than an accidental plugin-storage dependency. This keeps #265 trust state separate from #268 plugin-owned storage.
+Gateway trust remains separate from plugin-owned storage. Possessing a runtime token authenticates the transport but does not satisfy a plugin capability grant.

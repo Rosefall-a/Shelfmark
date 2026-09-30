@@ -22,7 +22,7 @@ The authorization function requires exact plugin/installation/capability/version
 
 
 ## Audit and security
-The database model for authorization audit records exists, but persistence-backed authorization/audit is not yet wired into the production gateway; this remains tracked by #336.
+Permission requests, grants, revocations, and audit records are persisted. The production gateway resolves the current installed package and requires an active grant matching plugin ID, installation ID, capability, capability version, and optional user scope. Disabled installations cannot dispatch actions.
 
 The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
 
@@ -31,8 +31,8 @@ The permission layer is intentionally independent of transport. Gateway authenti
 
 ## Permission risk display
 The administrator approval view classifies requested capabilities before approval:
-- **High risk:** write capabilities and notification sending.
-- **Medium risk:** read capabilities and event subscriptions.
+- **High risk:** write/destructive capabilities, session revocation, external delivery, and notification sending.
+- **Medium risk:** document/session reads and event subscriptions.
 - **Low risk:** plugin-owned settings/storage capabilities.
 
 Risk is a presentation aid for administrator review; it never changes authorization. The gateway still requires an explicit grant and applies the same default-deny policy regardless of the displayed risk.

@@ -53,11 +53,12 @@ its own bubblewrap namespaces and process group with independent CPU, memory,
 file-descriptor and child-process limits. Plugin subprocesses receive a
 fresh environment and cannot receive core secrets.
 
-Outbound plugin networking is default-deny. Declared destinations require
-the network.outbound capability to have been approved by the gateway; the
-plugin sandbox still has no direct network namespace access. Approved
-external traffic must use the runtime's future egress broker/proxy rather
-than enabling unrestricted network sharing.
+Outbound plugin networking is default-deny. The plugin sandbox has no direct
+network namespace access. Approved external traffic uses runtime-owned,
+narrowly validated senders rather than unrestricted network sharing. The
+reference Discord provider additionally requires
+`PLUGIN_RUNTIME_DISCORD_EGRESS=true`; its host/path and payload size are
+validated by the runtime.
 
 Authenticated gateway connectivity remains owned by #265, while #266 remains
 the capability authorization boundary. Plugin browser traffic is never

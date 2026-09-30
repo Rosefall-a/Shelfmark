@@ -104,7 +104,17 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_DEFAULT_LOGIN_METHOD` | `local` | Default login choice: `local` or `sso`. |
 | `OIDC_LOGIN_BUTTON_TEXT` | `Continue with SSO` | Text used for the SSO login button. |
 
-OIDC issuer, client ID, and client secret become required when the OIDC section is selected. See [OIDC / SSO](../integrations/oidc.md) for the callback and account-linking behavior.
+OIDC issuer, client ID, and client secret become required when the OIDC section is selected. See [OIDC / SSO](../user-guide/oidc.md) for the callback and account-linking behavior.
+
+## Plugin Runtime
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PLUGIN_RUNTIME_URL` | `http://plugin-runtime:8000` | Internal application-to-runtime URL. Do not publish it. |
+| `PLUGIN_RUNTIME_TOKEN` | — | Shared internal transport token; production values must be unique and at least 32 characters. |
+| `PLUGIN_TRUSTED_PUBLISHER_REGISTRY` | Built-in registry | Optional path to an additional reviewed publisher registry. |
+| `PLUGIN_RUNTIME_DISCORD_EGRESS` | `false` in the runtime | Enables the runtime-owned, destination-validated Discord webhook sender used by the reference provider. It does not grant plugins direct networking. |
+| `NONBUBBLE_ENV` | `false` | Development-only escape hatch that disables per-plugin bubblewrap isolation. Never enable for untrusted production plugins. |
 
 ## Frontend development
 

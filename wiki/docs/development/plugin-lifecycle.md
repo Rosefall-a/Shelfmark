@@ -1,8 +1,8 @@
 # Plugin lifecycle
 
-Plugin lifecycle management is implemented by #270.
+Plugin lifecycle management spans the application Plugin Manager and the isolated runtime.
 
-The lifecycle manager statically discovers and validates manifests, verifies and installs packages, resolves required dependencies deterministically, and delegates process execution to the isolated runtime. It never imports plugin code into the core backend.
+The manager previews and validates manifests, verifies and installs packages, resolves required dependencies deterministically, and delegates process execution to the isolated runtime. It never imports plugin code into the core backend.
 
 ## Lifecycle and failure states
 
@@ -29,4 +29,4 @@ The application exposes the lifecycle endpoints under /api/plugins and delegates
 
 ## Installation and activation
 
-Newly installed plugins are disabled by default. Installation creates pending permission requests but does not activate the plugin. An administrator must review and approve the requests, then explicitly enable the plugin. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.
+Newly installed plugins are disabled by default. Installation records the administrator's contextual consent choices and does not activate the plugin. An administrator must explicitly enable it. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.

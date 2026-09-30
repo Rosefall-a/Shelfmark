@@ -1,56 +1,35 @@
 # Plugin integration validation
 
-Issue #272 introduced contract-level validation examples for notification,
-metadata, Discord and Playnite integrations.
+Validation is split between the host repository and the independent plugin repository so neither side imports the other's private implementation.
 
-## Current audit status
+## Host coverage
 
-The current examples on this branch are **contract/in-process validation
-fixtures**, not production external plugins. They consume the stable Plugin API
-v1 contracts through the in-memory `ValidationGateway` harness.
+The application tests:
 
-This is useful for validating DTOs, capability decisions, event scoping and
-provider contracts, but it does **not** prove the complete production flow
-through the application, authenticated gateway transport, isolated runtime,
-installation manager, persistence or external plugin packages.
+- manifest, compatibility, dependency, archive, digest, and publisher-trust validation;
+- contextual installation consent, exact installation/user grants, revocation, and disabled-plugin rejection;
+- runtime process isolation, private storage, frontend asset confinement, action mediation, structured diagnostics, and restart state;
+- allowlisted sidebar/native extension contributions and sandboxed custom frontends;
+- document ownership, path confinement, type/encoding/size rejection, and safe DTOs;
+- minimized session listing and user-scoped revocation;
+- provider registration, preference/grant checks, delivery results, retries, and cleanup.
 
-The production host/runtime integration is tracked by #320. The real
-third-party-style examples belong in
-`Rosefall-a/unnamed_tracking_app_plugins` and are tracked by #321 and that
-repository's issue #1.
+## Plugin repository coverage
 
-## Validation matrix
+`Rosefall-a/unnamed_tracking_app_plugins` tests every manifest, permission rationale, source import boundary, frontend entry, package digest, and package validation rule. The three domain reference plugins additionally test exact public methods/capabilities, host confirmation declarations, namespaced provider registration, bounded delivery formatting, and absence of direct frontend network access.
 
-- Notification: `NotificationProvider` + `notifications.send`.
-- Metadata: `MetadataProvider` + normalized `MetadataCandidate` results.
-- Discord: `EventEnvelope/EventSubscription` + `events.subscribe` +
-  `plugin.storage`.
-- Playnite: `PluginIdentity` + user/device-scoped `RequestContext` +
-  game capabilities.
+Normal development builds are unsigned and intentionally exercise the untrusted-package warning. Release builds require the private reviewed signing key and fail closed when the signer is unavailable or out of scope.
 
-The test suite proves default-deny authorization, user-scoped event delivery,
-secret-field handling and independent plugin storage namespaces at the
-contract/harness boundary.
+## Cross-repository acceptance
 
-## Current cross-layer verification
+For a release candidate:
 
-The plugin-manager branch now has explicit coverage at each package boundary:
+1. Build the three `.utp` packages from the plugin repository.
+2. Preview/install them through the application's real Plugin Manager.
+3. Confirm denied permissions fail, approved permissions work, and revocation takes effect immediately.
+4. Confirm sidebar pages disappear on disable/uninstall.
+5. Exercise document missing/unsupported/oversized cases, session confirmation/revocation, and provider success/retry/disabled preference behavior.
+6. Update a package, confirm consent does not broaden silently, and inspect redacted diagnostics.
+7. Run both repositories' complete CI workflows and `mkdocs build --strict`.
 
-- The host manifest contract accepts the optional `frontend.entry` declaration.
-- The host upload path has a regression fixture using the UI Playground manifest shape.
-- The plugin runtime rejects unsafe or missing declared frontend entries and serves a
-  complete bundled frontend through its namespaced frontend endpoint.
-- The frontend service covers the HTTP 409 untrusted-package response that drives the
-  explicit confirmation flow.
-- The plugin repository smoke-tests every real demo plugin's main logic, validates the
-  UI Playground frontend entry, and checks that its webhook secret is never emitted by
-  plugin code.
-- Plugin CI builds fresh unsigned demo packages, verifies payload integrity, and checks
-  every declared frontend entry against the package payload.
-- The runner keeps Discord webhook secrets inside private plugin storage and performs
-  host-side delivery only after the plugin requests it.
-
-These are deterministic CI/unit/smoke checks; they are stronger than the former
-contract-only fixtures but are not a claim that a particular user's running Docker
-deployment has already been rebuilt and manually exercised. A deployment must use a
-plugin-manager image containing these changes and a newly generated plugin package.
+See [Reference plugins](reference-plugins.md) and the [documentation review checklist](documentation-review.md).

@@ -28,6 +28,8 @@ nav:
       - Authentication: user-guide/authentication.md
       - OpenID Connect / SSO: user-guide/oidc.md
       - Data, Exports & Backups: user-guide/data-and-backups.md
+      - Plugins: user-guide/plugins.md
+      - Notification Providers: user-guide/notification-providers.md
       - Games: user-guide/games.md
       - Anime: user-guide/anime.md
       - AniList Import: user-guide/anilist.md
@@ -41,6 +43,7 @@ nav:
       - Overview: administration/index.md
       - Users: administration/users.md
       - Scheduled Tasks: administration/tasks.md
+      - Plugins: administration/plugins.md
   - Deployment:
       - Overview: deployment/index.md
       - Production Docker Image: deployment/production-docker.md
@@ -51,13 +54,18 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
+      - Plugin Capability APIs: development/plugin-capabilities.md
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Plugin Permissions & Scoped Identities: development/plugin-permissions.md
+      - Plugin Lifecycle: development/plugin-lifecycle.md
       - Plugin Updates & Rollback: development/plugin-updates.md
       - Plugin Runtime Isolation: development/plugin-runtime.md
       - Plugin Storage: development/plugin-storage.md
       - Plugin UI Protocol: development/plugin-ui.md
       - Custom Plugin Frontend Sandbox: development/plugin-ui-sandbox.md
+      - Plugin Notification Providers: development/notification-providers.md
+      - Reference Plugins: development/reference-plugins.md
       - Plugin Integration Validation: development/plugin-validation.md
+      - Documentation Review Checklist: development/documentation-review.md
       - Contributing: development/contributing.md
