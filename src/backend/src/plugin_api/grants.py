@@ -22,7 +22,7 @@ async def has_capability_grant(
         select(PluginPermissionGrant.id).where(
             PluginPermissionGrant.plugin_id == plugin_id,
             PluginPermissionGrant.installation_id == installation_id,
-            PluginPermissionGrant.capability == capability,
+            (PluginPermissionGrant.capability == capability) | (PluginPermissionGrant.capability == "api.full"),
             PluginPermissionGrant.capability_version == capability_version,
             PluginPermissionGrant.revoked_at.is_(None),
             or_(

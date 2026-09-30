@@ -48,6 +48,7 @@ class Capability(StrEnum):
     MEDIA_IMPORT = "media.import"
     PLUGIN_STORAGE = "plugin.storage"
     PLUGIN_SETTINGS = "plugin.settings"
+    FULL_API = "api.full"
 
 
 class CapabilityRef(ContractModel):

@@ -168,7 +168,6 @@ __all__ = [
     "UpdateActivationError",
     "UpdateDependencyError",
     "UpdatePlan",
-    "UpdateRuntime",
     "UpdateStore",
     "VerifiedPackage",
     "LifecycleLog",

@@ -364,3 +364,49 @@ def test_manifest_permissions_must_match_declared_capabilities() -> None:
                 "capabilities": (CapabilityRef(name=Capability.MEDIA_READ, version=2),),
             }
         )
+
+
+def test_full_api_capability_is_explicit_and_versioned() -> None:
+    from src.plugin_api.contracts import Capability, CapabilityRef, PermissionDeclaration, PluginManifest, IntegrityMetadata
+
+    manifest = PluginManifest(
+        plugin_id="example.full-access",
+        name="Full Access Example",
+        version="1.0.0",
+        description="test",
+        entrypoint="plugin:main",
+        sdk_version_range="*",
+        application_version_range="*",
+        capabilities=(CapabilityRef(name=Capability.FULL_API),),
+        permissions=(
+            PermissionDeclaration(
+                capability=CapabilityRef(name=Capability.FULL_API),
+                rationale="Explicitly approved unrestricted Plugin API access.",
+            ),
+        ),
+        integrity=IntegrityMetadata(sha256="0" * 64),
+    )
+    assert manifest.permissions[0].capability.name is Capability.FULL_API
+
+
+def test_full_api_is_not_implied_by_other_capabilities() -> None:
+    from src.plugin_api.contracts import Capability, CapabilityRef, PermissionDeclaration, PluginManifest, IntegrityMetadata
+
+    manifest = PluginManifest(
+        plugin_id="example.scoped",
+        name="Scoped",
+        version="1.0.0",
+        description="test",
+        entrypoint="plugin:main",
+        sdk_version_range="*",
+        application_version_range="*",
+        capabilities=(CapabilityRef(name=Capability.GAMES_READ),),
+        permissions=(
+            PermissionDeclaration(
+                capability=CapabilityRef(name=Capability.GAMES_READ),
+                rationale="Read games only.",
+            ),
+        ),
+        integrity=IntegrityMetadata(sha256="0" * 64),
+    )
+    assert all(permission.capability.name is not Capability.FULL_API for permission in manifest.permissions)

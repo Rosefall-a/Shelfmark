@@ -23,6 +23,7 @@ from src.core.integrations import resolve_integrations
 from src.database.models.auth import UserSession
 from src.database.models.game import Game
 from src.database.models.movies import Movie, MovieStatus
+from src.database.models.media_item import MediaItem
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
@@ -52,6 +53,7 @@ _METHOD_CAPABILITIES = {
     "sessions.admin.list": "sessions.admin.read",
     "sessions.admin.revoke": "sessions.admin.revoke",
     "sessions.admin.revoke_all": "sessions.admin.revoke",
+    "media.list": "media.read",
     "media.import": "media.write",
     "events.poll": "events.subscribe",
     "notifications.send": "notifications.send",
@@ -126,7 +128,8 @@ async def dispatch_gateway_request(
     required_capability = _METHOD_CAPABILITIES.get(method)
     if required_capability is None:
         raise ValueError(f"unsupported plugin gateway method: {method}")
-    if capability != required_capability:
+    full_api = capability == "api.full"
+    if not full_api and capability != required_capability:
         raise PermissionError(f"method {method} requires capability {required_capability}")
     if not await has_capability_grant(
         db,
@@ -136,6 +139,11 @@ async def dispatch_gateway_request(
         user_id=user_id,
     ):
         raise PermissionError(f"permission {capability} has not been granted")
+
+    if method == "media.list":
+        limit = max(1, min(int(payload.get("limit", 100)), 200))
+        media = (await db.execute(select(Movie).where(Movie.user_id == user_id, Movie.deleted_at.is_(None)).order_by(Movie.sort_title, Movie.title).limit(limit))).scalars().all()
+        return {"media": [{"id": str(item.id), "title": item.title, "media_type": "movie", "runtime_minutes": item.runtime_minutes, "poster_url": item.poster_url, "status": item.status.value if hasattr(item.status, "value") else str(item.status), "play_count": item.rewatches, "release_date": item.release_date.isoformat() if item.release_date else None, "updated_at": item.updated_at} for item in media]}
 
     if method == "games.list":
         limit = max(1, min(int(payload.get("limit", 50)), 200))
@@ -359,7 +367,18 @@ async def dispatch_gateway_request(
         return {"imported": imported}
 
     if method == "events.poll":
-        return {"events": []}
+        limit = max(1, min(int(payload.get("limit", 50)), 200))
+        since = max(0, int(payload.get("since", 0)))
+        events = []
+        games = (await db.execute(select(Game).where(Game.user_id == user_id, Game.deleted_at.is_(None), Game.updated_at > since).order_by(Game.updated_at).limit(limit))).scalars().all()
+        for game in games:
+            events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:game.updated:{game.id}:{game.updated_at}")), "event_type": "game.updated", "event_version": 1, "occurred_at": game.updated_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"game_id": str(game.id), "title": game.title, "updated_at": game.updated_at}})
+        if len(events) < limit:
+            media = (await db.execute(select(MediaItem).join(Game, Game.id == MediaItem.game_id).where(Game.user_id == user_id, MediaItem.deleted_at.is_(None), MediaItem.created_at > since).order_by(MediaItem.created_at).limit(limit - len(events)))).scalars().all()
+            for item in media:
+                events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:media.added:{item.id}:{item.created_at}")), "event_type": "media.added", "event_version": 1, "occurred_at": item.created_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"media_id": str(item.id), "game_id": str(item.game_id), "kind": item.kind, "filename": item.filename, "created_at": item.created_at}})
+        events.sort(key=lambda event: event["occurred_at"])
+        return {"events": events[:limit], "cursor": max([since, *[int(event["occurred_at"]) for event in events]])}
 
     if method == "notifications.send":
         title = str(payload.get("title", "")).strip()
