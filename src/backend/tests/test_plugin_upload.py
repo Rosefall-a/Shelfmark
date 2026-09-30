@@ -242,15 +242,42 @@ def test_upload_endpoint_accepts_zip_package() -> None:
     assert client.filename == "example.zip"
 
 
-def test_upload_endpoint_rejects_non_package_extension() -> None:
-    upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example.tar")
+def test_upload_endpoint_accepts_package_with_unusual_filename() -> None:
+    upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example.plugin.download")
+
+    class FakeDb:
+        def add_all(self, rows):
+            self.rows = rows
+
+        async def commit(self):
+            pass
+
+        async def rollback(self):
+            pass
+
+    client = FakeClient()
+    original = plugins._client
+    plugins._client = client
+    try:
+        result = asyncio.run(
+            plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb())
+        )
+    finally:
+        plugins._client = original
+
+    assert result["plugin_id"] == "example.upload"
+    assert client.filename == "example.plugin.download"
+
+
+def test_upload_endpoint_rejects_invalid_archive_regardless_of_extension() -> None:
+    upload = UploadFile(file=io.BytesIO(b"not a zip archive"), filename="example.utp")
 
     try:
         asyncio.run(plugins.install_plugin(upload, object()))
     except Exception as exc:
         assert getattr(exc, "status_code", None) == 400
     else:
-        raise AssertionError("non-.utp upload was accepted")
+        raise AssertionError("invalid archive was accepted")
 
 
 def test_upload_endpoint_rejects_oversized_package() -> None:
