@@ -63,15 +63,28 @@ const officialCatalogUrl = "https://raw.githubusercontent.com/Rosefall-a/unnamed
 
 function loadCatalogEndpoints() {
   try {
-    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}");
-    const endpoints = Array.isArray(stored) ? stored : stored?.endpoints;
+    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}") as
+      | { endpoints?: unknown; enabled?: unknown }
+      | unknown[];
+    const endpoints = Array.isArray(stored) ? stored : stored.endpoints;
     if (Array.isArray(endpoints)) {
-      catalogEndpoints.value = [officialCatalogUrl, ...endpoints.filter((value: unknown): value is string => typeof value === "string" && value.trim() && value !== officialCatalogUrl)];
-      const enabled = Array.isArray(stored?.enabled)
-        ? stored.enabled
-        : catalogEndpoints.value;
-      enabledCatalogEndpoints.value = [...new Set(enabled)].filter((url) =>
-        catalogEndpoints.value.includes(url),
+      catalogEndpoints.value = [
+        officialCatalogUrl,
+        ...endpoints.filter(
+          (value: unknown): value is string =>
+            typeof value === "string" &&
+            value.trim().length > 0 &&
+            value !== officialCatalogUrl,
+        ),
+      ];
+      const enabled = Array.isArray(stored)
+        ? stored
+        : Array.isArray(stored.enabled)
+          ? stored.enabled
+          : catalogEndpoints.value;
+      enabledCatalogEndpoints.value = [...new Set(enabled)].filter(
+        (url): url is string =>
+          typeof url === "string" && catalogEndpoints.value.includes(url),
       );
       return;
     }
