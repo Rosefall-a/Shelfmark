@@ -343,13 +343,13 @@ async def install_plugin_url(
 ) -> dict[str, Any]:
     """Download a remote package and send it through the same install/consent path."""
     path: Path | None = None
-    upload: StarletteUploadFile | None = None
+    upload: UploadFile | None = None
     try:
         path, filename, _ = await _download_remote_file(request.url)
         verified, _, _ = _inspect_install_candidate(path)
         if request.expected_digest and verified.manifest.integrity.sha256.lower() != request.expected_digest.lower():
             raise HTTPException(status_code=409, detail="The remote plugin changed after preview; review it again before installing.")
-        upload = StarletteUploadFile(path.open("rb"), filename=filename)
+        upload = UploadFile(path.open("rb"), filename=filename)
         return await install_plugin(
             upload,
             allow_untrusted=allow_untrusted,
