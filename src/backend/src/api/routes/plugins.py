@@ -175,7 +175,7 @@ def _install_preview(verified: Any, trust_status: str, trust_warning: str | None
     }
 
 
-async def _resolve_plugin_upload(request: Request | UploadFile, file: UploadFile | None) -> UploadFile:
+async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> StarletteUploadFile:
     """Resolve HTTP uploads while remaining compatible with direct route tests."""
     if isinstance(request, StarletteUploadFile):
         return request
