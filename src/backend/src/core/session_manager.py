@@ -17,7 +17,7 @@ from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
 from src.database.models.notification_delivery import NotificationDelivery
 from src.database.models.user import User
-from src.features.notification_providers.registry import PROVIDER_IDS
+from src.features.notification_providers.registry import get_notification_providers
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,8 @@ async def _queue_anomaly_notification(db: AsyncSession, user: User, session: Use
     )
     notification_id = await db.scalar(statement)
     if notification_id:
-        for provider_id in PROVIDER_IDS:
+        providers = await get_notification_providers(db)
+        for provider_id in providers:
             db.add(
                 NotificationDelivery(
                     notification_id=notification_id,
