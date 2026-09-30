@@ -54,7 +54,80 @@ const pluginUi = ref<PluginUiDocument | null>(null);
 const pluginDiagnostics = ref<PluginDiagnostics | null>(null);
 const pluginGrants = ref<PluginPermissionGrant[]>([]);
 const pluginRequests = ref<PluginPermissionRequest[]>([]);
-const popupLoading = ref(false);\nconst installOpen = ref(false);\nconst catalogEndpoints = ref<string[]>([]);\nconst enabledCatalogEndpoints = ref<string[]>([]);\nconst newCatalogEndpoint = ref("");\nconst officialCatalogUrl = "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json";\n\nfunction loadCatalogEndpoints() {\n  try {\n    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}");\n    const endpoints = Array.isArray(stored) ? stored : stored?.endpoints;\n    if (Array.isArray(endpoints)) {\n      catalogEndpoints.value = [officialCatalogUrl, ...endpoints.filter((value: unknown): value is string => typeof value === "string" && value.trim() && value !== officialCatalogUrl)];\n      const enabled = Array.isArray(stored?.enabled) ? stored.enabled : catalogEndpoints.value;\n      enabledCatalogEndpoints.value = [...new Set([officialCatalogUrl, ...enabled])].filter((url) => catalogEndpoints.value.includes(url));\n      return;\n    }\n  } catch {\n    // Fall back to the official source.\n  }\n  catalogEndpoints.value = [officialCatalogUrl];\n  enabledCatalogEndpoints.value = [officialCatalogUrl];\n}\n\nfunction saveCatalogEndpoints() {\n  localStorage.setItem("plugin-catalog-endpoints", JSON.stringify({ endpoints: catalogEndpoints.value.filter((url) => url !== officialCatalogUrl), enabled: enabledCatalogEndpoints.value }));\n}\n\nfunction addCatalogEndpoint() {\n  const url = newCatalogEndpoint.value.trim();\n  if (!/^https?:\\/\\//i.test(url) || catalogEndpoints.value.includes(url)) return;\n  catalogEndpoints.value.push(url);\n  enabledCatalogEndpoints.value.push(url);\n  newCatalogEndpoint.value = "";\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction removeCatalogEndpoint(url: string) {\n  if (url === officialCatalogUrl) return;\n  catalogEndpoints.value = catalogEndpoints.value.filter((item) => item !== url);\n  enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction toggleCatalogEndpoint(url: string, enabled: boolean) {\n  if (enabled && !enabledCatalogEndpoints.value.includes(url)) enabledCatalogEndpoints.value.push(url);\n  if (!enabled) enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nasync function loadCatalogues() {\n  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalog(url).catch(() => [])));\n  const seen = new Set<string>();\n  catalog.value = results.flat().filter((entry) => {\n    if (seen.has(entry.plugin_id)) return false;\n    seen.add(entry.plugin_id);\n    return true;\n  });\n}\n\nfunction openInstaller() {\n  installOpen.value = true;\n  loadCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction closeInstaller() {\n  if (installing.value) return;\n  installOpen.value = false;\n  newCatalogEndpoint.value = "";\n}
+const popupLoading = ref(false);
+const installOpen = ref(false);
+const catalogEndpoints = ref<string[]>([]);
+const enabledCatalogEndpoints = ref<string[]>([]);
+const newCatalogEndpoint = ref("");
+const officialCatalogUrl = "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json";
+
+function loadCatalogEndpoints() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}");
+    const endpoints = Array.isArray(stored) ? stored : stored?.endpoints;
+    if (Array.isArray(endpoints)) {
+      catalogEndpoints.value = [officialCatalogUrl, ...endpoints.filter((value: unknown): value is string => typeof value === "string" && value.trim() && value !== officialCatalogUrl)];
+      const enabled = Array.isArray(stored?.enabled) ? stored.enabled : catalogEndpoints.value;
+      enabledCatalogEndpoints.value = [...new Set([officialCatalogUrl, ...enabled])].filter((url) => catalogEndpoints.value.includes(url));
+      return;
+    }
+  } catch {
+    // Fall back to the official source.
+  }
+  catalogEndpoints.value = [officialCatalogUrl];
+  enabledCatalogEndpoints.value = [officialCatalogUrl];
+}
+
+function saveCatalogEndpoints() {
+  localStorage.setItem("plugin-catalog-endpoints", JSON.stringify({ endpoints: catalogEndpoints.value.filter((url) => url !== officialCatalogUrl), enabled: enabledCatalogEndpoints.value }));
+}
+
+function addCatalogEndpoint() {
+  const url = newCatalogEndpoint.value.trim();
+  if (!/^https?:\\/\\//i.test(url) || catalogEndpoints.value.includes(url)) return;
+  catalogEndpoints.value.push(url);
+  enabledCatalogEndpoints.value.push(url);
+  newCatalogEndpoint.value = "";
+  saveCatalogEndpoints();
+  void loadCatalogues();
+}
+
+function removeCatalogEndpoint(url: string) {
+  if (url === officialCatalogUrl) return;
+  catalogEndpoints.value = catalogEndpoints.value.filter((item) => item !== url);
+  enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);
+  saveCatalogEndpoints();
+  void loadCatalogues();
+}
+
+function toggleCatalogEndpoint(url: string, enabled: boolean) {
+  if (enabled && !enabledCatalogEndpoints.value.includes(url)) enabledCatalogEndpoints.value.push(url);
+  if (!enabled) enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);
+  saveCatalogEndpoints();
+  void loadCatalogues();
+}
+
+async function loadCatalogues() {
+  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalog(url).catch(() => [])));
+  const seen = new Set<string>();
+  catalog.value = results.flat().filter((entry) => {
+    if (seen.has(entry.plugin_id)) return false;
+    seen.add(entry.plugin_id);
+    return true;
+  });
+}
+
+function openInstaller() {
+  installOpen.value = true;
+  loadCatalogEndpoints();
+  void loadCatalogues();
+}
+
+function closeInstaller() {
+  if (installing.value) return;
+  installOpen.value = false;
+  newCatalogEndpoint.value = "";
+}
 
 async function load() {
   loading.value = true;
@@ -135,7 +208,12 @@ async function previewRemoteUrl(url = remoteUrl.value) {
   }
 }
 
-async function previewCatalogEntry(url: string) {\n  installOpen.value = false;\n  await previewRemoteUrl(url);\n}\n\nfunction cancelInstall() {
+async function previewCatalogEntry(url: string) {
+  installOpen.value = false;
+  await previewRemoteUrl(url);
+}
+
+function cancelInstall() {
   if (installing.value) return;
   installFile.value = null;
   installUrl.value = null;
@@ -309,7 +387,10 @@ async function removePlugin(plugin: PluginSummary) {
   }
 }
 
-onMounted(() => {\n  loadCatalogEndpoints();\n  void load();\n});
+onMounted(() => {
+  loadCatalogEndpoints();
+  void load();
+});
 </script>
 
 <template>
@@ -457,6 +538,58 @@ onMounted(() => {\n  loadCatalogEndpoints();\n  void load();\n});
 }
 .success {
   color: #8f8;
+}
+.install-launcher { font-size: 1rem; }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ui-z-dialog);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.installer-dialog {
+  width: min(760px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 24px;
+  background: #151515;
+  color: #f4f4f4;
+  border: 1px solid #3b3b3b;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+  display: grid;
+  gap: 18px;
+}
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.eyebrow {
+  margin: 0 0 4px;
+  color: #d68a34;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.endpoint-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.endpoint-add {
+  display: flex;
+  gap: 8px;
+}
+.endpoint-add input {
+  flex: 1;
+  min-width: 0;
 }
 .install-method,
 .catalogue {
