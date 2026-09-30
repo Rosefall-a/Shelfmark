@@ -17,6 +17,7 @@ from fastapi import (
     Body,
     Depends,
     File,
+    Request,
     Header,
     HTTPException,
     Query,
@@ -173,15 +174,32 @@ def _install_preview(verified: Any, trust_status: str, trust_warning: str | None
 
 
 @router.post("/install/preview")
+async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> UploadFile:
+    """Resolve the canonical upload field or any multipart UploadFile field."""
+    if file is not None:
+        return file
+    content_type = (request.headers.get("content-type") or "").lower()
+    if content_type.startswith("multipart/"):
+        form = await request.form()
+        for value in form.values():
+            if isinstance(value, UploadFile):
+                return value
+    raise HTTPException(status_code=400, detail={"code": "plugin_file_missing", "message": "Upload a .utp package as a multipart file."})
+
+
+@router.post("/install/preview")
 async def preview_plugin_install(
-    file: UploadFile = File(...),
+    request: Request,
+    file: UploadFile | None = File(default=None),
     admin: User = Depends(get_current_admin),
 ) -> dict[str, Any]:
     """Statically inspect an upload for consent without installing or executing it."""
     del admin
     path: Path | None = None
+    resolved_file: UploadFile | None = None
     try:
-        path, filename, total = await _store_plugin_upload(file, "plugin-preview-")
+        resolved_file = await _resolve_plugin_upload(request, file)
+        path, filename, total = await _store_plugin_upload(resolved_file, "plugin-preview-")
         verified, trust_status, trust_warning = _inspect_install_candidate(path)
         logger.info(
             "Plugin install preview validated: plugin_id=%s version=%s filename=%r bytes=%d trust=%s",

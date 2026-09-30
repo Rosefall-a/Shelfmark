@@ -229,3 +229,16 @@ def test_upload_endpoint_rejects_oversized_package() -> None:
         assert getattr(exc, "status_code", None) == 413
     else:
         raise AssertionError("oversized upload was accepted")
+
+
+def test_upload_preview_missing_file_is_a_client_error_not_fastapi_422() -> None:
+    from starlette.requests import Request
+    scope = {"type": "http", "method": "POST", "path": "/api/plugins/install/preview", "headers": [], "query_string": b"", "server": ("test", 80), "client": ("test", 1), "scheme": "http"}
+    request = Request(scope)
+    try:
+        asyncio.run(plugins.preview_plugin_install(request, file=None, admin=object()))
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 400
+        assert exc.detail["code"] == "plugin_file_missing"
+    else:
+        raise AssertionError("missing plugin package was accepted")
