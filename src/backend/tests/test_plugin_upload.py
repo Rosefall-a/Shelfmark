@@ -222,8 +222,28 @@ def test_upload_preview_is_static_and_lists_requested_permissions(monkeypatch) -
     assert client.package is None
 
 
-def test_upload_endpoint_rejects_non_utp() -> None:
+def test_upload_endpoint_accepts_zip_package() -> None:
     upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example.zip")
+    class FakeDb:
+        def add_all(self, rows):
+            self.rows = rows
+        async def commit(self):
+            pass
+        async def rollback(self):
+            pass
+    client = FakeClient()
+    original = plugins._client
+    plugins._client = client
+    try:
+        result = asyncio.run(plugins.install_plugin(upload, allow_untrusted=True, admin=object(), db=FakeDb()))
+    finally:
+        plugins._client = original
+    assert result["plugin_id"] == "example.upload"
+    assert client.filename == "example.zip"
+
+
+def test_upload_endpoint_rejects_non_package_extension() -> None:
+    upload = UploadFile(file=io.BytesIO(package_bytes()), filename="example.tar")
 
     try:
         asyncio.run(plugins.install_plugin(upload, object()))
@@ -255,3 +275,29 @@ def test_upload_preview_missing_file_is_a_client_error_not_fastapi_422() -> None
         assert exc.detail["code"] == "plugin_file_missing"
     else:
         raise AssertionError("missing plugin package was accepted")
+
+
+def test_remote_preview_uses_downloaded_package(monkeypatch) -> None:
+    package = package_bytes()
+    async def fake_download(url, *, json_document=False):
+        handle = __import__("tempfile").NamedTemporaryFile(delete=False)
+        handle.write(package)
+        handle.close()
+        path = __import__("pathlib").Path(handle.name)
+        return path, "example.zip", len(package)
+    monkeypatch.setattr(plugins, "_download_remote_file", fake_download)
+    result = asyncio.run(
+        plugins.preview_plugin_install_url(
+            plugins.PluginInstallUrl(url="https://example.com/example.zip"),
+            admin=object(),
+        )
+    )
+    assert result["plugin_id"] == "example.upload"
+    assert result["source_url"] == "https://example.com/example.zip"
+
+
+def test_remote_url_validation_rejects_private_destinations() -> None:
+    import pytest
+    with pytest.raises(Exception) as exc:
+        plugins._validate_remote_url("http://127.0.0.1/plugin.utp")
+    assert getattr(exc.value, "status_code", None) == 400

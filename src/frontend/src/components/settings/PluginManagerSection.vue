@@ -6,13 +6,17 @@ import {
   deletePlugin,
   disablePlugin,
   enablePlugin,
+  fetchPluginCatalog,
   fetchPluginLogs,
   fetchPlugins,
   installPlugin,
+  installPluginFromUrl,
   previewPluginInstall,
+  previewPluginInstallUrl,
   retryPlugin,
   updatePlugin,
   type PluginInstallPreview,
+  type PluginCatalogEntry,
   type PluginDiagnostics,
   type PluginSummary,
 } from "../../services/plugins";
@@ -33,11 +37,14 @@ import {
 } from "../../services/pluginUi";
 
 const plugins = ref<PluginSummary[]>([]);
+const catalog = ref<PluginCatalogEntry[]>([]);
 const loading = ref(true);
 const error = ref("");
 const action = ref("");
 const selectedFile = ref<File | null>(null);
 const installFile = ref<File | null>(null);
+const installUrl = ref<string | null>(null);
+const remoteUrl = ref("");
 const installPreview = ref<PluginInstallPreview | null>(null);
 const previewing = ref(false);
 const installing = ref(false);
@@ -53,7 +60,9 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    plugins.value = await fetchPlugins();
+    const [installed, official] = await Promise.all([fetchPlugins(), fetchPluginCatalog()]);
+    plugins.value = installed;
+    catalog.value = official;
     if (selected.value) {
       selected.value =
         plugins.value.find(
@@ -92,6 +101,7 @@ async function previewSelected() {
   error.value = "";
   installMessage.value = "";
   try {
+    installUrl.value = null;
     installFile.value = selectedFile.value;
     installPreview.value = await previewPluginInstall(selectedFile.value);
   } catch (err) {
@@ -103,9 +113,29 @@ async function previewSelected() {
   }
 }
 
+async function previewRemoteUrl(url = remoteUrl.value) {
+  const normalized = url.trim();
+  if (!normalized) return;
+  previewing.value = true;
+  error.value = "";
+  installMessage.value = "";
+  try {
+    installFile.value = null;
+    installUrl.value = normalized;
+    installPreview.value = await previewPluginInstallUrl(normalized);
+  } catch (err) {
+    installUrl.value = null;
+    installPreview.value = null;
+    error.value = err instanceof Error ? err.message : "Plugin URL preview failed.";
+  } finally {
+    previewing.value = false;
+  }
+}
+
 function cancelInstall() {
   if (installing.value) return;
   installFile.value = null;
+  installUrl.value = null;
   installPreview.value = null;
 }
 
@@ -114,16 +144,16 @@ async function confirmInstall(approvedPermissions: string[]) {
   installing.value = true;
   error.value = "";
   try {
-    const result = await installPlugin(
-      installFile.value,
-      approvedPermissions,
-      installPreview.value.trust_status === "untrusted",
-    );
+    const result = installUrl.value
+      ? await installPluginFromUrl(installUrl.value, approvedPermissions, installPreview.value.digest, installPreview.value.trust_status === "untrusted")
+      : await installPlugin(installFile.value!, approvedPermissions, installPreview.value.trust_status === "untrusted");
     installMessage.value =
       `Installed ${result.name} v${result.version}; ` +
       `${result.permissions_granted} permission(s) granted and ${result.permissions_denied} denied.`;
     selectedFile.value = null;
     installFile.value = null;
+    installUrl.value = null;
+    remoteUrl.value = "";
     installPreview.value = null;
     await load();
   } catch (err) {
@@ -287,20 +317,31 @@ onMounted(load);
       access, then manage it here.
     </p>
     <div class="installer">
-      <label for="plugin-package">Plugin package (.utp)</label>
-      <input
-        id="plugin-package"
-        type="file"
-        accept=".utp,application/zip"
-        @change="selectFile"
-      />
-      <button
-        type="button"
-        :disabled="!selectedFile || previewing"
-        @click="previewSelected"
-      >
-        {{ previewing ? "Inspecting…" : "Review and install" }}
-      </button>
+      <div class="install-method">
+        <strong>Upload package</strong>
+        <input id="plugin-package" type="file" accept=".utp,.zip,application/zip" @change="selectFile" />
+        <button type="button" :disabled="!selectedFile || previewing" @click="previewSelected">
+          {{ previewing ? "Inspecting…" : "Review and install" }}
+        </button>
+      </div>
+      <div class="install-method">
+        <strong>Install from URL</strong>
+        <div class="url-row">
+          <input v-model="remoteUrl" type="url" placeholder="https://example.com/plugin.utp" @keyup.enter="previewRemoteUrl()" />
+          <button type="button" :disabled="!remoteUrl.trim() || previewing" @click="previewRemoteUrl()">Review URL</button>
+        </div>
+      </div>
+      <div class="catalogue">
+        <div class="catalogue-header">
+          <div><strong>Official plugins</strong><p class="muted">Packages published by the official plugin repository.</p></div>
+          <button type="button" :disabled="loading" @click="load">Refresh</button>
+        </div>
+        <div v-if="!catalog.length" class="muted">No official plugins are currently listed.</div>
+        <article v-for="entry in catalog" :key="entry.plugin_id" class="catalogue-entry">
+          <div><strong>{{ entry.name }}</strong><span>{{ entry.plugin_id }} · v{{ entry.version }}</span><p>{{ entry.description }}</p></div>
+          <button type="button" :disabled="previewing" @click="previewRemoteUrl(entry.url)">Install</button>
+        </article>
+      </div>
       <p v-if="installMessage" class="success">{{ installMessage }}</p>
     </div>
 
@@ -397,7 +438,7 @@ onMounted(load);
 <style scoped>
 .installer {
   display: grid;
-  gap: 8px;
+  gap: 16px;
   margin: 16px 0 24px;
   padding: 16px;
   border: 1px solid #2a2a2a;
@@ -405,6 +446,45 @@ onMounted(load);
 }
 .success {
   color: #8f8;
+}
+.install-method,
+.catalogue {
+  display: grid;
+  gap: 8px;
+}
+.url-row,
+.catalogue-header,
+.catalogue-entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.url-row input {
+  flex: 1;
+  min-width: 0;
+}
+.catalogue-header {
+  justify-content: space-between;
+}
+.catalogue-header p {
+  margin: 4px 0 0;
+}
+.catalogue-entry {
+  justify-content: space-between;
+  padding: 10px 0;
+  border-top: 1px solid #2a2a2a;
+}
+.catalogue-entry div {
+  min-width: 0;
+}
+.catalogue-entry span {
+  display: block;
+  color: #aaa;
+  font-size: 12px;
+}
+.catalogue-entry p {
+  margin: 4px 0 0;
+  color: #aaa;
 }
 code {
   font-family: monospace;

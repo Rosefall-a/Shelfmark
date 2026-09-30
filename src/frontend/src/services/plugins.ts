@@ -36,6 +36,13 @@ export interface PluginInstallPreview {
   permissions: PluginInstallPermission[];
   ui: { pages: string[]; menus: string[]; has_custom_frontend: boolean };
 }
+export interface PluginCatalogEntry {
+  plugin_id: string;
+  name: string;
+  description: string;
+  version: string;
+  url: string;
+}
 export interface PluginInstallResult {
   plugin_id: string;
   version: string;
@@ -151,6 +158,48 @@ export const installPlugin = async (
         ? `Plugin installation failed (${response.status}): ${detail}`
         : `Plugin installation failed (${response.status}).`,
     );
+  }
+  return response.json();
+};
+
+export const fetchPluginCatalog = () =>
+  request<PluginCatalogEntry[]>("/api/plugins/catalog");
+
+export const previewPluginInstallUrl = async (
+  url: string,
+): Promise<PluginInstallPreview & { source_url: string; download_filename: string; download_bytes: number }> => {
+  const response = await fetch("/api/plugins/install/preview-url", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(detail ? `Plugin URL preview failed (${response.status}): ${detail}` : `Plugin URL preview failed (${response.status}).`);
+  }
+  return response.json();
+};
+
+export const installPluginFromUrl = async (
+  url: string,
+  approvedPermissions: string[],
+  expectedDigest: string,
+  allowUntrusted = false,
+): Promise<PluginInstallResult> => {
+  const query = new URLSearchParams({ allow_untrusted: allowUntrusted ? "true" : "false" });
+  for (const permission of approvedPermissions) query.append("approved_permissions", permission);
+  const response = await fetch(`/api/plugins/install/url?${query.toString()}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, expected_digest: expectedDigest }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;
+    throw new Error(detail ? `Plugin installation failed (${response.status}): ${detail}` : `Plugin installation failed (${response.status}).`);
   }
   return response.json();
 };

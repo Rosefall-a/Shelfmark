@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import ipaddress
+import json
 import logging
 import mimetypes
 import os
+import socket
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 from typing import Any
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
 from starlette.datastructures import UploadFile as StarletteUploadFile
+
+import httpx
 
 from fastapi import (
     APIRouter,
@@ -62,7 +68,27 @@ class PluginSettingsIn(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class PluginInstallUrl(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    expected_digest: str | None = Field(default=None, min_length=64, max_length=64)
+
+
+class PluginCatalogEntry(BaseModel):
+    plugin_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=256)
+    description: str = Field(default="", max_length=2_000)
+    version: str = Field(min_length=1, max_length=64)
+    url: str = Field(min_length=1, max_length=2048)
+
+
 _MAX_PLUGIN_PACKAGE_BYTES = 64 * 1024 * 1024
+_PLUGIN_CATALOG_URL = os.getenv(
+    "PLUGIN_CATALOG_URL",
+    "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json",
+)
+_REMOTE_FETCH_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+_MAX_REMOTE_REDIRECTS = 3
+
 _PLUGIN_FRONTEND_CSP = (
     "default-src 'self'; script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; "
@@ -89,8 +115,8 @@ def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
 
 async def _store_plugin_upload(file: StarletteUploadFile, prefix: str) -> tuple[Path, str, int]:
     filename = file.filename or ""
-    if not filename.lower().endswith(".utp"):
-        raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
+    if Path(filename).suffix.lower() not in {".utp", ".zip"}:
+        raise HTTPException(status_code=400, detail="Plugin packages must use the .utp or .zip extension.")
     with tempfile.NamedTemporaryFile(prefix=prefix, suffix=".utp", delete=False) as handle:
         path = Path(handle.name)
         total = 0
@@ -108,6 +134,87 @@ async def _store_plugin_upload(file: StarletteUploadFile, prefix: str) -> tuple[
             detail="Plugin package exceeds the 64 MiB upload limit.",
         )
     return path, filename, total
+
+
+def _validate_remote_url(raw_url: str) -> str:
+    """Allow only public HTTP(S) destinations and standard web ports."""
+    try:
+        parsed = urlparse(raw_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid plugin download URL.") from exc
+    if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
+        raise HTTPException(status_code=400, detail="Plugin download URLs must use HTTP(S) without embedded credentials.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Plugin download URL has no hostname.")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Plugin download URL has an invalid port.") from exc
+    if port is not None and port not in {80, 443}:
+        raise HTTPException(status_code=400, detail="Plugin download URLs may only use ports 80 and 443.")
+    try:
+        addresses = {
+            ipaddress.ip_address(info[4][0])
+            for info in socket.getaddrinfo(
+                hostname, port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM
+            )
+        }
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail="Plugin download hostname could not be resolved.") from exc
+    if not addresses or not all(address.is_global for address in addresses):
+        raise HTTPException(status_code=400, detail="Plugin download URL must resolve only to public internet addresses.")
+    return parsed.geturl()
+
+
+async def _download_remote_file(raw_url: str, *, json_document: bool = False) -> tuple[Path, str, int]:
+    """Download a bounded public resource without following unvalidated redirects."""
+    url = _validate_remote_url(raw_url)
+    for _ in range(_MAX_REMOTE_REDIRECTS + 1):
+        async with httpx.AsyncClient(
+            timeout=_REMOTE_FETCH_TIMEOUT,
+            follow_redirects=False,
+            headers={"User-Agent": "UnnamedTrackingApp-PluginManager/1"},
+        ) as client:
+            try:
+                response = await client.get(url)
+            except httpx.HTTPError as exc:
+                raise HTTPException(status_code=502, detail="Plugin download failed.") from exc
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if not location:
+                raise HTTPException(status_code=502, detail="Plugin download redirect has no destination.")
+            url = _validate_remote_url(urljoin(url, location))
+            continue
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Plugin download returned HTTP {response.status_code}.")
+        data = response.content
+        max_bytes = 1 * 1024 * 1024 if json_document else _MAX_PLUGIN_PACKAGE_BYTES
+        if len(data) > max_bytes:
+            raise HTTPException(status_code=413, detail="Remote plugin resource exceeds the allowed size.")
+        suffix = ".json" if json_document else ".utp"
+        filename = Path(urlparse(url).path).name or f"plugin-download{suffix}"
+        if not json_document and Path(filename).suffix.lower() not in {".utp", ".zip"}:
+            filename = f"{filename}.utp"
+        with tempfile.NamedTemporaryFile(prefix="plugin-remote-", suffix=suffix, delete=False) as handle:
+            handle.write(data)
+            return Path(handle.name), filename, len(data)
+    raise HTTPException(status_code=502, detail="Plugin download followed too many redirects.")
+
+
+def _catalog_entries(payload: Any) -> list[dict[str, str]]:
+    """Validate the small, host-consumed catalogue contract."""
+    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("plugins"), list):
+        raise HTTPException(status_code=502, detail="Official plugin catalogue is invalid.")
+    entries: list[dict[str, str]] = []
+    for raw_entry in payload["plugins"]:
+        try:
+            entry = PluginCatalogEntry.model_validate(raw_entry)
+            _validate_remote_url(entry.url)
+        except (ValidationError, HTTPException) as exc:
+            raise HTTPException(status_code=502, detail="Official plugin catalogue contains an invalid entry.") from exc
+        entries.append(entry.model_dump())
+    return entries
 
 
 def _inspect_install_candidate(path: Path) -> tuple[Any, str, str | None]:
@@ -188,6 +295,73 @@ async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> S
             if isinstance(value, StarletteUploadFile):
                 return value
     raise HTTPException(status_code=400, detail={"code": "plugin_file_missing", "message": "Upload a .utp package as a multipart file."})
+
+
+@router.get("/catalog", response_model=list[PluginCatalogEntry])
+async def plugin_catalog(admin: User = Depends(get_current_admin)) -> list[PluginCatalogEntry]:
+    """Return the current official plugin catalogue."""
+    del admin
+    path: Path | None = None
+    try:
+        path, _, _ = await _download_remote_file(_PLUGIN_CATALOG_URL, json_document=True)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail="Official plugin catalogue could not be read.") from exc
+        return [PluginCatalogEntry.model_validate(entry) for entry in _catalog_entries(payload)]
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+
+@router.post("/install/preview-url")
+async def preview_plugin_install_url(request: PluginInstallUrl, admin: User = Depends(get_current_admin)) -> dict[str, Any]:
+    """Download and statically inspect a remote .utp/.zip package."""
+    del admin
+    path: Path | None = None
+    try:
+        path, filename, total = await _download_remote_file(request.url)
+        verified, trust_status, trust_warning = _inspect_install_candidate(path)
+        return {
+            **_install_preview(verified, trust_status, trust_warning),
+            "source_url": request.url,
+            "download_filename": filename,
+            "download_bytes": total,
+        }
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+
+@router.post("/install/url", status_code=201)
+async def install_plugin_url(
+    request: PluginInstallUrl,
+    allow_untrusted: bool = False,
+    approved_permissions: list[str] | None = Query(default=None),
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Download a remote package and send it through the same install/consent path."""
+    path: Path | None = None
+    upload: StarletteUploadFile | None = None
+    try:
+        path, filename, _ = await _download_remote_file(request.url)
+        verified, _, _ = _inspect_install_candidate(path)
+        if request.expected_digest and verified.manifest.integrity.sha256.lower() != request.expected_digest.lower():
+            raise HTTPException(status_code=409, detail="The remote plugin changed after preview; review it again before installing.")
+        upload = StarletteUploadFile(path.open("rb"), filename=filename)
+        return await install_plugin(
+            upload,
+            allow_untrusted=allow_untrusted,
+            approved_permissions=approved_permissions,
+            admin=admin,
+            db=db,
+        )
+    finally:
+        if upload is not None:
+            await upload.close()
+        if path is not None:
+            path.unlink(missing_ok=True)
 
 
 @router.post("/install/preview")
