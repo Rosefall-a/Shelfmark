@@ -13,7 +13,9 @@ Plugin API v1 maps every gateway method to exactly one capability. The runtime a
 | `notification_providers.register` | `notification_providers.register`, `notification_providers.unregister` | Registers a provider ID namespaced below the plugin ID and one declared action ID. |
 | `notification_providers.deliver` | Core invokes the registered action | Allows minimized eligible delivery work after core preference/grant checks. It does not allow querying notification tables or controlling retries. |
 
-Existing families include `users.read`, `users.profile.read`, `games.read`, `games.write`, `media.read`, `media.write`, `events.subscribe`, `plugin.storage`, and `plugin.settings`. `home.replace` and `app.global` are host-owned UI extension slots. A plugin can contribute declarative UI to those slots but cannot mutate Vue components or the DOM. External navigation actions must explicitly declare `external_navigation` and are limited to HTTP(S) URLs. Only methods present in the gateway dispatch table are callable; presenting a different capability string does not change the method's authorization requirement.
+Existing families include `users.read`, `users.profile.read`, `games.read`, `games.write`, `media.read`, `media.write`, `events.subscribe`, `plugin.storage`, and `plugin.settings`. `home.replace` and `app.global` are host-owned UI extension slots. A plugin can contribute declarative UI to those slots but cannot mutate Vue components or the DOM. External navigation actions must explicitly declare `external_navigation` and are limited to HTTP(S) URLs. The `api.full` capability bypasses individual method capability matching, but still uses the authenticated gateway and its DTO/error boundaries. It is never implied by a scoped grant.
+
+Only methods present in the gateway dispatch table are callable; presenting a different capability string does not change the method's authorization requirement.
 
 ## Errors and action results
 

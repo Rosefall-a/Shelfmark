@@ -23,11 +23,14 @@ watch(
   { immediate: true },
 );
 
+const fullApiRequested = computed(() => props.preview.permissions.some((permission) => permission.capability === "api.full"));
+
 const canInstall = computed(
   () => props.preview.trust_status === "trusted" || trustAccepted.value,
 );
 
 function risk(capability: string): "High" | "Medium" | "Low" {
+  if (capability === "api.full") return "High";
   if (capability.endsWith(".write") || capability === "notifications.send") {
     return "High";
   }
@@ -113,6 +116,11 @@ function close() {
             <input v-model="trustAccepted" type="checkbox" />
             I understand this package is untrusted and still want to install it.
           </label>
+        </div>
+
+        <div v-if="fullApiRequested" class="warning full-api-warning" role="alert">
+          <strong>Full API access is extremely broad.</strong>
+          <p>Full API access allows plugins to read and modify all user data. Only enable this for plugins you trust. It is disabled unless you explicitly select this permission.</p>
         </div>
 
         <section
@@ -308,6 +316,10 @@ small {
   border: 1px solid #8b3434;
   border-radius: 10px;
   background: #2d1515;
+}
+.warning.full-api-warning {
+  border-color: #9b5b1b;
+  background: #321f0e;
 }
 .warning p {
   margin: 6px 0 10px;
