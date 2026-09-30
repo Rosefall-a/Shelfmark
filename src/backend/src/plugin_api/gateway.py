@@ -41,7 +41,7 @@ from src.plugin_api.grants import has_capability_grant
 
 _DATA_ROOT = Path("/data/users")
 _MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
-_TEXT_DOCUMENT_EXTENSIONS = {".txt", ".md", ".markdown", ".csv", ".log", ".rst"}
+_TEXT_DOCUMENT_EXTENSIONS = {".txt", ".md", ".markdown", ".csv", ".log", ".rst", ".html", ".htm", ".xhtml"}
 _METHOD_CAPABILITIES = {
     "games.list": "games.read",
     "games.metadata.search": "games.read",
@@ -98,7 +98,7 @@ def _document_media_type(path: Path) -> str:
         raise ValueError("text document is not valid UTF-8") from exc
     if any(ord(character) < 32 and character not in "\n\r\t" for character in text):
         raise ValueError("text document contains binary control characters")
-    return "text/plain"
+    return "text/html" if path.suffix.lower() in {".html", ".htm", ".xhtml"} else "text/plain"
 
 
 def _document_dto(game: Game, item: GameFileItem, path: Path) -> DocumentRepresentation:
