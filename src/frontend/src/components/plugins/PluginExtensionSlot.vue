@@ -39,7 +39,7 @@ async function run(pluginId: string, action: UiAction, values: UiValues) {
   );
   if (!response.ok) throw new Error("Plugin action could not be completed.");
   const result = (await response.json()) as { redirect_url?: unknown };
-  if (action.external_navigation && typeof result.redirect_url === "string" && /^https?:\\/\\//.test(result.redirect_url)) {
+  if (action.external_navigation && typeof result.redirect_url === "string" && /^https?:\/\//.test(result.redirect_url)) {
     window.location.assign(result.redirect_url);
   }
 }
