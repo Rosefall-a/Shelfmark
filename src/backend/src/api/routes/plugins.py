@@ -173,7 +173,6 @@ def _install_preview(verified: Any, trust_status: str, trust_warning: str | None
     }
 
 
-@router.post("/install/preview")
 async def _resolve_plugin_upload(request: Request | UploadFile, file: UploadFile | None) -> UploadFile:
     """Resolve HTTP uploads while remaining compatible with direct route tests."""
     if isinstance(request, UploadFile):
