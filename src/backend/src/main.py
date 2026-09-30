@@ -28,6 +28,7 @@ from src.api.routes import (
     notification_providers,
     notifications,
     preferences,
+    session_manager,
     movies,
     settings,
     stats,
@@ -45,6 +46,7 @@ from src.api.routes.utils.misc import router as misc_router
 from src.core.auth import ensure_primary_user
 from src.core.config import settings as app_settings
 from src.core.provider_credentials import apply_deployment_provider_credentials
+from src.core.session_manager import purge_old_sessions
 from src.database.session import SessionLocal
 from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
@@ -91,6 +93,7 @@ app.include_router(media_extras.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
 app.include_router(notification_providers.router)
+app.include_router(session_manager.router)
 app.include_router(media_stats.router)
 app.include_router(preferences.router)
 app.include_router(calendar_events.router)
@@ -122,6 +125,20 @@ async def start_trash_sweep() -> None:
 @app.on_event("startup")
 async def start_backup_loop() -> None:
     asyncio.create_task(run_backup_loop())
+
+
+@app.on_event("startup")
+async def start_session_retention_loop() -> None:
+    async def loop() -> None:
+        while True:
+            await asyncio.sleep(24 * 60 * 60)
+            try:
+                async with SessionLocal() as db:
+                    await purge_old_sessions(db)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Session retention cleanup failed")
+    asyncio.create_task(loop())
 
 
 @app.on_event("startup")

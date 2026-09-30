@@ -468,6 +468,9 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         heading="Max sizes",
         default=2000,
     ),
+    ConfigSpec("GEOIP_DATABASE_PATH", "general", ConfigSource.ENV, label="GeoIP database path", default="/data/GeoIP.mmdb"),
+    ConfigSpec("GEOIP_COUNTRY_DATABASE_PATH", "general", ConfigSource.ENV, label="GeoIP country database path", default="/data/GeoIP-Country.mmdb"),
+    ConfigSpec("GEOIP_ASN_DATABASE_PATH", "general", ConfigSource.ENV, label="GeoIP network database path", default="/data/GeoIP-ASN.mmdb"),
     ConfigSpec(
         "VITE_USE_MOCK_DATA",
         "general",
