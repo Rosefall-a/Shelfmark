@@ -41,6 +41,7 @@ export interface UiAction {
   handler?: string;
   capability?: { name: string; version: number };
   confirmation?: string;
+  external_navigation?: boolean;
 }
 export interface UiTableColumn {
   id: string;
@@ -81,6 +82,8 @@ export interface UiPage {
 export const HOST_EXTENSION_SLOTS = [
   "home.after-widgets",
   "game.overview.after-header",
+  "app.global",
+  "home.replace",
 ] as const;
 export type HostExtensionSlot = (typeof HOST_EXTENSION_SLOTS)[number];
 export interface UiExtension {
