@@ -10,7 +10,7 @@ import {
   previewPluginInstall,
   UntrustedPluginError,
   fetchPluginCatalog,
-    fetchPluginCatalogFromSource,
+  fetchPluginCatalogFromSource,
   previewPluginInstallUrl,
   installPluginFromUrl,
 } from "../services/plugins";
