@@ -196,6 +196,10 @@ export const installPluginFromUrl = async (
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url, expected_digest: expectedDigest }),
   });
+  if (response.status === 409) {
+    const body = await response.json().catch(() => null);
+    if (body?.detail?.code === "untrusted_plugin") throw new UntrustedPluginError(body.detail);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const detail = typeof body?.detail === "object" ? body.detail.message : body?.detail;

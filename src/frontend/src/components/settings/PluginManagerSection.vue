@@ -60,9 +60,12 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [installed, official] = await Promise.all([fetchPlugins(), fetchPluginCatalog()]);
-    plugins.value = installed;
-    catalog.value = official;
+    plugins.value = await fetchPlugins();
+    try {
+      catalog.value = await fetchPluginCatalog();
+    } catch {
+      catalog.value = [];
+    }
     if (selected.value) {
       selected.value =
         plugins.value.find(
