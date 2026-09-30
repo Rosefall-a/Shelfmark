@@ -87,7 +87,7 @@ def _runtime_request_error(exc: PluginRuntimeRequestError) -> HTTPException:
     return HTTPException(status_code=422, detail=str(exc))
 
 
-async def _store_plugin_upload(file: UploadFile, prefix: str) -> tuple[Path, str, int]:
+async def _store_plugin_upload(file: StarletteUploadFile, prefix: str) -> tuple[Path, str, int]:
     filename = file.filename or ""
     if not filename.lower().endswith(".utp"):
         raise HTTPException(status_code=400, detail="Plugin packages must use the .utp extension.")
@@ -199,7 +199,7 @@ async def preview_plugin_install(
     """Statically inspect an upload for consent without installing or executing it."""
     del admin
     path: Path | None = None
-    resolved_file: UploadFile | None = None
+    resolved_file: StarletteUploadFile | None = None
     try:
         resolved_file = await _resolve_plugin_upload(request, file)
         path, filename, total = await _store_plugin_upload(resolved_file, "plugin-preview-")
