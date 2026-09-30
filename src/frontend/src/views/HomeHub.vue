@@ -990,3 +990,4 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
       </div>
     </div>
   </main>
+</template>
