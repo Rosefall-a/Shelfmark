@@ -510,6 +510,25 @@ async def install_plugin(
         await file.close()
 
 
+@router.get("/catalog", response_model=list[PluginCatalogEntry])
+async def plugin_catalog(
+    source: str | None = Query(default=None, min_length=1, max_length=2048),
+    user: User = Depends(get_current_user),
+) -> list[PluginCatalogEntry]:
+    del user
+    catalog_url = source or _PLUGIN_CATALOG_URL
+    path: Path | None = None
+    try:
+        path, _, _ = await _download_remote_file(catalog_url, json_document=True)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return [PluginCatalogEntry.model_validate(entry) for entry in _catalog_entries(payload)]
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail="Plugin catalogue is not valid JSON.") from exc
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+
 @router.get("", response_model=list[dict])
 async def list_plugins(user: User = Depends(get_current_user)) -> list[dict]:
     del user

@@ -301,3 +301,26 @@ def test_remote_url_validation_rejects_private_destinations() -> None:
     with pytest.raises(Exception) as exc:
         plugins._validate_remote_url("http://127.0.0.1/plugin.utp")
     assert getattr(exc.value, "status_code", None) == 400
+
+
+def test_catalog_entries_accept_explicit_source(monkeypatch) -> None:
+    payload = {"version": 1, "plugins": [{
+        "plugin_id": "example.catalog",
+        "name": "Catalogue Example",
+        "description": "Demo",
+        "version": "1.0.0",
+        "url": "https://example.com/example.utp",
+    }]}
+    import pathlib
+    async def fake_download(url, *, json_document=False):
+        assert json_document is True
+        handle = __import__("tempfile").NamedTemporaryFile(delete=False)
+        handle.write(json.dumps(payload).encode("utf-8"))
+        handle.close()
+        return pathlib.Path(handle.name), "list.json", len(json.dumps(payload))
+    monkeypatch.setattr(plugins, "_download_remote_file", fake_download)
+    result = asyncio.run(plugins.plugin_catalog(
+        source="https://example.com/list.json",
+        user=object(),
+    ))
+    assert result[0].plugin_id == "example.catalog"

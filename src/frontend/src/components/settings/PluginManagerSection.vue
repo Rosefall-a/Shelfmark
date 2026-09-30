@@ -54,7 +54,7 @@ const pluginUi = ref<PluginUiDocument | null>(null);
 const pluginDiagnostics = ref<PluginDiagnostics | null>(null);
 const pluginGrants = ref<PluginPermissionGrant[]>([]);
 const pluginRequests = ref<PluginPermissionRequest[]>([]);
-const popupLoading = ref(false);
+const popupLoading = ref(false);\nconst installOpen = ref(false);\nconst catalogEndpoints = ref<string[]>([]);\nconst enabledCatalogEndpoints = ref<string[]>([]);\nconst newCatalogEndpoint = ref("");\nconst officialCatalogUrl = "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json";\n\nfunction loadCatalogEndpoints() {\n  try {\n    const stored = JSON.parse(localStorage.getItem("plugin-catalog-endpoints") || "{}");\n    const endpoints = Array.isArray(stored) ? stored : stored?.endpoints;\n    if (Array.isArray(endpoints)) {\n      catalogEndpoints.value = [officialCatalogUrl, ...endpoints.filter((value: unknown): value is string => typeof value === "string" && value.trim() && value !== officialCatalogUrl)];\n      const enabled = Array.isArray(stored?.enabled) ? stored.enabled : catalogEndpoints.value;\n      enabledCatalogEndpoints.value = [...new Set([officialCatalogUrl, ...enabled])].filter((url) => catalogEndpoints.value.includes(url));\n      return;\n    }\n  } catch {\n    // Fall back to the official source.\n  }\n  catalogEndpoints.value = [officialCatalogUrl];\n  enabledCatalogEndpoints.value = [officialCatalogUrl];\n}\n\nfunction saveCatalogEndpoints() {\n  localStorage.setItem("plugin-catalog-endpoints", JSON.stringify({ endpoints: catalogEndpoints.value.filter((url) => url !== officialCatalogUrl), enabled: enabledCatalogEndpoints.value }));\n}\n\nfunction addCatalogEndpoint() {\n  const url = newCatalogEndpoint.value.trim();\n  if (!/^https?:\\/\\//i.test(url) || catalogEndpoints.value.includes(url)) return;\n  catalogEndpoints.value.push(url);\n  enabledCatalogEndpoints.value.push(url);\n  newCatalogEndpoint.value = "";\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction removeCatalogEndpoint(url: string) {\n  if (url === officialCatalogUrl) return;\n  catalogEndpoints.value = catalogEndpoints.value.filter((item) => item !== url);\n  enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction toggleCatalogEndpoint(url: string, enabled: boolean) {\n  if (enabled && !enabledCatalogEndpoints.value.includes(url)) enabledCatalogEndpoints.value.push(url);\n  if (!enabled) enabledCatalogEndpoints.value = enabledCatalogEndpoints.value.filter((item) => item !== url);\n  saveCatalogEndpoints();\n  void loadCatalogues();\n}\n\nasync function loadCatalogues() {\n  const results = await Promise.all(enabledCatalogEndpoints.value.map((url) => fetchPluginCatalog(url).catch(() => [])));\n  const seen = new Set<string>();\n  catalog.value = results.flat().filter((entry) => {\n    if (seen.has(entry.plugin_id)) return false;\n    seen.add(entry.plugin_id);\n    return true;\n  });\n}\n\nfunction openInstaller() {\n  installOpen.value = true;\n  loadCatalogEndpoints();\n  void loadCatalogues();\n}\n\nfunction closeInstaller() {\n  if (installing.value) return;\n  installOpen.value = false;\n  newCatalogEndpoint.value = "";\n}
 
 async function load() {
   loading.value = true;
@@ -135,7 +135,7 @@ async function previewRemoteUrl(url = remoteUrl.value) {
   }
 }
 
-function cancelInstall() {
+async function previewCatalogEntry(url: string) {\n  installOpen.value = false;\n  await previewRemoteUrl(url);\n}\n\nfunction cancelInstall() {
   if (installing.value) return;
   installFile.value = null;
   installUrl.value = null;
@@ -309,7 +309,7 @@ async function removePlugin(plugin: PluginSummary) {
   }
 }
 
-onMounted(load);
+onMounted(() => {\n  loadCatalogEndpoints();\n  void load();\n});
 </script>
 
 <template>
@@ -319,35 +319,43 @@ onMounted(load);
       Install a <code>.utp</code> package, review its identity and requested
       access, then manage it here.
     </p>
-    <div class="installer">
-      <div class="install-method">
-        <strong>Upload package</strong>
-        <input id="plugin-package" type="file" accept=".utp,.zip,application/zip" @change="selectFile" />
-        <button type="button" :disabled="!selectedFile || previewing" @click="previewSelected">
-          {{ previewing ? "Inspecting…" : "Review and install" }}
-        </button>
-      </div>
-      <div class="install-method">
-        <strong>Install from URL</strong>
-        <div class="url-row">
-          <input v-model="remoteUrl" type="url" placeholder="https://example.com/plugin.utp" @keyup.enter="previewRemoteUrl()" />
-          <button type="button" :disabled="!remoteUrl.trim() || previewing" @click="previewRemoteUrl()">Review URL</button>
-        </div>
-      </div>
-      <div class="catalogue">
-        <div class="catalogue-header">
-          <div><strong>Official plugins</strong><p class="muted">Packages published by the official plugin repository.</p></div>
-          <button type="button" :disabled="loading" @click="load">Refresh</button>
-        </div>
-        <div v-if="!catalog.length" class="muted">No official plugins are currently listed.</div>
-        <article v-for="entry in catalog" :key="entry.plugin_id" class="catalogue-entry">
-          <div><strong>{{ entry.name }}</strong><span>{{ entry.plugin_id }} · v{{ entry.version }}</span><p>{{ entry.description }}</p></div>
-          <button type="button" :disabled="previewing" @click="previewRemoteUrl(entry.url)">Install</button>
-        </article>
-      </div>
+    <div class="installer-launcher">
+      <button type="button" class="primary install-launcher" @click="openInstaller">Install a plugin</button>
+      <p class="muted">Add a package, install from a URL, or browse enabled plugin catalogues.</p>
       <p v-if="installMessage" class="success">{{ installMessage }}</p>
     </div>
-
+    <Teleport to="body">
+      <div v-if="installOpen" class="modal-backdrop" @click.self="closeInstaller">
+        <section class="installer-dialog" role="dialog" aria-modal="true" aria-labelledby="plugin-installer-title">
+          <header class="dialog-header">
+            <div><p class="eyebrow">Plugin manager</p><h2 id="plugin-installer-title">Install a plugin</h2><p class="muted">Choose a package, URL, or enabled catalogue.</p></div>
+            <button type="button" :disabled="installing" @click="closeInstaller">Close</button>
+          </header>
+          <div class="install-method">
+            <strong>Upload package</strong>
+            <input id="plugin-package" type="file" accept=".utp,.zip,application/zip" @change="selectFile" />
+            <button type="button" :disabled="!selectedFile || previewing" @click="previewSelected">{{ previewing ? "Inspecting…" : "Review package" }}</button>
+          </div>
+          <div class="install-method">
+            <strong>Install from URL</strong>
+            <div class="url-row"><input v-model="remoteUrl" type="url" placeholder="https://example.com/plugin.utp" @keyup.enter="previewRemoteUrl()" /><button type="button" :disabled="!remoteUrl.trim() || previewing" @click="previewRemoteUrl()">Review URL</button></div>
+          </div>
+          <section class="catalogue">
+            <div class="catalogue-header"><div><strong>Plugin catalogues</strong><p class="muted">The official catalogue is enabled by default. Add other trusted catalogue URLs as needed.</p></div></div>
+            <div v-for="endpoint in catalogEndpoints" :key="endpoint" class="endpoint-row">
+              <label><input type="checkbox" :checked="enabledCatalogEndpoints.includes(endpoint)" @change="toggleCatalogEndpoint(endpoint, ($event.target as HTMLInputElement).checked)" /> {{ endpoint === officialCatalogUrl ? "Official" : endpoint }}</label>
+              <button v-if="endpoint !== officialCatalogUrl" type="button" class="danger" @click="removeCatalogEndpoint(endpoint)">Remove</button>
+            </div>
+            <div class="endpoint-add"><input v-model="newCatalogEndpoint" type="url" placeholder="https://example.com/list.json" @keyup.enter="addCatalogEndpoint" /><button type="button" :disabled="!newCatalogEndpoint.trim()" @click="addCatalogEndpoint">Add catalogue</button></div>
+          </section>
+          <section class="catalogue">
+            <div class="catalogue-header"><div><strong>Available plugins</strong><p class="muted">Packages from all enabled catalogues are shown together.</p></div><button type="button" :disabled="previewing" @click="loadCatalogues">Refresh</button></div>
+            <div v-if="!catalog.length" class="muted">No plugins are currently listed by the enabled catalogues.</div>
+            <article v-for="entry in catalog" :key="entry.plugin_id" class="catalogue-entry"><div><strong>{{ entry.name }}</strong><span>{{ entry.plugin_id }} · v{{ entry.version }}</span><p>{{ entry.description }}</p></div><button type="button" :disabled="previewing" @click="previewCatalogEntry(entry.url)">Install</button></article>
+          </section>
+        </section>
+      </div>
+    </Teleport>
     <p v-if="loading">Loading plugins…</p>
     <p v-else-if="error" class="error">{{ error }}</p>
     <p v-else-if="!plugins.length" class="muted">No plugins are installed.</p>
@@ -439,7 +447,7 @@ onMounted(load);
 </template>
 
 <style scoped>
-.installer {
+.installer-launcher {
   display: grid;
   gap: 16px;
   margin: 16px 0 24px;
