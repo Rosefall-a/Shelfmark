@@ -167,6 +167,11 @@ export const fetchPluginCatalog = (source?: string) => {
   return request<PluginCatalogEntry[]>(`/api/plugins/catalog${query}`);
 };
 
+export const fetchPluginCatalogFromSource = (source: string) =>
+  request<PluginCatalogEntry[]>(
+    `/api/plugins/catalog?source=${encodeURIComponent(source)}`,
+  );
+
 export const previewPluginInstallUrl = async (
   url: string,
 ): Promise<PluginInstallPreview & { source_url: string; download_filename: string; download_bytes: number }> => {
