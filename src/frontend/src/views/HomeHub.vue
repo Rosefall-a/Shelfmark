@@ -414,8 +414,7 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 </script>
 
 <template>
-  <template>
-    <PluginExtensionSlot v-if="hasHomeOverride" slot-id="home.replace" :context="{ host_page: 'home' }" />
+  <PluginExtensionSlot v-if="hasHomeOverride" slot-id="home.replace" :context="{ host_page: 'home' }" />
     <main v-else class="home">
     <div
       v-for="(layer, i) in bgLayers"
@@ -991,4 +990,3 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
       </div>
     </div>
   </main>
-</template>
