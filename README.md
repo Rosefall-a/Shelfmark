@@ -1,29 +1,42 @@
+# Wiki page https://rosefall-a.github.io/unnamed_tracking_app/
+
+
 # Running the API
 
-docker compose down -v
-docker compose up -d --build
+docker compose down -v 
+docker compose up --build
+docker compose -f example-docker-compose.yaml up --build
+
+Use -v on the down to remove database and reconfigure app, use the bottom compose for production container, and standard for dev containers.
+
 docker compose run --rm backend
 
-# Backend checks
+
+# checks
+## Backend checks
 cd src/backend
 mypy --config-file pyproject.toml src
 pylint --rcfile=pyproject.toml src
 
-# Backend tests
+## Backend tests
 The tests use the running database, so start the stack first.
 
 ```bash
 docker compose exec -e PYTHONPATH=/app backend python -m pytest tests -q
 ```
 
-# Frontend checks
+## Frontend checks
 cd /src/frontend
 npm run lint
 npm run format # if this fails run npm run format:fix
 npm run typecheck
 npx vitest run
 
-## Recommended VS Code extensions
+# running the wiki
+run `mkdocs serve -a 0.0.0.0:999` inside the wiki folder (requires sudo on linux)
+
+
+# Recommended VS Code extensions
 - Ruff by charliermarsh
 
 # Database updates

@@ -138,7 +138,7 @@ export async function importMal(
   ).json();
 }
 
-export type ImportSource = "mal" | "letterboxd" | "imdb";
+export type ImportSource = "mal" | "letterboxd" | "imdb" | "yamtrack";
 
 // Sites other than MyAnimeList (Letterboxd, IMDb): the same review-then-import
 // flow, for movies and TV shows.
@@ -189,6 +189,36 @@ export async function restoreMedia(file: File): Promise<MediaRestoreResult> {
   const body = new FormData();
   body.append("file", file);
   const response = await fetch("/api/import/media", {
+    method: "POST",
+    credentials: "include",
+    body,
+  });
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      /* keep the status line */
+    }
+    throw new Error(detail);
+  }
+  return await response.json();
+}
+
+export interface YamtrackImportResult {
+  created: Record<string, number>;
+  skipped: Record<string, number>;
+  total_rows: number;
+  total_items: number;
+  seasons_created: number;
+  episodes_created: number;
+  errors: string[];
+}
+
+export async function importYamtrack(file: File): Promise<YamtrackImportResult> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch("/api/import/yamtrack", {
     method: "POST",
     credentials: "include",
     body,

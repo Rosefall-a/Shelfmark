@@ -3,11 +3,6 @@ set -e
 
 echo "Starting application..."
 
-if [ -z "${SECRET_KEY:-}" ]; then
-  echo "Configuration error: SECRET_KEY is required. Copy example.env to .env and generate the documented Fernet key." >&2
-  exit 1
-fi
-
 echo "Applying database migrations..."
 MAX_RETRIES=30
 RETRY_DELAY=2

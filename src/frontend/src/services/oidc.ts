@@ -3,6 +3,8 @@ export interface OidcLoginProvider {
   slug: string;
   button_text: string;
   button_image_url: string | null;
+  button_color: string;
+  autostart_enabled: boolean;
 }
 export interface OidcLoginStatus {
   enabled: boolean;
@@ -31,10 +33,16 @@ export async function oidcLoginStatus(): Promise<OidcLoginStatus> {
       result.default_login_method === "sso" ? "sso" : "local",
     login_button_text:
       typeof result.login_button_text === "string" &&
-      result.login_button_text.trim()
+        result.login_button_text.trim()
         ? result.login_button_text.trim()
         : "Continue with SSO",
-    providers: Array.isArray(result.providers) ? result.providers : [],
+    providers: Array.isArray(result.providers) ? result.providers.map(
+      (provider: OidcLoginProvider) => ({
+        ...provider,
+        button_color: typeof provider.button_color === "string"
+          ? provider.button_color : "#d68a34",
+        autostart_enabled: provider.autostart_enabled !== false
+      })) : []
   };
 }
 export async function oidcEnabled(): Promise<boolean> {

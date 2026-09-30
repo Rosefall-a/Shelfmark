@@ -1,11 +1,14 @@
 """OpenID Connect helpers."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
+
 from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, Request
 from starlette.responses import RedirectResponse
+
 from src.core.config import settings
 
 oauth = OAuth()
@@ -67,7 +70,17 @@ def register_oidc_provider(config: OidcConfig, client_name: str = "oidc") -> Non
 
 def callback_url(request: Request, config: OidcConfig) -> str:
     if config.redirect_uri:
-        return config.redirect_uri
+        configured = config.redirect_uri.strip()
+        # A provider migrated from the old single-provider configuration may
+        # still contain the legacy callback path. Named providers have their
+        # own callback route, so transparently upgrade that old path while
+        # preserving the configured scheme/host/port.
+        if config.slug != "default":
+            parts = urlsplit(configured)
+            if parts.path.rstrip("/") == "/api/auth/oidc/callback":
+                parts = parts._replace(path=f"/api/auth/oidc/callback/{config.slug}")
+                return urlunsplit(parts)
+        return configured
     return (
         str(request.url_for("oidc_callback_provider", provider_slug=config.slug))
         if config.slug != "default"

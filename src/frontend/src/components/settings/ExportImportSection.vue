@@ -11,6 +11,7 @@ import {
   importList,
   restoreMedia,
   fetchMediaCsv,
+  importYamtrack,
 } from "../../services/exportImport";
 import type {
   ImportResult,
@@ -19,6 +20,7 @@ import type {
   MalPreview,
   ImportSource,
   MediaRestoreResult,
+  YamtrackImportResult,
 } from "../../services/exportImport";
 
 const backupStatus = ref<BackupStatus | null>(null);
@@ -112,6 +114,13 @@ const SOURCES: {
     what: "movies and TV shows",
     how: "Use an IMDb ratings or watchlist export (the CSV from your list's Export button). Rated titles come in as watched with your rating, unrated ones as plan to watch. Episodes and other kinds are skipped.",
   },
+  {
+    value: "yamtrack",
+    label: "Yamtrack",
+    accept: ".csv,text/csv",
+    what: "movies, TV shows and anime",
+    how: "Use Yamtrack's CSV export. Movies, TV shows and anime are grouped by Yamtrack's provider ID, with seasons and watched episodes restored under the correct parent.",
+  },
 ];
 const source = ref<ImportSource>("mal");
 const sourceInfo = computed(
@@ -122,7 +131,13 @@ function changeSource(value: string) {
   cancelMal();
   malResult.value = null;
   malError.value = null;
+  yamtrackResult.value = null;
+  yamtrackError.value = null;
 }
+
+const yamtrackBusy = ref(false);
+const yamtrackError = ref<string | null>(null);
+const yamtrackResult = ref<YamtrackImportResult | null>(null);
 
 const malBusy = ref(false);
 const malError = ref<string | null>(null);
@@ -143,6 +158,10 @@ async function onMalSelected(e: Event) {
   malPreview.value = null;
   useMal.value = new Set();
   try {
+    if (source.value === "yamtrack") {
+      yamtrackResult.value = await importYamtrack(file);
+      return;
+    }
     malPreview.value =
       source.value === "mal"
         ? await previewMal(file)
@@ -177,15 +196,20 @@ async function runMalImport() {
   malBusy.value = true;
   malError.value = null;
   try {
-    malResult.value =
-      source.value === "mal"
-        ? await importMal(malFile.value, [...useMal.value], fetchDetails.value)
-        : await importList(
-            malFile.value,
-            source.value,
-            [...useMal.value],
-            fetchDetails.value,
-          );
+    if (source.value === "mal") {
+      malResult.value = await importMal(
+        malFile.value,
+        [...useMal.value],
+        fetchDetails.value,
+      );
+    } else if (source.value === "letterboxd" || source.value === "imdb") {
+      malResult.value = await importList(
+        malFile.value,
+        source.value,
+        [...useMal.value],
+        fetchDetails.value,
+      );
+    }
     cancelMal();
   } catch (err) {
     malError.value =
@@ -330,12 +354,32 @@ async function onFileSelected(e: Event) {
         />
       </div>
       <p class="tile-desc">
-        Add your {{ sourceInfo.what }}. {{ sourceInfo.how }} You see what it
-        would add or change before anything happens, and for titles already on
-        the site you choose, title by title, whether to keep them as they are or
-        use the file's data.
+        Add your {{ sourceInfo.what }}. {{ sourceInfo.how }}
+        <template v-if="source !== 'yamtrack'">
+          You see what it would add or change before anything happens, and for
+          titles already on the site you choose, title by title, whether to keep
+          them as they are or use the file's data.
+        </template>
+        <template v-else>
+          Yamtrack imports directly and skips items already in your library.
+        </template>
       </p>
       <div v-if="malError" class="form-error">{{ malError }}</div>
+      <div v-if="yamtrackError" class="form-error">{{ yamtrackError }}</div>
+      <div v-if="yamtrackResult" class="form-success">
+        Movies: {{ yamtrackResult.created.movies ?? 0 }} added,
+        TV shows: {{ yamtrackResult.created.tv_shows ?? 0 }} added,
+        anime: {{ yamtrackResult.created.anime ?? 0 }} added.
+        {{ yamtrackResult.seasons_created }} seasons and
+        {{ yamtrackResult.episodes_created }} episodes imported.
+        <template v-if="yamtrackResult.skipped.movies || yamtrackResult.skipped.tv_shows || yamtrackResult.skipped.anime">
+          Existing items skipped:
+          {{ (yamtrackResult.skipped.movies ?? 0) + (yamtrackResult.skipped.tv_shows ?? 0) + (yamtrackResult.skipped.anime ?? 0) }}.
+        </template>
+        <ul v-if="yamtrackResult.errors.length" class="import-errors">
+          <li v-for="(err, i) in yamtrackResult.errors" :key="i">{{ err }}</li>
+        </ul>
+      </div>
       <div v-if="malResult" class="form-success">
         Added {{ malResult.created }}, updated {{ malResult.updated }} from the
         file, kept {{ malResult.kept }} as they were.
@@ -445,12 +489,12 @@ async function onFileSelected(e: Event) {
         </div>
       </div>
       <label v-else class="secondary-button upload-label">
-        {{ malBusy ? "Reading…" : "Choose file…" }}
+        {{ source === "yamtrack" ? "Choose Yamtrack CSV…" : malBusy ? "Reading…" : "Choose file…" }}
         <input
           type="file"
           :accept="sourceInfo.accept"
           class="hidden-input"
-          :disabled="malBusy"
+          :disabled="malBusy || yamtrackBusy"
           @change="onMalSelected"
         />
       </label>

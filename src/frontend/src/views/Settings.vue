@@ -27,6 +27,7 @@ import ExportImportSection from "../components/settings/ExportImportSection.vue"
 import CalendarNotificationsSection from "../components/settings/CalendarNotificationsSection.vue";
 import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSection.vue";
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
+import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import AccountChip from "../components/AccountChip.vue";
 import BackButton from "../components/BackButton.vue";
@@ -119,8 +120,22 @@ function openSection(id: string) {
   activeSection.value = r.section;
 }
 
-// on a phone the section list stacks above the content, so a tap would
-// change something far below the fold: bring the content into view
+watch(
+  () => route.query.section,
+  (section) => {
+    const next =
+      typeof section === "string" && section ? section : "profile";
+    if (activeSection.value !== next) activeSection.value = next;
+  },
+);
+
+watch(activeSection, (section) => {
+  const current =
+    typeof route.query.section === "string" ? route.query.section : "profile";
+  if (current === section) return;
+  void router.replace({ query: { ...route.query, section } });
+});
+
 const card = ref<HTMLElement | null>(null);
 watch(activeSection, async () => {
   if (!window.matchMedia("(max-width: 760px)").matches) return;
@@ -168,7 +183,10 @@ watch(activeSection, async () => {
             :key="'library' + initialTab"
             :initial-tab="initialTab"
           />
-          <ExportImportSection v-else-if="activeSection === 'export'" />
+          <template v-else-if="activeSection === 'export'">
+            <ExportImportSection />
+            <AniListImportSection />
+          </template>
           <MetadataSettings
             v-else-if="activeSection === 'metadata'"
             :key="'metadata' + initialTab"

@@ -25,14 +25,19 @@ const error = ref<string | null>(null);
 const saved = ref(false);
 const providers = reactive<Record<string, string>>({});
 const configured = reactive<Record<string, boolean>>({});
+const deploymentSettings = ref<Awaited<ReturnType<typeof fetchDeploymentSettings>> | null>(null);
 
 onMounted(async () => {
   try {
     const result = await fetchDeploymentSettings();
+    deploymentSettings.value = result;
     for (const [key, value] of Object.entries(result.providers)) {
       if (key.endsWith("_configured"))
         configured[key.replace(/_configured$/, "")] = Boolean(value);
       else if (typeof value === "string") providers[key] = value;
+    }
+    for (const [key, value] of Object.entries(result.provider_locks)) {
+      if (value) configured[key] = true;
     }
   } catch (err) {
     error.value =
@@ -73,8 +78,8 @@ async function save() {
     <p class="hint">
       Admin-only deployment credentials for metadata and external services.
       Secrets are encrypted in the database and are never returned to the
-      browser after saving. Existing environment variables remain supported as
-      fallbacks.
+      browser after saving. Values supplied by the deployment environment are
+      managed there and cannot be replaced from this page.
     </p>
     <div v-if="loading">Loading…</div>
     <template v-else>
@@ -90,11 +95,14 @@ async function save() {
                 ? 'password'
                 : 'text'
             "
-            :placeholder="
-              configured[key]
-                ? 'Already saved — enter a new value to replace it'
-                : ''
+             :placeholder="
+              deploymentSettings?.provider_locks[key] ?? false
+                ? 'Managed by deployment environment'
+                : configured[key]
+                  ? 'Already saved — enter a new value to replace it'
+                  : ''
             "
+            :disabled="deploymentSettings?.provider_locks[key] ?? false"
         /></label>
       </div>
       <p class="hint">
