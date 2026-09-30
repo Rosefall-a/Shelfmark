@@ -193,8 +193,21 @@ def test_upload_preview_is_static_and_lists_requested_permissions(monkeypatch) -
         file=io.BytesIO(frontend_package_bytes()),
         filename="example.ui-playground-1.0.0.utp",
     )
+    from starlette.requests import Request
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/plugins/install/preview",
+        "headers": [],
+        "query_string": b"",
+        "server": ("test", 80),
+        "client": ("test", 1),
+        "scheme": "http",
+    })
 
-    preview = asyncio.run(plugins.preview_plugin_install(upload, admin=object()))
+    preview = asyncio.run(
+        plugins.preview_plugin_install(request, file=upload, admin=object())
+    )
 
     assert preview["plugin_id"] == "example.ui-playground"
     assert preview["trust_status"] == "untrusted"
