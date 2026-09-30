@@ -634,10 +634,24 @@ class PluginSupervisor:
             process.stdin.close()
             return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
             if return_code:
+                self._log(
+                    spec.plugin_id,
+                    "Plugin action handler failed.",
+                    level="error",
+                    event="action.failed",
+                    metadata={"return_code": return_code},
+                )
                 raise RuntimePolicyError("plugin action handler failed")
         except subprocess.TimeoutExpired as exc:
             if process is not None:
                 process.kill()
+            self._log(
+                spec.plugin_id,
+                "Plugin action timed out.",
+                level="error",
+                event="action.timed_out",
+                metadata={"timeout_seconds": timeout},
+            )
             raise RuntimePolicyError("plugin action timed out") from exc
         finally:
             if process is not None and process.poll() is None:
