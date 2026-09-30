@@ -191,7 +191,7 @@ async def _resolve_plugin_upload(request: Request | UploadFile, file: UploadFile
 
 @router.post("/install/preview")
 async def preview_plugin_install(
-    request: Request | UploadFile,
+    request: Request,
     file: UploadFile | None = File(default=None),
     admin: User = Depends(get_current_admin),
 ) -> dict[str, Any]:
