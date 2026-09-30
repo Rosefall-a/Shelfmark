@@ -88,7 +88,7 @@ function saveCatalogEndpoints() {
 
 function addCatalogEndpoint() {
   const url = newCatalogEndpoint.value.trim();
-  if (!/^https?:\/\/i.test(url) || catalogEndpoints.value.includes(url)) return;
+  if (!/^https?:\/\//i.test(url) || catalogEndpoints.value.includes(url)) return;
   catalogEndpoints.value.push(url);
   enabledCatalogEndpoints.value.push(url);
   newCatalogEndpoint.value = "";
@@ -398,7 +398,7 @@ onMounted(() => {
   <section>
     <h2>Plugins</h2>
     <p class="muted">
-      Install a <code>.utp</code> package, review its identity and requested
+      Upload a plugin package (the filename extension is ignored), review its identity and requested
       access, then manage it here.
     </p>
     <div class="installer-launcher">
@@ -415,7 +415,7 @@ onMounted(() => {
           </header>
           <div class="install-method">
             <strong>Upload package</strong>
-            <input id="plugin-package" type="file" accept=".utp,.zip,application/zip" @change="selectFile" />
+            <input id="plugin-package" type="file" accept="*/*" @change="selectFile" />
             <button type="button" :disabled="!selectedFile || previewing" @click="previewSelected">{{ previewing ? "Inspecting…" : "Review package" }}</button>
           </div>
           <div class="install-method">
@@ -482,7 +482,7 @@ onMounted(() => {
           <label class="file-button"
             >Update<input
               type="file"
-              accept=".utp,application/zip"
+              accept="*/*"
               :disabled="action === plugin.plugin_id"
               @change="updateSelected(plugin, $event)"
           /></label>
