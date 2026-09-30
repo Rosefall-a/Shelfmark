@@ -623,6 +623,7 @@ class UiAction(ContractModel):
     )
     capability: CapabilityRef | None = None
     confirmation: str | None = Field(default=None, max_length=512)
+    external_navigation: bool = False
 
 
 class UiTableColumn(ContractModel):
