@@ -1,8 +1,8 @@
 # Plugin lifecycle
 
-Plugin lifecycle management is implemented by #270.
+Plugin lifecycle management spans the application Plugin Manager and the isolated runtime.
 
-The lifecycle manager statically discovers and validates manifests, verifies and installs packages, resolves required dependencies deterministically, and delegates process execution to the isolated runtime. It never imports plugin code into the core backend.
+The manager previews and validates manifests, verifies and installs packages, resolves required dependencies deterministically, and delegates process execution to the isolated runtime. It never imports plugin code into the core backend.
 
 ## Lifecycle and failure states
 

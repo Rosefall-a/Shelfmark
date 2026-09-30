@@ -35,7 +35,12 @@ class Capability(StrEnum):
     GAMES_WRITE = "games.write"
     MEDIA_READ = "media.read"
     MEDIA_WRITE = "media.write"
+    DOCUMENTS_READ = "documents.read"
+    SESSIONS_READ = "sessions.read"
+    SESSIONS_REVOKE = "sessions.revoke"
     NOTIFICATIONS_SEND = "notifications.send"
+    NOTIFICATION_PROVIDERS_REGISTER = "notification_providers.register"
+    NOTIFICATION_PROVIDERS_DELIVER = "notification_providers.deliver"
     EVENTS_SUBSCRIBE = "events.subscribe"
     PLUGIN_STORAGE = "plugin.storage"
     PLUGIN_SETTINGS = "plugin.settings"
@@ -89,6 +94,71 @@ class MediaRepresentation(ContractModel):
     id: UUID
     title: str = Field(min_length=1, max_length=512)
     media_type: str = Field(min_length=1, max_length=64)
+
+
+class DocumentRepresentation(ContractModel):
+    """Safe game-document metadata exposed without host filesystem paths."""
+
+    id: UUID
+    game_id: UUID
+    game_title: str = Field(min_length=1, max_length=500)
+    filename: str = Field(min_length=1, max_length=500)
+    media_type: str = Field(min_length=1, max_length=128)
+    size_bytes: int = Field(ge=0)
+    created_at: int = Field(ge=0)
+
+
+class DocumentContentRepresentation(ContractModel):
+    """Bounded document content encoded for the JSON Plugin API transport."""
+
+    document: DocumentRepresentation
+    encoding: str = Field(pattern=r"^base64$")
+    content: str = Field(max_length=7_000_000)
+
+
+class SessionRepresentation(ContractModel):
+    """Non-sensitive user session metadata; credentials are never exposed."""
+
+    id: UUID
+    created_at: int = Field(ge=0)
+    expires_at: int = Field(ge=0)
+    active: bool
+
+
+class NotificationProviderRegistration(ContractModel):
+    """A plugin-owned provider registered with the core delivery coordinator."""
+
+    provider_id: str = Field(
+        min_length=3,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+    name: str = Field(min_length=1, max_length=128)
+    action_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+    )
+
+
+class NotificationDeliveryRepresentation(ContractModel):
+    """Minimized delivery work sent from the core coordinator to a provider."""
+
+    notification_id: UUID
+    kind: str = Field(min_length=1, max_length=30)
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field(min_length=1, max_length=10_000)
+    media_type: str = Field(min_length=1, max_length=32)
+    media_id: UUID
+    event_at: int = Field(ge=0)
+
+
+class NotificationDeliveryResult(ContractModel):
+    """Provider result interpreted by core-owned retry and terminal-state logic."""
+
+    success: bool
+    retryable: bool = False
+    error: str | None = Field(default=None, max_length=512)
 
 
 class UserContext(ContractModel):
@@ -683,7 +753,9 @@ class PluginUiDocument(ContractModel):
                 raise ValueError(f"page {page.id} references an unknown dialog")
         for extension in self.extensions:
             if extension.page_id not in page_set:
-                raise ValueError(f"extension {extension.id} references an unknown page")
+                raise ValueError(
+                    f"extension {extension.id} references an unknown page"
+                )
         if self.frontend is not None and self.extensions:
             raise ValueError("custom frontends cannot be mounted into host extension slots")
         return self
@@ -854,6 +926,12 @@ __all__ = [
     "GameRepresentation",
     "JsonValue",
     "MediaRepresentation",
+    "DocumentRepresentation",
+    "DocumentContentRepresentation",
+    "SessionRepresentation",
+    "NotificationProviderRegistration",
+    "NotificationDeliveryRepresentation",
+    "NotificationDeliveryResult",
     "Page",
     "Pagination",
     "PluginIdentity",

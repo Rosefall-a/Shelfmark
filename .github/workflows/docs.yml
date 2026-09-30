@@ -1,0 +1,28 @@
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - "wiki/**"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main, plugin/manager]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  strict-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: wiki/requirements.txt
+      - run: python -m pip install -r wiki/requirements.txt
+      - run: mkdocs build --strict --config-file wiki/mkdocs.yml

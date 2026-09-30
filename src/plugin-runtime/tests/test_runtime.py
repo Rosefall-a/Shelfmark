@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import uuid
 import zipfile
 
 import pytest
@@ -52,7 +53,9 @@ def test_resource_limits_are_positive() -> None:
         ).validate()
 
 
-def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypatch) -> None:
+def test_supervisor_starts_a_validated_plugin_in_its_sandbox(
+    tmp_path, monkeypatch
+) -> None:
     import runtime
     from runtime import PluginSupervisor
 
@@ -70,7 +73,9 @@ def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypat
         return FakeProcess()
 
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
-    supervisor = PluginSupervisor(root=tmp_path / "work", storage_root=tmp_path / "storage")
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work", storage_root=tmp_path / "storage"
+    )
     package = tmp_path / "package"
     package.mkdir()
     process = supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
@@ -82,7 +87,9 @@ def test_supervisor_starts_a_validated_plugin_in_its_sandbox(tmp_path, monkeypat
     assert (tmp_path / "work" / "example").is_dir()
 
 
-def test_supervisor_can_start_without_bubblewrap_for_development(tmp_path, monkeypatch) -> None:
+def test_supervisor_can_start_without_bubblewrap_for_development(
+    tmp_path, monkeypatch
+) -> None:
     import runtime
     from runtime import PluginSupervisor
 
@@ -101,7 +108,9 @@ def test_supervisor_can_start_without_bubblewrap_for_development(tmp_path, monke
 
     monkeypatch.setenv("NONBUBBLE_ENV", "true")
     monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
-    supervisor = PluginSupervisor(root=tmp_path / "work", storage_root=tmp_path / "storage")
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work", storage_root=tmp_path / "storage"
+    )
     package = tmp_path / "package"
     package.mkdir()
     supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
@@ -119,16 +128,29 @@ def test_nonbubble_flag_is_off_by_default(monkeypatch) -> None:
 
 
 def _package_bytes(plugin_id: str = "example.upload", frontend: bool = False) -> bytes:
-    files = {"plugin.py": b"def main():\n    return None\n", "sdk/plugin_protocol.py": b"API_VERSION = 1\n"}
+    files = {
+        "plugin.py": b"def main():\n    return None\n",
+        "sdk/plugin_protocol.py": b"API_VERSION = 1\n",
+    }
     if frontend:
         files["frontend/index.html"] = b"<!doctype html><html><body>ok</body></html>"
     digest = hashlib.sha256()
     for name, data in sorted(files.items()):
-        digest.update(name.encode("utf-8")); digest.update(b"\0"); digest.update(data); digest.update(b"\0")
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
     manifest = {
-        "manifest_version": 1, "plugin_id": plugin_id, "name": "Upload Example", "version": "1.0.0",
-        "entrypoint": "plugin:main", "sdk_version_range": "*", "application_version_range": "*",
-        "capabilities": [], "permissions": [], "dependencies": [],
+        "manifest_version": 1,
+        "plugin_id": plugin_id,
+        "name": "Upload Example",
+        "version": "1.0.0",
+        "entrypoint": "plugin:main",
+        "sdk_version_range": "*",
+        "application_version_range": "*",
+        "capabilities": [],
+        "permissions": [],
+        "dependencies": [],
         "integrity": {"sha256": digest.hexdigest()},
     }
     if frontend:
@@ -136,15 +158,21 @@ def _package_bytes(plugin_id: str = "example.upload", frontend: bool = False) ->
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr("manifest.json", json.dumps(manifest))
-        for name, data in files.items(): archive.writestr("payload/" + name, data)
+        for name, data in files.items():
+            archive.writestr("payload/" + name, data)
     return output.getvalue()
 
 
 def test_runtime_installs_verified_utp_atomically(tmp_path):
     from runtime import PluginRegistry, PluginSupervisor
 
-    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
-    result = registry.install_package(_package_bytes(), "example-upload.utp")
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    result = registry.install_package(
+        _package_bytes(), "example-upload.utp", installation_id=str(uuid.uuid4())
+    )
     assert result["plugin_id"] == "example.upload"
     assert (tmp_path / "plugins" / "example.upload" / "manifest.json").is_file()
     assert (tmp_path / "plugins" / "example.upload" / "plugin.py").is_file()
@@ -157,7 +185,9 @@ def test_runtime_installs_and_serves_declared_frontend(tmp_path):
         tmp_path / "plugins",
         PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
     )
-    registry.install_package(_package_bytes(frontend=True), "frontend.utp")
+    registry.install_package(
+        _package_bytes(frontend=True), "frontend.utp", installation_id=str(uuid.uuid4())
+    )
     asset = registry.frontend("example.upload", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
@@ -196,7 +226,9 @@ def test_runtime_rejects_missing_declared_frontend(tmp_path):
         PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
     )
     with pytest.raises(RuntimePolicyError, match="frontend entry is missing"):
-        registry.install_package(output.getvalue(), "missing-frontend.utp")
+        registry.install_package(
+            output.getvalue(), "missing-frontend.utp", installation_id=str(uuid.uuid4())
+        )
 
 
 def test_runtime_rejects_tampered_utp(tmp_path):
@@ -204,24 +236,37 @@ def test_runtime_rejects_tampered_utp(tmp_path):
 
     original = _package_bytes()
     tampered = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(tampered, "w") as destination:
+    with (
+        zipfile.ZipFile(io.BytesIO(original)) as source,
+        zipfile.ZipFile(tampered, "w") as destination,
+    ):
         for info in source.infolist():
             data = source.read(info)
             if info.filename == "payload/plugin.py":
                 data = b"tampered"
             destination.writestr(info, data)
-    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
     with pytest.raises(RuntimePolicyError, match="archive|integrity"):
-        registry.install_package(tampered.getvalue(), "bad.utp")
+        registry.install_package(
+            tampered.getvalue(), "bad.utp", installation_id=str(uuid.uuid4())
+        )
 
 
 def test_runtime_rejects_duplicate_plugin_install(tmp_path):
     from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
 
     registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
-    registry.install_package(_package_bytes(), "first.utp")
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(), "first.utp", installation_id=installation_id
+    )
     with pytest.raises(RuntimePolicyError, match="already installed"):
-        registry.install_package(_package_bytes(), "second.utp")
+        registry.install_package(
+            _package_bytes(), "second.utp", installation_id=installation_id
+        )
 
 
 def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
@@ -236,14 +281,22 @@ def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
 def test_frontend_asset_is_namespaced(tmp_path) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
-    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"))
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
     package = tmp_path / "plugins" / "example.frontend"
     package.mkdir(parents=True)
-    (package / "manifest.json").write_text(json.dumps({
-        "plugin_id": "example.frontend",
-        "entrypoint": "plugin:main",
-        "frontend": {"entry": "frontend/index.html"},
-    }), encoding="utf-8")
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.frontend",
+                "entrypoint": "plugin:main",
+                "frontend": {"entry": "frontend/index.html"},
+            }
+        ),
+        encoding="utf-8",
+    )
     frontend = package / "frontend"
     frontend.mkdir()
     (frontend / "index.html").write_text("<div>ok</div>", encoding="utf-8")
@@ -252,7 +305,9 @@ def test_frontend_asset_is_namespaced(tmp_path) -> None:
     assert "PG" in asset["content"]
 
 
-def test_runtime_discord_action_reads_secret_from_private_storage(tmp_path, monkeypatch) -> None:
+def test_runtime_discord_action_reads_secret_from_private_storage(
+    tmp_path, monkeypatch
+) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
     registry = PluginRegistry(
@@ -261,24 +316,38 @@ def test_runtime_discord_action_reads_secret_from_private_storage(tmp_path, monk
     )
     package = tmp_path / "plugins" / "example.discord"
     package.mkdir(parents=True)
-    (package / "manifest.json").write_text(json.dumps({
-        "plugin_id": "example.discord",
-        "entrypoint": "plugin:main",
-        "capabilities": [{"name": "notifications.send", "version": 1}],
-        "permissions": [{
-            "capability": {"name": "notifications.send", "version": 1},
-            "rationale": "send notifications",
-        }],
-        "integrity": {"sha256": "0" * 64},
-    }), encoding="utf-8")
-    (package / "ui.json").write_text(json.dumps({
-        "plugin_id": "example.discord",
-        "actions": [{
-            "id": "announce",
-            "handler": "plugin:announce",
-            "capability": {"name": "notifications.send", "version": 1},
-        }],
-    }), encoding="utf-8")
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.discord",
+                "entrypoint": "plugin:main",
+                "capabilities": [{"name": "notifications.send", "version": 1}],
+                "permissions": [
+                    {
+                        "capability": {"name": "notifications.send", "version": 1},
+                        "rationale": "send notifications",
+                    }
+                ],
+                "integrity": {"sha256": "0" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.discord",
+                "actions": [
+                    {
+                        "id": "announce",
+                        "handler": "plugin:announce",
+                        "capability": {"name": "notifications.send", "version": 1},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     (package / "plugin.py").write_text("", encoding="utf-8")
     registry.supervisor._storage_quotas["example.discord"] = 1024
     registry.supervisor._storage("example.discord").put(
@@ -287,10 +356,12 @@ def test_runtime_discord_action_reads_secret_from_private_storage(tmp_path, monk
 
     class FakeSupervisor:
         def execute(self, spec, package_dir, payload):
-            return json.dumps({
-                "discord": True,
-                "content": "hello",
-            }).encode()
+            return json.dumps(
+                {
+                    "discord": True,
+                    "content": "hello",
+                }
+            ).encode()
 
     registry.supervisor.execute = FakeSupervisor().execute
     monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
@@ -302,10 +373,214 @@ def test_runtime_discord_action_reads_secret_from_private_storage(tmp_path, monk
     )
     result = registry.action("example.discord", "announce", {})
     assert result == {"completed": True}
-    assert delivered == [(
-        "https://discord.com/api/webhooks/test/secret",
-        "hello",
-    )]
+    assert delivered == [
+        (
+            "https://discord.com/api/webhooks/test/secret",
+            "hello",
+        )
+    ]
+
+
+def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps({"plugin_id": "example.provider", "entrypoint": "plugin:main"}),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+
+    class FakeSupervisor:
+        def execute(self, spec, package_dir, payload):
+            del spec, package_dir, payload
+            return b'{"success":true,"retryable":false,"error":null}'
+
+    registry.supervisor.execute = FakeSupervisor().execute
+    assert registry.action("example.provider", "deliver", {}) == {
+        "success": True,
+        "retryable": False,
+        "error": None,
+    }
+
+
+def test_runtime_discord_provider_returns_core_delivery_result(
+    tmp_path, monkeypatch
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "entrypoint": "plugin:main",
+                "capabilities": [
+                    {"name": "notification_providers.deliver", "version": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+    registry.supervisor._storage_quotas["example.provider"] = 1024
+    registry.supervisor._storage("example.provider").put(
+        "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
+    )
+    registry.supervisor.execute = lambda *_args: b'{"discord":true,"content":"hello"}'
+    delivered = []
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    monkeypatch.setattr(
+        registry,
+        "_discord_webhook",
+        lambda url, content: delivered.append((url, content)),
+    )
+
+    assert registry.action("example.provider", "deliver", {}) == {
+        "success": True,
+        "retryable": False,
+        "error": None,
+    }
+    assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
+
+
+def test_action_handler_can_use_the_mediated_plugin_gateway(
+    tmp_path, monkeypatch
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    supervisor = PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage")
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    package = tmp_path / "plugins" / "example.documents"
+    (package / "sdk").mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "entrypoint": "plugin:main",
+                "capabilities": [{"name": "documents.read", "version": 1}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "actions": [
+                    {
+                        "id": "list",
+                        "handler": "plugin:list_documents",
+                        "capability": {"name": "documents.read", "version": 1},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "sdk" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "sdk" / "plugin_protocol.py").write_text(
+        "import json,sys\n"
+        "def request(method,capability,payload):\n"
+        " print(json.dumps({'api_version':'v1','method':method,'capability':capability,'payload':payload}),flush=True)\n"
+        " response=json.loads(sys.stdin.readline())\n"
+        " if response.get('error'): raise RuntimeError(response['error'])\n"
+        " return response.get('payload',{})\n",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "from sdk.plugin_protocol import request\n"
+        "def main(): pass\n"
+        "def list_documents(values):\n"
+        " return request('documents.list','documents.read',{'limit':values.get('limit',50)})\n",
+        encoding="utf-8",
+    )
+    registry._save_state(
+        {
+            "example.documents": {
+                "enabled": True,
+                "installation_id": str(uuid.uuid4()),
+            }
+        }
+    )
+    calls = []
+
+    def dispatch(plugin_id, message):
+        calls.append((plugin_id, message))
+        return {"payload": {"documents": [{"id": "document-1"}]}}
+
+    monkeypatch.setattr(supervisor, "_handle_gateway_request", dispatch)
+
+    result = registry.action("example.documents", "list", {"limit": 10})
+
+    assert result == {"documents": [{"id": "document-1"}]}
+    assert calls[0][0] == "example.documents"
+    assert calls[0][1]["method"] == "documents.list"
+    assert calls[0][1]["capability"] == "documents.read"
+
+
+def test_runtime_rejects_actions_for_disabled_installed_plugin(tmp_path) -> None:
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps({"plugin_id": "example.provider", "entrypoint": "plugin:main"}),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry._save_state(
+        {
+            "example.provider": {
+                "enabled": False,
+                "installation_id": str(uuid.uuid4()),
+            }
+        }
+    )
+
+    with pytest.raises(RuntimePolicyError, match="must be enabled"):
+        registry.action("example.provider", "deliver", {})
 
 
 def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
@@ -313,7 +588,9 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
 
     package = tmp_path / "package"
     package.mkdir()
-    (package / ".settings.json").write_text(json.dumps({"display_mode": "dark"}), encoding="utf-8")
+    (package / ".settings.json").write_text(
+        json.dumps({"display_mode": "dark"}), encoding="utf-8"
+    )
     supervisor = PluginSupervisor(
         root=tmp_path / "work",
         storage_root=tmp_path / "storage",
@@ -323,7 +600,11 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
     supervisor._package_paths["example.ui-api"] = package
     assert supervisor._handle_gateway_request(
         "example.ui-api",
-        {"method": "settings.get", "capability": "plugin.settings", "payload": {"key": "display_mode"}},
+        {
+            "method": "settings.get",
+            "capability": "plugin.settings",
+            "payload": {"key": "display_mode"},
+        },
     ) == {"payload": {"value": "dark"}}
 
 

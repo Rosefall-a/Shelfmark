@@ -48,4 +48,4 @@ Dependency resolution must complete before plugin activation.
 
 ## Security boundary
 
-Manifest metadata does not grant capabilities. Gateway authorization remains responsible for enforcing grants. Integrity metadata is part of the package-validation contract; cryptographic signature verification and package installation remain downstream runtime/update work.
+Manifest metadata does not grant capabilities. Gateway authorization remains responsible for enforcing grants. The application verifies package digest/signature/trust before installation, and the runtime independently verifies the archive/digest before atomically installing it. Plugin code is not imported during either verification pass.

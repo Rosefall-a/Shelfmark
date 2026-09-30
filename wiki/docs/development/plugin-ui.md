@@ -21,18 +21,18 @@ An extension references a page in the same UI document. The host renders that pa
 
 ## Security
 
-UI declarations do not grant capabilities. Actions are sent through the authenticated gateway and are authorized independently. The host never evaluates plugin-supplied JavaScript or HTML.
+UI declarations do not grant capabilities. Actions are sent through the authenticated gateway and are authorized independently. Native slots never evaluate plugin-supplied JavaScript or HTML; bundled frontends use the separate sandbox described below.
 
 See the [Plugin API v1](plugin-api-v1.md) and [Plugin Permissions & Scoped Identities](plugin-permissions.md) pages for the protocol and authorization boundaries.
 
 
 ## Runtime integration
 
-The native host and management client are designed to address authenticated, gateway-facing plugin operations, but the production `/api/plugins` host/runtime path is not yet wired end-to-end. That integration remains tracked by #320. They must not communicate with plugin processes directly.
+The production `/api/plugins` routes mediate UI documents, frontend assets, ordinary settings, write-only secrets, and declared actions through the authenticated runtime. Browser code never connects to a plugin process directly.
 
 The browser treats Plugin UI documents as untrusted data and renders only the native v1 primitives. Bundled custom frontends run in a sandboxed iframe on their dedicated plugin page and cannot be mounted into a host-page extension slot.
 
 
 ## Action context
 
-Native plugin actions receive a non-secret `_plugin_context` value containing the current page ID, page title, and browser path. This lets a plugin provide page-aware actions without embedding application-specific frontend code. Secret fields are excluded from ordinary settings saves and are available only to the action submission that uses them.
+Native plugin actions receive a non-secret `_plugin_context` value containing the current page ID, page title, and browser path. Sandboxed frontend actions use the same declared action table. If an action declares `confirmation`, the host displays that confirmation before dispatch, including for iframe requests. Secret fields are excluded from ordinary settings saves and use the separate write-only secret operation.

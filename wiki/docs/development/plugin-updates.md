@@ -1,12 +1,12 @@
 # Plugin updates
 
-Issue #271 defines secure package updates, staged activation, dependency validation and rollback.
+Plugin updates use the same verification, compatibility, permission, and runtime boundaries as installation.
 
 ## Package verification
 
 Plugin package v1 is a ZIP containing `manifest.json` and `payload/`. Paths are constrained to the package namespace. The verifier rejects traversal, exact duplicate entries, unexpected files and unsupported filesystem entries. Semantic ZIP path collisions such as repeated separators still require hardening; see #338.
 
-The manifest integrity field contains a deterministic SHA-256 digest of sorted payload paths and bytes. Production verification requires an Ed25519 publisher signature over `plugin-package-v1:<sha256>`, with the manifest's `key_id` resolving to an explicitly trusted publisher key.
+The manifest integrity field contains a deterministic SHA-256 digest of sorted payload paths and bytes. An Ed25519 publisher signature over `plugin-package-v1:<sha256>` is verified when present, with `key_id` resolving to an explicitly trusted publisher key. Unsigned or untrusted packages require explicit administrator acknowledgement; release policy should require signatures.
 
 ## Staging and activation
 
@@ -36,6 +36,6 @@ Dependency failures reject activation rather than allowing an invalid dependency
 
 ## End-user `.utp` installation
 
-Administrators install a plugin from **Settings → Plugins → Install plugin** by selecting its `.utp` package. The backend limits uploads to 64 MiB and verifies the v1 archive, canonical payload digest, and Ed25519 publisher signature before sending the package over the authenticated runtime connection. The runtime validates the archive and digest again and atomically creates the plugin directory; it never executes plugin code during installation.
+Administrators install a plugin from **Settings → Plugins → Install plugin** by selecting its `.utp` package. The backend limits uploads to 64 MiB and verifies the v1 archive, canonical payload digest, and publisher signature/trust status before sending the package over the authenticated runtime connection. The runtime validates the archive and digest again and atomically creates the plugin directory; it never executes plugin code during installation.
 
-Official reference publisher keys are trusted by default. The current official example artifacts also use the retiring `non-secret-testkey` for the `example.` namespace; it is accepted for compatibility with those artifacts and is intentionally public/test-only, not a production signing key. Production deployments should migrate to a private active publisher key. Additional publisher trust is configured through `PLUGIN_TRUSTED_PUBLISHER_REGISTRY`.
+Official reference publisher keys are trusted by default. Development builds from the plugin repository are deliberately unsigned and exercise the untrusted-package consent path. Release builds use a private reviewed key scoped to the `example.` namespace. Additional publisher trust is configured through `PLUGIN_TRUSTED_PUBLISHER_REGISTRY`.

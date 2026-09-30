@@ -11,16 +11,22 @@ from src.plugin_api.contracts import (
     ApiVersion,
     Capability,
     CapabilityRef,
+    DocumentContentRepresentation,
+    DocumentRepresentation,
     ErrorCode,
     ErrorEnvelope,
     EventAck,
     EventEnvelope,
     GameRepresentation,
     MediaRepresentation,
+    NotificationDeliveryRepresentation,
+    NotificationDeliveryResult,
+    NotificationProviderRegistration,
     Page,
     Pagination,
     PluginIdentity,
     RequestContext,
+    SessionRepresentation,
     UserContext,
     UserRepresentation,
     VersionNegotiationRequest,
@@ -91,6 +97,50 @@ def test_core_representations_are_stable_and_non_orm() -> None:
         GameRepresentation(id=uuid4(), title="Example", internal_model=object())
 
 
+def test_domain_capability_contracts_exclude_sensitive_host_state() -> None:
+    document = DocumentRepresentation(
+        id=uuid4(),
+        game_id=uuid4(),
+        game_title="Example",
+        filename="manual.pdf",
+        media_type="application/pdf",
+        size_bytes=100,
+        created_at=1,
+    )
+    content = DocumentContentRepresentation(
+        document=document,
+        encoding="base64",
+        content="cGRm",
+    )
+    session = SessionRepresentation(id=uuid4(), created_at=1, expires_at=2, active=True)
+    provider = NotificationProviderRegistration(
+        provider_id="example.plugin.webhook",
+        name="Webhook",
+        action_id="deliver",
+    )
+    delivery = NotificationDeliveryRepresentation(
+        notification_id=uuid4(),
+        kind="plugin",
+        title="Title",
+        body="Body",
+        media_type="plugin",
+        media_id=uuid4(),
+        event_at=1,
+    )
+    result = NotificationDeliveryResult(success=False, retryable=True, error="later")
+
+    wire = " ".join(
+        value.model_dump_json() for value in (content, session, provider, delivery, result)
+    ).lower()
+    assert "token_hash" not in wire
+    assert "filesystem" not in wire
+    assert "database" not in wire
+    assert "secret" not in wire
+    assert Capability.DOCUMENTS_READ.value == "documents.read"
+    assert Capability.SESSIONS_REVOKE.value == "sessions.revoke"
+    assert Capability.NOTIFICATION_PROVIDERS_DELIVER.value == "notification_providers.deliver"
+
+
 def test_error_envelope_is_versioned_and_machine_readable() -> None:
     error = ErrorEnvelope(
         code=ErrorCode.FORBIDDEN,
@@ -110,9 +160,9 @@ def test_pagination_has_bounded_limits() -> None:
 
 def test_page_contains_dtos_not_database_objects() -> None:
     page = Page[MetadataCandidate](
-        items=(MetadataCandidate(
-            external_id="123", title="Example", year=2026, provider="example"
-        ),),
+        items=(
+            MetadataCandidate(external_id="123", title="Example", year=2026, provider="example"),
+        ),
         next_cursor="next",
     )
     assert page.items[0].external_id == "123"
@@ -245,15 +295,17 @@ def test_semver_ranges_are_deterministic() -> None:
 
 
 def test_manifest_migration_is_pure_and_rejects_ambiguous_data() -> None:
-    migrated = migrate_manifest_data({
-        "id": "example.metadata",
-        "display_name": "Example",
-        "version": "1.2.3",
-        "entry_point": "plugin:main",
-        "sdk_version": "1.0.0",
-        "app_version": "2.0.0",
-        "integrity": {"sha256": "a" * 64},
-    })
+    migrated = migrate_manifest_data(
+        {
+            "id": "example.metadata",
+            "display_name": "Example",
+            "version": "1.2.3",
+            "entry_point": "plugin:main",
+            "sdk_version": "1.0.0",
+            "app_version": "2.0.0",
+            "integrity": {"sha256": "a" * 64},
+        }
+    )
     assert migrated["manifest_version"] == 1
     assert migrated["plugin_id"] == "example.metadata"
     assert migrated["sdk_version_range"] == "=1.0.0"
@@ -267,9 +319,7 @@ def test_dependency_resolution_is_dependency_first_and_detects_cycles() -> None:
     dependent = PluginManifest.model_validate(
         manifest_data(
             plugin_id="dependent",
-            dependencies=(
-                PluginDependency(plugin_id="base", version_range="^1.0.0"),
-            ),
+            dependencies=(PluginDependency(plugin_id="base", version_range="^1.0.0"),),
         ),
     )
     assert resolve_plugin_dependencies((dependent, base)) == ("base", "dependent")
@@ -277,9 +327,7 @@ def test_dependency_resolution_is_dependency_first_and_detects_cycles() -> None:
     bad = PluginManifest.model_validate(
         manifest_data(
             plugin_id="missing-dependent",
-            dependencies=(
-                PluginDependency(plugin_id="missing", version_range="^1.0.0"),
-            ),
+            dependencies=(PluginDependency(plugin_id="missing", version_range="^1.0.0"),),
         ),
     )
     with pytest.raises(DependencyResolutionError):
@@ -303,12 +351,16 @@ def test_dependency_resolution_is_dependency_first_and_detects_cycles() -> None:
 
 def test_manifest_permissions_must_match_declared_capabilities() -> None:
     with pytest.raises(ValidationError):
-        PluginManifest.model_validate({
-            **manifest_data(),
-            "capabilities": (CapabilityRef(name=Capability.GAMES_READ),),
-        })
+        PluginManifest.model_validate(
+            {
+                **manifest_data(),
+                "capabilities": (CapabilityRef(name=Capability.GAMES_READ),),
+            }
+        )
     with pytest.raises(ValidationError):
-        PluginManifest.model_validate({
-            **manifest_data(),
-            "capabilities": (CapabilityRef(name=Capability.MEDIA_READ, version=2),),
-        })
+        PluginManifest.model_validate(
+            {
+                **manifest_data(),
+                "capabilities": (CapabilityRef(name=Capability.MEDIA_READ, version=2),),
+            }
+        )

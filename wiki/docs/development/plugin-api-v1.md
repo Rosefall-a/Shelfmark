@@ -9,7 +9,7 @@ The v1 boundary defines:
 - application, plugin and installation identity;
 - authenticated user request context;
 - stable capability names and capability semantic versions;
-- user, game and media representations;
+- user, game, media, safe document, session, and notification-delivery representations;
 - structured errors;
 - bounded cursor pagination;
 - timezone-aware timestamps;
@@ -43,7 +43,7 @@ Notification and metadata providers return normalized DTOs to core-owned coordin
 
 Public DTOs reject unknown fields and are immutable. Error envelopes deliberately exclude stack traces, SQL, secrets and environment values.
 
-Authentication, authorization, runtime isolation, storage and transport are downstream Plugin Hub work; this page describes the contract only.
+The production host/runtime path implements authentication, exact grant checks, runtime isolation, private storage, action dispatch, and structured diagnostics. Contract types still do not grant access by themselves.
 
 
 ## Manifest and dependency model
@@ -55,3 +55,5 @@ Manifest validation is deliberately static: it validates data without importing 
 Compatibility is evaluated independently for SDK and application versions. An incompatible manifest is classified before activation and is quarantined rather than executed. Manifest version migration is a pure data transformation; it never loads plugin code.
 
 Dependencies support required/optional dependencies, semantic-version constraints, deterministic dependency-first ordering, missing/incompatible dependency rejection, and cycle detection. Dependency resolution occurs before plugin activation.
+
+See [Plugin capability APIs](plugin-capabilities.md) for the current method map and domain-specific limits.

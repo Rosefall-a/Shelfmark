@@ -8,14 +8,14 @@ import {
 import PluginUiHost from "./PluginUiHost.vue";
 
 const props = defineProps({
-  slotName: { type: String, required: true },
+  slotId: { type: String, required: true },
   context: {
     type: Object as PropType<Record<string, string | number | boolean>>,
     default: () => ({}),
   },
 });
 const contributions = computed(() =>
-  pluginSlots.value.filter((item) => item.slot === props.slotName),
+  pluginSlots.value.filter((item) => item.slot === props.slotId),
 );
 
 async function save(pluginId: string, values: UiValues) {

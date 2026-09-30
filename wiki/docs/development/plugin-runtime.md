@@ -71,24 +71,20 @@ contract owned by #268.
 
 Outbound access is default-deny.
 
-A plugin may declare:
-- allowed DNS hostnames;
-- allowed destination ports;
-- the network.outbound capability requested for administrator approval.
-
-A declaration without an active gateway grant is rejected. An empty
-declaration remains valid and receives no external network.
+Plugin API v1 does not expose a general-purpose outbound-network capability.
+Declaring a hostname in plugin code or package metadata does not create one.
 
 The sandbox uses an isolated network namespace, which means the plugin cannot
 directly reach PostgreSQL, the core backend, Docker DNS, the host network or
 the public internet. Docker's internal runtime network also has no external
 default gateway.
 
-Approved external access must be implemented through a dedicated egress
-broker/proxy. The runtime contract does not grant direct network sharing to a
-plugin merely because its manifest requests it. This prevents a future
-network implementation from accidentally turning an approved host list into
-unrestricted socket access.
+Approved external access is implemented through runtime-owned, narrowly
+validated senders rather than direct plugin networking. The current reference
+provider can request Discord webhook delivery only when
+`PLUGIN_RUNTIME_DISCORD_EGRESS=true`; the runtime validates HTTPS host/path and
+message limits before sending. A manifest declaration never grants direct
+network sharing to a plugin.
 
 DNS is therefore deny-by-default rather than merely filtered after
 resolution. This also prevents a plugin from using an unapproved Docker
@@ -153,6 +149,8 @@ The runtime exposes `/plugins/{plugin_id}/logs` to the authenticated host. The a
 Every event has a monotonic sequence, UTC timestamp, level, stable event name, source, plugin ID, optional correlation ID, message, and bounded scalar metadata. The in-memory buffer retains the newest 200 events per plugin. Lifecycle start/stop/exit, one-shot actions, gateway failures, readiness, and plugin stderr are recorded. Token-, password-, secret-, and webhook-shaped values are redacted before storage or display.
 
 Plugin stdout is reserved for the request protocol and diagnostics belong on stderr; both streams are drained so noisy plugins cannot deadlock. Core operations are forwarded through the private host gateway and are checked against active plugin permission grants.
+
+One-shot action handlers use the same JSON-line mediation. The runtime supplies the initial action values, services any Plugin API requests emitted by the action, and accepts one bounded structured result envelope. This allows a UI action to call domain APIs without receiving the runtime token or bypassing grant checks.
 
 ## Plugin frontends
 

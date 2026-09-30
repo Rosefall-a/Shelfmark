@@ -97,7 +97,7 @@ class PluginRuntimeClient:
             headers={
                 "Content-Type": "application/octet-stream",
                 "X-Plugin-Package-Name": filename,
-                "X-Plugin-Installation-Id": installation_id,
+                "X-Plugin-Installation-ID": installation_id,
                 "X-Plugin-Replace": "true" if replace else "false",
             },
         )

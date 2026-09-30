@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
+  approvePluginAction,
   buildInitialValues,
   validateField,
   type PluginUiDocument,
@@ -87,7 +88,7 @@ function submit() {
   }
 }
 function runAction(action: UiAction) {
-  if (action.confirmation && !window.confirm(action.confirmation)) return;
+  if (!approvePluginAction(action, window.confirm)) return;
   emit("action", action, {
     ...values.value,
     _plugin_context: JSON.stringify({
@@ -155,6 +156,14 @@ async function handleFrontendMessage(event: MessageEvent) {
         (item) => item.id === String(data.actionId),
       );
       if (!action) throw new Error("Plugin action not found.");
+      if (!approvePluginAction(action, window.confirm)) {
+        result = { cancelled: true };
+        iframe.value?.contentWindow?.postMessage(
+          { type: "plugin-api-response", requestId, result },
+          "*",
+        );
+        return;
+      }
       const response = await fetch(
         `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/actions/${encodeURIComponent(action.id)}`,
         {
