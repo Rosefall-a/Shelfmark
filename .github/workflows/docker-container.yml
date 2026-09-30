@@ -37,16 +37,24 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
 
       - name: Build production image
-        uses: docker/build-push-action@v6
+        shell: bash
+        run: |
+          set -o pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            docker buildx build --progress=plain --load --file src/docker-container/Dockerfile --tag unnamed_tracking_app:ci . 2>&1 | tee docker-build.log
+          else
+            docker buildx build --progress=plain --push --file src/docker-container/Dockerfile \
+              --tag "${IMAGE_NAME}:${IMAGE_TAG}" \
+              --tag "${IMAGE_NAME}:sha-${GITHUB_SHA}" . 2>&1 | tee docker-build.log
+          fi
+
+      - name: Upload Docker build log
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: src/docker-container/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          cache-from: type=gha,scope=production-container
-          cache-to: type=gha,mode=max,scope=production-container
+          name: production-docker-build-log-${{ github.run_id }}
+          path: docker-build.log
+          if-no-files-found: warn
 
       - name: Show diagnostics on failure
         if: failure()
