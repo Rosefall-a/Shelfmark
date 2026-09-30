@@ -304,13 +304,10 @@ async def dispatch_gateway_request(
             session_id = UUID(str(payload.get("session_id", "")))
         except ValueError as exc:
             raise ValueError("session_id must be a UUID") from exc
-        delete_result = await db.execute(
-            delete(UserSession).where(
-                UserSession.id == session_id,
-                UserSession.user_id == user_id,
-            )
+        revoke_result = await db.execute(
+            update(UserSession).where(UserSession.id == session_id, UserSession.user_id == user_id, UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time()))
         )
-        if not delete_result.rowcount:
+        if not revoke_result.rowcount:
             raise LookupError("session not found")
         await db.commit()
         return {"revoked": True, "session_id": str(session_id)}
@@ -331,7 +328,7 @@ async def dispatch_gateway_request(
         if admin is None:
             raise PermissionError("administrator access is required")
         session_id = UUID(str(payload.get("session_id", "")))
-        result = await db.execute(delete(UserSession).where(UserSession.id == session_id))
+        result = await db.execute(update(UserSession).where(UserSession.id == session_id, UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time())))
         if not result.rowcount:
             raise LookupError("session not found")
         await db.commit()
@@ -342,7 +339,7 @@ async def dispatch_gateway_request(
         admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
         if admin is None:
             raise PermissionError("administrator access is required")
-        result = await db.execute(delete(UserSession))
+        result = await db.execute(update(UserSession).where(UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time())))
         await db.commit()
         return {"revoked": result.rowcount}
 
@@ -369,15 +366,15 @@ async def dispatch_gateway_request(
     if method == "events.poll":
         limit = max(1, min(int(payload.get("limit", 50)), 200))
         since = max(0, int(payload.get("since", 0)))
-        events = []
+        events: list[dict[str, Any]] = []
         games = (await db.execute(select(Game).where(Game.user_id == user_id, Game.deleted_at.is_(None), Game.updated_at > since).order_by(Game.updated_at).limit(limit))).scalars().all()
         for game in games:
             events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:game.updated:{game.id}:{game.updated_at}")), "event_type": "game.updated", "event_version": 1, "occurred_at": game.updated_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"game_id": str(game.id), "title": game.title, "updated_at": game.updated_at}})
         if len(events) < limit:
-            media = (await db.execute(select(MediaItem).join(Game, Game.id == MediaItem.game_id).where(Game.user_id == user_id, MediaItem.deleted_at.is_(None), MediaItem.created_at > since).order_by(MediaItem.created_at).limit(limit - len(events)))).scalars().all()
-            for item in media:
+            media_items = (await db.execute(select(MediaItem).join(Game, Game.id == MediaItem.game_id).where(Game.user_id == user_id, MediaItem.deleted_at.is_(None), MediaItem.created_at > since).order_by(MediaItem.created_at).limit(limit - len(events)))).scalars().all()
+            for item in media_items:
                 events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:media.added:{item.id}:{item.created_at}")), "event_type": "media.added", "event_version": 1, "occurred_at": item.created_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"media_id": str(item.id), "game_id": str(item.game_id), "kind": item.kind, "filename": item.filename, "created_at": item.created_at}})
-        events.sort(key=lambda event: event["occurred_at"])
+        events.sort(key=lambda event: int(event["occurred_at"]))
         return {"events": events[:limit], "cursor": max([since, *[int(event["occurred_at"]) for event in events]])}
 
     if method == "notifications.send":
