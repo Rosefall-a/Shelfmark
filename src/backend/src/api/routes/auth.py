@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -82,7 +82,7 @@ class UserProfileUpdateRequest(BaseModel):
 
 @router.post("/login")
 async def login(
-    payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+    payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     identifier = payload.username_or_email.strip()
     user = await db.scalar(

@@ -19,6 +19,7 @@ from src.database.models.auth import UserSession
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.core.session_manager import create_session
 
 router = APIRouter(prefix="/api/auth/oidc", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -284,14 +285,8 @@ async def _complete_callback(request, db, config, client_name):
         if config.admin_group:
             user.is_admin = is_admin
 
-    session_token = secrets.token_urlsafe(32)
-    db.add(
-        UserSession(
-            user_id=user.id,
-            token_hash=hash_token(session_token),
-            expires_at=int(time.time()) + SESSION_TTL_SECONDS,
-        )
-    )
+    session_context = await create_session(db, user, request)
+    session_token = session_context.token
     await db.commit()
     response = RedirectResponse("/login?oidc=success", 303)
     response.set_cookie(
