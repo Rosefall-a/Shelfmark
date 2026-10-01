@@ -569,8 +569,21 @@ async def upload_game_screenshots(
     if profile_id is not None:
         await _get_profile_or_404(profile_id, game_id, db)
 
+    # Accept both the current plural field used by the frontend and the
+    # legacy/single-file field used by older clients. This keeps the upload
+    # endpoint backwards-compatible while still returning a useful 400 when
+    # a multipart request contains no file at all.
+    uploads = list(files or [])
+    if file is not None:
+        uploads.append(file)
+    if not uploads:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+
     results: list[dict] = []
-    for file in files:
+    for file in uploads:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
@@ -813,7 +826,8 @@ async def _sync_game_file_items(game_id: UUID, game_dir: Path, db: AsyncSession)
 async def upload_game_files(
     game_id: UUID,
     kind: GameFileKind,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
