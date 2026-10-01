@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 import zipfile
+import zlib
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -808,6 +809,7 @@ class PluginRegistry:
         self.root = root
         self.supervisor = supervisor
         self.state_path = root / ".runtime-state.json"
+        self._installation_lock = threading.RLock()
         self.root.mkdir(mode=0o750, parents=True, exist_ok=True)
 
     def _state(self) -> dict[str, Any]:
@@ -1040,6 +1042,8 @@ class PluginRegistry:
             else {"type": "unknown"},
             "trust": raw_state.get("trust", {}) if isinstance(raw_state, dict) else {},
             "enabled": enabled,
+            "installation_pending": bool(raw_state.get("pending_installation"))
+            if isinstance(raw_state, dict) else False,
             "health": "healthy"
             if running
             else (
@@ -1071,6 +1075,32 @@ class PluginRegistry:
         replace: bool = False,
         source_metadata: dict[str, Any] | None = None,
         trust_metadata: dict[str, Any] | None = None,
+        operation_id: str | None = None,
+        expected_version: str | None = None,
+    ) -> dict[str, Any]:
+        with self._installation_lock:
+            return self._install_package(
+                package,
+                filename,
+                installation_id=installation_id,
+                replace=replace,
+                source_metadata=source_metadata,
+                trust_metadata=trust_metadata,
+                operation_id=operation_id,
+                expected_version=expected_version,
+            )
+
+    def _install_package(
+        self,
+        package: bytes,
+        filename: str,
+        *,
+        installation_id: str,
+        replace: bool,
+        source_metadata: dict[str, Any] | None,
+        trust_metadata: dict[str, Any] | None,
+        operation_id: str | None,
+        expected_version: str | None,
     ) -> dict[str, Any]:
         # The archive contents, not a user-controlled filename, define the format.
         del filename
@@ -1080,12 +1110,14 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin package exceeds the 64 MiB upload limit")
         try:
             UUID(installation_id)
+            if operation_id is not None:
+                UUID(operation_id)
         except ValueError as exc:
             raise RuntimePolicyError("plugin installation ID is invalid") from exc
 
         try:
             archive = zipfile.ZipFile(io.BytesIO(package))
-        except (OSError, zipfile.BadZipFile) as exc:
+        except (OSError, zipfile.BadZipFile, UnicodeError) as exc:
             raise RuntimePolicyError("invalid plugin package archive") from exc
 
         try:
@@ -1117,7 +1149,7 @@ class PluginRegistry:
                     not info.filename
                     or path.is_absolute()
                     or any(
-                        not part or part in {".", ".."} or part.endswith(":")
+                        not part or part in {".", ".."} or ":" in part
                         for part in raw_parts
                     )
                     or any(ord(character) < 32 for character in info.filename)
@@ -1165,7 +1197,14 @@ class PluginRegistry:
                     raise RuntimePolicyError(
                         "plugin package contains an unexpected file"
                     )
-        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        except (
+            OSError,
+            RuntimeError,
+            zipfile.BadZipFile,
+            EOFError,
+            UnicodeError,
+            zlib.error,
+        ) as exc:
             raise RuntimePolicyError("failed to read plugin package") from exc
         finally:
             archive.close()
@@ -1280,9 +1319,35 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin package integrity verification failed")
 
         target = self.root / plugin_id
-        previous_state = self._state().get(plugin_id)
+        state = self._state()
+        previous_state = state.get(plugin_id)
+        if isinstance(previous_state, dict) and previous_state.get(
+            "pending_installation"
+        ):
+            raise RuntimePolicyError(
+                "plugin installation is awaiting its permission commit"
+            )
         if target.exists() and not replace:
             raise RuntimePolicyError("plugin is already installed")
+        if replace and (
+            not target.is_dir()
+            or not isinstance(previous_state, dict)
+            or previous_state.get("installation_id") != installation_id
+        ):
+            raise RuntimePolicyError(
+                "plugin update installation identity does not match"
+            )
+        if (
+            replace
+            and operation_id is not None
+            and (
+                expected_version is None
+                or str(self.package(plugin_id)[1].get("version")) != expected_version
+            )
+        ):
+            raise RuntimePolicyError(
+                "installed plugin version changed after update planning"
+            )
         if target.exists():
             self.supervisor.stop(plugin_id)
         staging = (
@@ -1290,6 +1355,8 @@ class PluginRegistry:
         )
         if staging.exists():
             raise RuntimePolicyError("plugin installation is already in progress")
+        backup: Path | None = None
+        published = False
         try:
             staging.mkdir(mode=0o700)
         except OSError as exc:
@@ -1316,31 +1383,41 @@ class PluginRegistry:
                 except Exception:
                     backup.rename(target)
                     raise
-                shutil.rmtree(backup, ignore_errors=True)
             else:
                 staging.rename(target)
+            published = True
+            if replace and isinstance(previous_state, dict):
+                next_state = dict(previous_state)
+                if source_metadata:
+                    next_state["source"] = source_metadata
+                if trust_metadata:
+                    next_state["trust"] = trust_metadata
+                state[plugin_id] = next_state
+            else:
+                state[plugin_id] = {
+                    "enabled": False,
+                    "user_id": None,
+                    "installation_id": installation_id,
+                    "source": source_metadata or {"type": "upload"},
+                    "trust": trust_metadata or {},
+                }
+            if operation_id is not None:
+                state[plugin_id]["enabled"] = False
+                state[plugin_id]["pending_installation"] = {
+                    "operation_id": operation_id,
+                    "previous_state": previous_state,
+                    "backup": backup.name if backup is not None else None,
+                }
+            self._save_state(state)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
+            if published:
+                shutil.rmtree(target, ignore_errors=True)
+                if backup is not None:
+                    backup.rename(target)
             raise
-        state = self._state()
-        if replace and isinstance(previous_state, dict):
-            previous_state["installation_id"] = previous_state.get(
-                "installation_id", installation_id
-            )
-            if source_metadata:
-                previous_state["source"] = source_metadata
-            if trust_metadata:
-                previous_state["trust"] = trust_metadata
-            state[plugin_id] = previous_state
-        else:
-            state[plugin_id] = {
-                "enabled": False,
-                "user_id": None,
-                "installation_id": installation_id,
-                "source": source_metadata or {"type": "upload"},
-                "trust": trust_metadata or {},
-            }
-        self._save_state(state)
+        if backup is not None and operation_id is None:
+            shutil.rmtree(backup, ignore_errors=True)
         self.supervisor._log(
             plugin_id,
             "Plugin package updated." if replace else "Plugin package installed.",
@@ -1352,7 +1429,59 @@ class PluginRegistry:
             "name": manifest.get("name", plugin_id),
             "version": manifest.get("version", "0.0.0"),
             "status": "updated" if replace else "installed",
+            "operation_id": operation_id,
         }
+
+    def finish_installation(
+        self, plugin_id: str, operation_id: str, *, commit: bool
+    ) -> None:
+        """Finish a host grant transaction; unfinished packages cannot execute."""
+        with self._installation_lock:
+            self.package(plugin_id)
+            state = self._state()
+            current = state.get(plugin_id, {})
+            pending = current.get("pending_installation")
+            if (
+                not isinstance(pending, dict)
+                or pending.get("operation_id") != operation_id
+            ):
+                raise RuntimePolicyError("plugin installation operation does not match")
+            backup_name = pending.get("backup")
+            backup = self.root / backup_name if backup_name else None
+            if backup is not None and (
+                not re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(backup_name))
+                or not backup.is_dir()
+            ):
+                raise RuntimePolicyError("plugin installation backup is unavailable")
+            if commit:
+                current = dict(current)
+                current.pop("pending_installation")
+                state[plugin_id] = current
+                self._save_state(state)
+                if backup is not None:
+                    shutil.rmtree(backup, ignore_errors=True)
+                return
+            # Persist a disabled state first. If recovery fails, never expose
+            # candidate code with the predecessor's still-authorized grants.
+            previous_state = pending.get("previous_state")
+            target = self.root / plugin_id
+            if backup is not None:
+                rejected = self.root / f".rejected-{plugin_id}-{operation_id}"
+                target.rename(rejected)
+                try:
+                    backup.rename(target)
+                except Exception:
+                    rejected.rename(target)
+                    raise
+                state[plugin_id] = previous_state
+                self._save_state(state)
+                shutil.rmtree(rejected, ignore_errors=True)
+                if isinstance(previous_state, dict) and previous_state.get("enabled"):
+                    self.start(plugin_id, user_id=previous_state.get("user_id"))
+            else:
+                shutil.rmtree(target)
+                state.pop(plugin_id, None)
+                self._save_state(state)
 
     def list(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -1481,6 +1610,10 @@ class PluginRegistry:
         return (sys.executable, "-c", script)
 
     def start(self, plugin_id: str, user_id: str | None = None) -> None:
+        with self._installation_lock:
+            self._start(plugin_id, user_id)
+
+    def _start(self, plugin_id: str, user_id: str | None = None) -> None:
         package, manifest = self.package(plugin_id)
         item = self._item(package)
         if not item["compatible"]:
@@ -1492,12 +1625,17 @@ class PluginRegistry:
             self.supervisor._user_ids[plugin_id] = persisted.get("user_id")
         if not isinstance(persisted, dict) or not persisted.get("installation_id"):
             raise RuntimePolicyError("plugin installation identity is missing")
+        if persisted.get("pending_installation"):
+            raise RuntimePolicyError(
+                "plugin installation is awaiting its permission commit"
+            )
         self.supervisor._installation_ids[plugin_id] = str(persisted["installation_id"])
         quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
         self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
         self.supervisor.start(PluginSpec(plugin_id, self._command(manifest)), package)
         state = self._state()
         state[plugin_id] = {
+            **persisted,
             "enabled": True,
             "user_id": self.supervisor._user_ids.get(plugin_id),
             "installation_id": self.supervisor._installation_ids[plugin_id],
@@ -1505,11 +1643,16 @@ class PluginRegistry:
         self._save_state(state)
 
     def stop(self, plugin_id: str) -> None:
+        with self._installation_lock:
+            self._stop(plugin_id)
+
+    def _stop(self, plugin_id: str) -> None:
         self.package(plugin_id)
         self.supervisor.stop(plugin_id)
         state = self._state()
         previous = state.get(plugin_id)
         state[plugin_id] = {
+            **(previous if isinstance(previous, dict) else {}),
             "enabled": False,
             "user_id": previous.get("user_id")
             if isinstance(previous, dict)
@@ -1725,6 +1868,10 @@ class PluginRegistry:
         return result
 
     def delete(self, plugin_id: str) -> None:
+        with self._installation_lock:
+            self._delete(plugin_id)
+
+    def _delete(self, plugin_id: str) -> None:
         package, manifest = self.package(plugin_id)
         self.supervisor.stop(plugin_id)
         quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
@@ -1732,6 +1879,10 @@ class PluginRegistry:
         self.supervisor._storage(plugin_id).uninstall()
         shutil.rmtree(package, ignore_errors=False)
         state = self._state()
+        pending = state.get(plugin_id, {}).get("pending_installation", {})
+        backup_name = pending.get("backup") if isinstance(pending, dict) else None
+        if backup_name and re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(backup_name)):
+            shutil.rmtree(self.root / backup_name, ignore_errors=True)
         state.pop(plugin_id, None)
         self._save_state(state)
 
@@ -1885,8 +2036,14 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             self._json(401, {"detail": "runtime authentication required"})
             return
         parts = self._parts()
-        if parts == ["plugins", "install"]:
+        if parts in (["plugins", "install"], ["plugins", "install", "prepare"]):
             try:
+                if parts[-1] == "prepare" and not self.headers.get(
+                    "X-Plugin-Operation-ID"
+                ):
+                    raise RuntimePolicyError(
+                        "prepared installation requires an operation ID"
+                    )
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 1 or length > 64 * 1024 * 1024:
                     self._json(
@@ -1917,9 +2074,33 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     replace=self.headers.get("X-Plugin-Replace", "").lower() == "true",
                     source_metadata=metadata_header("X-Plugin-Source"),
                     trust_metadata=metadata_header("X-Plugin-Trust"),
+                    operation_id=self.headers.get("X-Plugin-Operation-ID") or None,
+                    expected_version=self.headers.get("X-Plugin-Expected-Version")
+                    or None,
                 )
                 self._json(201, result)
-            except (RuntimePolicyError, ValueError) as exc:
+            except (RuntimePolicyError, ValueError, OSError) as exc:
+                self._json(422, {"detail": str(exc)})
+            return
+        if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "installation":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 1 or length > 4096:
+                    raise RuntimePolicyError("invalid installation completion request")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict) or not isinstance(
+                    payload.get("commit"), bool
+                ):
+                    raise RuntimePolicyError("invalid installation completion request")
+                self.server.registry.finish_installation(  # type: ignore[attr-defined]
+                    parts[1],
+                    str(payload.get("operation_id", "")),
+                    commit=payload["commit"],
+                )
+                self._json(200, {"completed": True})
+            except KeyError:
+                self._json(404, {"detail": "plugin not found"})
+            except (RuntimePolicyError, ValueError, OSError) as exc:
                 self._json(422, {"detail": str(exc)})
             return
         if not self._authorized():

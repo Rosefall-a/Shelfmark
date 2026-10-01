@@ -29,4 +29,6 @@ The application exposes the lifecycle endpoints under /api/plugins and delegates
 
 ## Installation and activation
 
-Newly installed plugins are disabled by default. Installation records the administrator's contextual consent choices and does not activate the plugin. An administrator must explicitly enable it. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.
+The canonical installer records the administrator's explicit permission choices and resolves dependencies before preparing a package in the runtime. Prepared installations remain disabled until permission decisions commit and the runtime transaction completes. New installations then start automatically and receive a health check; updates restart only when the predecessor was enabled. Failed activation remains observable as `failed_activation` or `unhealthy`. Runtime start and stop preserve installation identity, publisher trust, and acquisition source metadata. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.
+
+An interrupted installation transaction remains disabled across runtime restarts and cannot be enabled before completion. See [Plugin updates](plugin-updates.md) for transaction recovery and grant-retention rules.

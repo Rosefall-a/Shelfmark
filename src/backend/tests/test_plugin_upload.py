@@ -59,13 +59,19 @@ class FakeClient:
         installation_id: str,
         source_metadata=None,
         trust_metadata=None,
+        operation_id=None,
     ) -> dict[str, str]:
         self.package = package
         self.filename = filename
         self.installation_id = installation_id
         self.source_metadata = source_metadata
         self.trust_metadata = trust_metadata
-        return {"status": "installed"}
+        self.operation_id = operation_id
+        return {"status": "installed", "operation_id": operation_id}
+
+    async def finish_installation(self, plugin_id, operation_id, *, commit):
+        assert operation_id == self.operation_id
+        self.completed = (plugin_id, commit)
 
     async def start(self, plugin_id: str, user_id: str | None = None) -> None:
         self.started = (plugin_id, user_id)

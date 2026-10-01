@@ -175,6 +175,28 @@ def _package_bytes(
     return output.getvalue()
 
 
+def test_runtime_rejects_invalid_utf8_archive_name(tmp_path):
+    import struct
+
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = bytearray(_package_bytes())
+    central = package.index(b"PK\x01\x02")
+    struct.pack_into("<H", package, 6, 0x800)
+    struct.pack_into("<H", package, central + 8, 0x800)
+    package[30] = package[central + 46] = 0xFF
+
+    with pytest.raises(RuntimePolicyError, match="archive"):
+        registry.install_package(
+            bytes(package), "malformed.zip", installation_id=str(uuid.uuid4())
+        )
+    assert registry.list() == []
+
+
 def test_runtime_installs_verified_utp_atomically(tmp_path):
     from runtime import PluginRegistry, PluginSupervisor
 
@@ -302,6 +324,227 @@ def test_runtime_rejects_duplicate_plugin_install(tmp_path):
         registry.install_package(
             _package_bytes(), "second.utp", installation_id=installation_id
         )
+
+
+def test_runtime_lifecycle_preserves_package_trust_and_source(tmp_path, monkeypatch):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    trust = {"status": "trusted", "publisher_key_id": "known"}
+    source = {"type": "catalogue", "url": "https://example.com/package.utp"}
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(),
+        "candidate.utp",
+        installation_id=installation_id,
+        trust_metadata=trust,
+        source_metadata=source,
+    )
+    for action in (registry.start, registry.stop, registry.start):
+        action("example.upload")
+        state = registry._state()["example.upload"]
+        assert state["trust"] == trust
+        assert state["source"] == source
+        assert state["installation_id"] == installation_id
+
+
+@pytest.mark.parametrize("replacing", (False, True))
+def test_runtime_state_commit_failure_restores_the_previous_package(
+    tmp_path, monkeypatch, replacing
+):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    installation_id = str(uuid.uuid4())
+    if replacing:
+        registry.install_package(
+            _package_bytes(),
+            "original.utp",
+            installation_id=installation_id,
+            trust_metadata={"status": "trusted", "publisher_key_id": "known"},
+        )
+    previous_state = registry._state()
+    target = registry.root / "example.upload"
+    old_manifest = (target / "manifest.json").read_bytes() if replacing else None
+
+    def fail_state_commit(state):
+        raise OSError("injected state persistence failure")
+
+    monkeypatch.setattr(registry, "_save_state", fail_state_commit)
+    with pytest.raises(OSError, match="persistence"):
+        registry.install_package(
+            _package_bytes(frontend=True),
+            "candidate.zip",
+            installation_id=installation_id,
+            replace=replacing,
+            trust_metadata={"status": "unsigned"},
+        )
+    assert registry._state() == previous_state
+    if replacing:
+        assert (target / "manifest.json").read_bytes() == old_manifest
+        assert not (target / "frontend").exists()
+    else:
+        assert not target.exists()
+    assert not list(registry.root.glob(".install-*"))
+    assert not list(registry.root.glob(".backup-*"))
+
+
+def test_runtime_replacement_cannot_change_installation_identity(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    registry.install_package(
+        _package_bytes(), "original.utp", installation_id=str(uuid.uuid4())
+    )
+    state = registry._state()
+    with pytest.raises(RuntimePolicyError, match="identity"):
+        registry.install_package(
+            _package_bytes(frontend=True),
+            "candidate.utp",
+            installation_id=str(uuid.uuid4()),
+            replace=True,
+        )
+    assert registry._state() == state
+    assert not (registry.root / "example.upload" / "frontend").exists()
+
+
+def test_prepared_installation_survives_restart_and_requires_matching_completion(
+    tmp_path, monkeypatch
+):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    operation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(),
+        "candidate.utp",
+        installation_id=str(uuid.uuid4()),
+        operation_id=operation_id,
+    )
+    registry = PluginRegistry(registry.root, supervisor)
+    with pytest.raises(RuntimePolicyError, match="permission commit"):
+        registry.start("example.upload")
+    with pytest.raises(RuntimePolicyError, match="operation"):
+        registry.finish_installation("example.upload", str(uuid.uuid4()), commit=True)
+    registry.finish_installation("example.upload", operation_id, commit=True)
+    registry.start("example.upload")
+    assert registry._state()["example.upload"]["enabled"] is True
+
+
+def test_prepared_update_abort_restores_original_bytes_and_identity(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(), "original.utp", installation_id=installation_id
+    )
+    state = registry._state()
+    operation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(frontend=True),
+        "candidate.zip",
+        installation_id=installation_id,
+        operation_id=operation_id,
+        replace=True,
+        expected_version="1.0.0",
+    )
+    with pytest.raises(RuntimePolicyError, match="permission commit"):
+        registry.install_package(
+            _package_bytes(),
+            "competing.utp",
+            installation_id=installation_id,
+            replace=True,
+            operation_id=str(uuid.uuid4()),
+        )
+    registry.finish_installation("example.upload", operation_id, commit=False)
+    assert registry._state() == state
+    assert not (registry.root / "example.upload" / "frontend").exists()
+    assert not list(registry.root.glob(".backup-*"))
+
+
+def test_runtime_http_preparation_and_completion_are_authenticated(
+    tmp_path, monkeypatch
+):
+    import threading
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from runtime import PluginRegistry, PluginSupervisor, RuntimeHandler, RuntimeServer
+
+    token = "gate-runtime-test-token-" + "x" * 32
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", token)
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    server = RuntimeServer(("127.0.0.1", 0), RuntimeHandler)
+    server.registry = registry
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+    operation_id = str(uuid.uuid4())
+    headers = {
+        "X-Plugin-Runtime-Token": token,
+        "X-Plugin-Installation-ID": str(uuid.uuid4()),
+        "X-Plugin-Operation-ID": operation_id,
+    }
+    try:
+        with pytest.raises(HTTPError) as unauthorized:
+            urlopen(
+                Request(
+                    base_url + "/plugins/install/prepare",
+                    data=_package_bytes(),
+                    method="PUT",
+                ),
+                timeout=5,
+            )
+        assert unauthorized.value.code == 401
+        request = Request(
+            base_url + "/plugins/install/prepare",
+            data=_package_bytes(),
+            method="PUT",
+            headers=headers,
+        )
+        with urlopen(request, timeout=5) as response:
+            assert json.load(response)["operation_id"] == operation_id
+        with pytest.raises(HTTPError) as premature:
+            urlopen(
+                Request(
+                    base_url + "/plugins/example.upload/start",
+                    data=b"{}",
+                    method="POST",
+                    headers=headers,
+                ),
+                timeout=5,
+            )
+        assert premature.value.code == 422
+        request = Request(
+            base_url + "/plugins/example.upload/installation",
+            data=json.dumps({"operation_id": operation_id, "commit": True}).encode(),
+            method="PUT",
+            headers=headers,
+        )
+        with urlopen(request, timeout=5) as response:
+            assert json.load(response) == {"completed": True}
+        with urlopen(
+            Request(
+                base_url + "/plugins/example.upload/start",
+                data=b"{}",
+                method="POST",
+                headers=headers,
+            ),
+            timeout=5,
+        ) as response:
+            assert response.status == 200
+        assert registry._state()["example.upload"]["enabled"] is True
+    finally:
+        server.shutdown()
+        worker.join(timeout=5)
+        server.server_close()
 
 
 def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
