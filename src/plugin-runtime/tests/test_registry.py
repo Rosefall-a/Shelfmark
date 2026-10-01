@@ -68,7 +68,7 @@ def test_runtime_discovers_and_serves_declarative_plugin(tmp_path: Path) -> None
 
 
 def test_runtime_dispatches_declared_action_in_supervisor(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, activate_registry
 ) -> None:
     root = tmp_path / "plugins"
     package = root / "example.plugin"
@@ -106,6 +106,7 @@ def test_runtime_dispatches_declared_action_in_supervisor(
         lambda spec, package, payload, **kwargs: calls.append((spec, package, payload)),
     )
 
+    activate_registry(registry, "example.plugin")
     assert registry.action("example.plugin", "ping", {"value": "ok"}) == {
         "completed": True
     }
@@ -113,7 +114,9 @@ def test_runtime_dispatches_declared_action_in_supervisor(
     assert calls[0][2] == b'{"value":"ok"}'
 
 
-def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> None:
+def test_runtime_handles_discord_action_output(
+    tmp_path: Path, monkeypatch, activate_registry
+) -> None:
     root = tmp_path / "plugins"
     package = root / "example.plugin"
     package.mkdir(parents=True)
@@ -167,6 +170,7 @@ def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> N
         registry, "_discord_webhook", lambda url, content: sent.append((url, content))
     )
 
+    activate_registry(registry, "example.plugin")
     assert registry.action("example.plugin", "announce", {}) == {"completed": True}
     assert sent == [("https://discord.com/api/webhooks/test/x", "hello")]
     assert approved == ["notifications.send"]
@@ -194,7 +198,7 @@ def test_runtime_rejects_tampered_package(tmp_path: Path) -> None:
 
 
 def test_runtime_executes_declared_backend_route_with_request_user(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, activate_registry
 ) -> None:
     root = tmp_path / "plugins"
     package = root / "example.routes"
@@ -242,6 +246,7 @@ def test_runtime_executes_declared_backend_route_with_request_user(
 
     monkeypatch.setattr(registry.supervisor, "execute", execute)
     user_id = "912f4884-24f0-4684-a920-f9b83835679f"
+    activate_registry(registry, "example.routes")
     result = registry.route(
         "example.routes",
         "hello",

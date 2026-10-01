@@ -190,7 +190,7 @@ def test_runtime_installs_verified_utp_atomically(tmp_path):
     assert (tmp_path / "plugins" / "example.upload" / "plugin.py").is_file()
 
 
-def test_runtime_installs_and_serves_declared_frontend(tmp_path):
+def test_runtime_installs_and_serves_declared_frontend(tmp_path, activate_registry):
     from runtime import PluginRegistry, PluginSupervisor
 
     registry = PluginRegistry(
@@ -200,12 +200,15 @@ def test_runtime_installs_and_serves_declared_frontend(tmp_path):
     registry.install_package(
         _package_bytes(frontend=True), "frontend.utp", installation_id=str(uuid.uuid4())
     )
+    activate_registry(registry, "example.upload")
     asset = registry.frontend("example.upload", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
 
 
-def test_runtime_installs_and_serves_native_frontend_from_separate_root(tmp_path):
+def test_runtime_installs_and_serves_native_frontend_from_separate_root(
+    tmp_path, activate_registry
+):
     from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
 
     registry = PluginRegistry(
@@ -220,6 +223,7 @@ def test_runtime_installs_and_serves_native_frontend_from_separate_root(tmp_path
 
     document = registry.ui("example.upload")
     assert document["native_frontend"]["entry"] == "native/index.js"
+    activate_registry(registry, "example.upload")
     assert (
         registry.frontend("example.upload", "native/index.js", native=True)["path"]
         == "native/index.js"
@@ -313,7 +317,7 @@ def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
     assert (storage.root / ".storage.json").stat().st_mode & 0o777 == 0o600
 
 
-def test_frontend_asset_is_namespaced(tmp_path) -> None:
+def test_frontend_asset_is_namespaced(tmp_path, activate_registry) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
     registry = PluginRegistry(
@@ -335,13 +339,14 @@ def test_frontend_asset_is_namespaced(tmp_path) -> None:
     frontend = package / "frontend"
     frontend.mkdir()
     (frontend / "index.html").write_text("<div>ok</div>", encoding="utf-8")
+    activate_registry(registry, "example.frontend")
     asset = registry.frontend("example.frontend", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "PG" in asset["content"]
 
 
 def test_runtime_discord_action_reads_secret_from_private_storage(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, activate_registry
 ) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
@@ -410,6 +415,7 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
         "_discord_webhook",
         lambda url, content: delivered.append((url, content)),
     )
+    activate_registry(registry, "example.discord")
     result = registry.action("example.discord", "announce", {})
     assert approved == ["notifications.send", "notifications.send"]
     assert result == {"completed": True}
@@ -421,7 +427,9 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
     ]
 
 
-def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
+def test_runtime_action_returns_structured_provider_result(
+    tmp_path, activate_registry
+) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
     registry = PluginRegistry(
@@ -451,7 +459,7 @@ def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
             return b'{"success":true,"retryable":false,"error":null}'
 
     registry.supervisor.execute = FakeSupervisor().execute
-    registry._save_state({"example.provider": {"enabled": True}})
+    activate_registry(registry, "example.provider")
     assert registry.action("example.provider", "deliver", {}) == {
         "success": True,
         "retryable": False,
@@ -460,7 +468,7 @@ def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
 
 
 def test_runtime_discord_provider_returns_core_delivery_result(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, activate_registry
 ) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
@@ -509,6 +517,7 @@ def test_runtime_discord_provider_returns_core_delivery_result(
         lambda url, content: delivered.append((url, content)),
     )
 
+    activate_registry(registry, "example.provider")
     assert registry.action("example.provider", "deliver", {}) == {
         "success": True,
         "retryable": False,
@@ -519,7 +528,7 @@ def test_runtime_discord_provider_returns_core_delivery_result(
 
 
 def test_action_handler_can_use_the_mediated_plugin_gateway(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, activate_registry
 ) -> None:
     from runtime import PluginRegistry, PluginSupervisor
 
@@ -588,6 +597,7 @@ def test_action_handler_can_use_the_mediated_plugin_gateway(
 
     monkeypatch.setattr(supervisor, "_handle_gateway_request", dispatch)
 
+    activate_registry(registry, "example.documents")
     result = registry.action("example.documents", "list", {"limit": 10})
 
     assert result == {"documents": [{"id": "document-1"}]}

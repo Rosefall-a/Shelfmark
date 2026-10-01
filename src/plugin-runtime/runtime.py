@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
@@ -155,6 +155,8 @@ class PluginSupervisor:
         self.gateway_token = gateway_token or os.getenv("PLUGIN_RUNTIME_TOKEN", "")
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._processes: dict[str, subprocess.Popen[bytes]] = {}
+        self._action_processes: dict[str, set[subprocess.Popen[bytes]]] = {}
+        self.execution_allowed: Callable[[str, str], bool] | None = None
         self._last_exit_codes: dict[str, int | None] = {}
         self._logs: dict[str, deque[dict[str, Any]]] = {}
         self._diagnostic_sequence = 0
@@ -163,7 +165,7 @@ class PluginSupervisor:
         self._storage_quotas: dict[str, int] = {}
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     @staticmethod
     def _redact(value: str) -> str:
@@ -298,6 +300,10 @@ class PluginSupervisor:
         user_id: str | None = None,
     ) -> dict[str, Any]:
         method = str(request.get("method", ""))
+        if self.execution_allowed is not None and not self.execution_allowed(
+            plugin_id, method
+        ):
+            raise RuntimePolicyError("plugin contributions are not active")
         capability = str(request.get("capability", ""))
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
@@ -587,26 +593,32 @@ class PluginSupervisor:
         process: subprocess.Popen[bytes] | None = None
         try:
             self._storage(spec.plugin_id)
-            process = subprocess.Popen(
-                self._sandbox_command(spec, workdir, package_dir),
-                cwd=package_dir if self._nonbubble_enabled() else workdir,
-                env={
-                    "PATH": "/usr/local/bin:/usr/bin:/bin",
-                    "HOME": str(package_dir)
-                    if self._nonbubble_enabled()
-                    else "/plugin",
-                    "PLUGIN_DATA_DIR": "/plugin-data",
-                    "TMPDIR": "/tmp",
-                    "PYTHONUNBUFFERED": "1",
-                    "PYTHONDONTWRITEBYTECODE": "1",
-                    **spec.environment,
-                },
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-                preexec_fn=lambda: self._limits(spec.resources),
-            )
+            with self._lock:
+                if self.execution_allowed is not None and not self.execution_allowed(
+                    spec.plugin_id, "action"
+                ):
+                    raise RuntimePolicyError("plugin contributions are not active")
+                process = subprocess.Popen(
+                    self._sandbox_command(spec, workdir, package_dir),
+                    cwd=package_dir if self._nonbubble_enabled() else workdir,
+                    env={
+                        "PATH": "/usr/local/bin:/usr/bin:/bin",
+                        "HOME": str(package_dir)
+                        if self._nonbubble_enabled()
+                        else "/plugin",
+                        "PLUGIN_DATA_DIR": "/plugin-data",
+                        "TMPDIR": "/tmp",
+                        "PYTHONUNBUFFERED": "1",
+                        "PYTHONDONTWRITEBYTECODE": "1",
+                        **spec.environment,
+                    },
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                    preexec_fn=lambda: self._limits(spec.resources),
+                )
+                self._action_processes.setdefault(spec.plugin_id, set()).add(process)
             if (
                 process.stdin is None
                 or process.stdout is None
@@ -726,9 +738,11 @@ class PluginSupervisor:
             )
             raise RuntimePolicyError("plugin action timed out") from exc
         finally:
-            if process is not None and process.poll() is None:
-                process.kill()
-                process.wait()
+            if process is not None:
+                if process.poll() is None or hasattr(os, "killpg"):
+                    self._terminate(process, 0.5)
+                with self._lock:
+                    self._action_processes.get(spec.plugin_id, set()).discard(process)
             shutil.rmtree(workdir, ignore_errors=True)
         assert output is not None
         if len(output) > 64 * 1024:
@@ -744,19 +758,27 @@ class PluginSupervisor:
     def stop(self, plugin_id: str, timeout: float = 5.0) -> None:
         with self._lock:
             process = self._processes.pop(plugin_id, None)
+            actions = self._action_processes.pop(plugin_id, set())
+        errors: list[Exception] = []
+        for action in actions:
+            try:
+                self._terminate(action, timeout)
+            except Exception as exc:
+                with self._lock:
+                    self._action_processes.setdefault(plugin_id, set()).add(action)
+                errors.append(exc)
         if process is None:
+            if errors:
+                raise RuntimePolicyError("plugin worker cleanup failed") from errors[0]
             return
         self._log(plugin_id, "Stopping plugin process.", event="runtime.stopping")
         try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=timeout)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait()
-        finally:
+            self._terminate(process, timeout)
+        except Exception as exc:
+            with self._lock:
+                self._processes[plugin_id] = process
+            errors.append(exc)
+        else:
             self._last_exit_codes[plugin_id] = process.returncode
             self._log(
                 plugin_id,
@@ -774,6 +796,33 @@ class PluginSupervisor:
                     elif path.is_dir():
                         path.rmdir()
                 workdir.rmdir()
+        if errors:
+            raise RuntimePolicyError("plugin worker cleanup failed") from errors[0]
+
+    @staticmethod
+    def _terminate(process: subprocess.Popen[bytes], timeout: float) -> None:
+        try:
+            if hasattr(os, "killpg"):
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+            process.wait(timeout=timeout)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                if hasattr(os, "killpg"):
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+            process.wait()
+        finally:
+            # A parent can exit before its descendants. Remove the whole group.
+            if hasattr(os, "killpg"):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def running(self, plugin_id: str) -> bool:
         exited_code: int | None = None
@@ -784,9 +833,6 @@ class PluginSupervisor:
             if process.poll() is not None:
                 self._last_exit_codes[plugin_id] = process.returncode
                 exited_code = process.returncode
-                self._processes.pop(plugin_id, None)
-                self._package_paths.pop(plugin_id, None)
-                self._package_manifests.pop(plugin_id, None)
         if exited_code is not None:
             self._log(
                 plugin_id,
@@ -799,8 +845,14 @@ class PluginSupervisor:
         return True
 
     def stop_all(self) -> None:
-        for plugin_id in list(self._processes):
-            self.stop(plugin_id)
+        errors: list[Exception] = []
+        for plugin_id in sorted(set(self._processes) | set(self._action_processes)):
+            try:
+                self.stop(plugin_id)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise RuntimePolicyError("plugin worker cleanup failed") from errors[0]
 
 
 class PluginRegistry:
@@ -808,18 +860,62 @@ class PluginRegistry:
         self.root = root
         self.supervisor = supervisor
         self.state_path = root / ".runtime-state.json"
+        self._state_lock = threading.RLock()
+        self._operation_lock = threading.RLock()
+        self.supervisor.execution_allowed = self._execution_allowed
         self.root.mkdir(mode=0o750, parents=True, exist_ok=True)
 
     def _state(self) -> dict[str, Any]:
-        try:
-            return json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+        with self._state_lock:
+            try:
+                return json.loads(self.state_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return {}
 
     def _save_state(self, state: dict[str, Any]) -> None:
-        temporary = self.state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
-        temporary.replace(self.state_path)
+        with self._state_lock:
+            temporary = self.state_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+            temporary.replace(self.state_path)
+
+    def _transition(self, plugin_id: str, **changes: Any) -> dict[str, Any]:
+        with self._state_lock:
+            state = self._state()
+            previous = state.get(plugin_id)
+            record = (
+                dict(previous)
+                if isinstance(previous, dict)
+                else {"enabled": bool(previous)}
+            )
+            record.update(changes)
+            state[plugin_id] = record
+            self._save_state(state)
+            return record
+
+    def _execution_allowed(self, plugin_id: str, method: str = "action") -> bool:
+        state = self._state().get(plugin_id)
+        if (
+            isinstance(state, dict)
+            and state.get("enabled")
+            and state.get("status") == "starting"
+            and method
+            in {"lifecycle.ready", "settings.get", "storage.get", "storage.keys"}
+        ):
+            return True
+        return bool(
+            isinstance(state, dict)
+            and state.get("enabled")
+            and state.get("status") == "running"
+            and self.supervisor.running(plugin_id)
+        )
+
+    def _require_active(self, plugin_id: str) -> None:
+        package, _ = self.package(plugin_id)
+        item = self._item(package)
+        if not item["enabled"] or not item["compatible"] or item["status"] != "running":
+            raise RuntimePolicyError(
+                "plugin must be enabled and running before contributions can execute"
+            )
 
     def packages(self) -> list[Path]:
         return sorted(
@@ -876,7 +972,10 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "namespaced backend route path must be relative"
                 )
-            if scope == "plugin" and path.split("/", 1)[0] in _RESERVED_PLUGIN_ROUTE_ROOTS:
+            if (
+                scope == "plugin"
+                and path.split("/", 1)[0] in _RESERVED_PLUGIN_ROUTE_ROOTS
+            ):
                 raise RuntimePolicyError(
                     "namespaced backend route conflicts with plugin management"
                 )
@@ -1004,6 +1103,26 @@ class PluginRegistry:
             else bool(raw_state)
         )
         running = self.supervisor.running(plugin_id)
+        status = raw_state.get("status") if isinstance(raw_state, dict) else None
+        if status is None:
+            status = (
+                "running"
+                if enabled and running
+                else "stopped"
+                if enabled
+                else "disabled"
+            )
+        elif status == "running" and not running:
+            status = "failed"
+        if not enabled and status not in {"stopping", "quarantined", "failed"}:
+            status = "disabled"
+        if (
+            status == "failed"
+            and isinstance(raw_state, dict)
+            and raw_state.get("status") != "failed"
+        ):
+            self._transition(plugin_id, status="failed")
+            self.supervisor.stop(plugin_id)
         return {
             "plugin_id": plugin_id,
             "name": data.get("name", plugin_id),
@@ -1049,20 +1168,31 @@ class PluginRegistry:
             ),
             "logs_available": bool(self.supervisor.logs(plugin_id)),
             "last_exit_code": self.supervisor.exit_code(plugin_id),
-            "status": "running"
-            if running
-            else (
-                "failed"
-                if self.supervisor.exit_code(plugin_id) not in (None, 0)
-                else (
-                    "completed"
-                    if enabled and self.supervisor.exit_code(plugin_id) == 0
-                    else ("stopped" if enabled else "disabled")
-                )
-            ),
+            "status": status,
         }
 
     def install_package(
+        self,
+        package: bytes,
+        filename: str,
+        *,
+        installation_id: str,
+        replace: bool = False,
+        source_metadata: dict[str, Any] | None = None,
+        trust_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        # Ownership validation and package replacement must share one mutation lock.
+        with self._operation_lock:
+            return self._install_package(
+                package,
+                filename,
+                installation_id=installation_id,
+                replace=replace,
+                source_metadata=source_metadata,
+                trust_metadata=trust_metadata,
+            )
+
+    def _install_package(
         self,
         package: bytes,
         filename: str,
@@ -1284,6 +1414,7 @@ class PluginRegistry:
         if target.exists() and not replace:
             raise RuntimePolicyError("plugin is already installed")
         if target.exists():
+            self._transition(plugin_id, enabled=False, status="stopping")
             self.supervisor.stop(plugin_id)
         staging = (
             self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
@@ -1324,6 +1455,13 @@ class PluginRegistry:
             raise
         state = self._state()
         if replace and isinstance(previous_state, dict):
+            previous_state["status"] = (
+                "quarantined"
+                if previous_state.get("status") == "quarantined"
+                else "stopped"
+                if previous_state.get("enabled")
+                else "disabled"
+            )
             previous_state["installation_id"] = previous_state.get(
                 "installation_id", installation_id
             )
@@ -1378,6 +1516,7 @@ class PluginRegistry:
     def frontend(
         self, plugin_id: str, relative: str, *, native: bool = False
     ) -> dict[str, Any]:
+        self._require_active(plugin_id)
         package, manifest = self.package(plugin_id)
         declaration_name = "native_frontend" if native else "frontend"
         required_prefix = "native/" if native else "frontend/"
@@ -1481,44 +1620,71 @@ class PluginRegistry:
         return (sys.executable, "-c", script)
 
     def start(self, plugin_id: str, user_id: str | None = None) -> None:
-        package, manifest = self.package(plugin_id)
-        item = self._item(package)
-        if not item["compatible"]:
-            raise RuntimePolicyError(item["compatibility_reason"])
-        if user_id is not None:
-            self.supervisor._user_ids[plugin_id] = user_id
-        persisted = self._state().get(plugin_id)
-        if user_id is None and isinstance(persisted, dict):
-            self.supervisor._user_ids[plugin_id] = persisted.get("user_id")
-        if not isinstance(persisted, dict) or not persisted.get("installation_id"):
-            raise RuntimePolicyError("plugin installation identity is missing")
-        self.supervisor._installation_ids[plugin_id] = str(persisted["installation_id"])
-        quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
-        self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
-        self.supervisor.start(PluginSpec(plugin_id, self._command(manifest)), package)
-        state = self._state()
-        state[plugin_id] = {
-            "enabled": True,
-            "user_id": self.supervisor._user_ids.get(plugin_id),
-            "installation_id": self.supervisor._installation_ids[plugin_id],
-        }
-        self._save_state(state)
+        with self._operation_lock:
+            package, manifest = self.package(plugin_id)
+            item = self._item(package)
+            if not item["compatible"]:
+                raise RuntimePolicyError(item["compatibility_reason"])
+            persisted = self._state().get(plugin_id)
+            if not isinstance(persisted, dict) or not persisted.get("installation_id"):
+                raise RuntimePolicyError("plugin installation identity is missing")
+            if persisted.get("status") == "quarantined":
+                raise RuntimePolicyError(
+                    "quarantined plugin must be recovered before starting"
+                )
+            if self.supervisor.running(plugin_id):
+                raise RuntimePolicyError("plugin is already running")
+            self.supervisor.stop(plugin_id)
+            self.supervisor._user_ids[plugin_id] = user_id or persisted.get("user_id")
+            self.supervisor._installation_ids[plugin_id] = str(
+                persisted["installation_id"]
+            )
+            quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
+            self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
+            self._transition(
+                plugin_id,
+                enabled=True,
+                status="starting",
+                user_id=self.supervisor._user_ids[plugin_id],
+            )
+            try:
+                self.supervisor.start(
+                    PluginSpec(plugin_id, self._command(manifest)), package
+                )
+            except Exception:
+                self._transition(plugin_id, status="failed")
+                self.supervisor.stop(plugin_id)
+                raise
+            self._transition(plugin_id, status="running")
+            if not self.supervisor.running(plugin_id):
+                self._transition(plugin_id, status="failed")
+                self.supervisor.stop(plugin_id)
 
     def stop(self, plugin_id: str) -> None:
-        self.package(plugin_id)
-        self.supervisor.stop(plugin_id)
-        state = self._state()
-        previous = state.get(plugin_id)
-        state[plugin_id] = {
-            "enabled": False,
-            "user_id": previous.get("user_id")
-            if isinstance(previous, dict)
-            else self.supervisor._user_ids.get(plugin_id),
-            "installation_id": previous.get("installation_id")
-            if isinstance(previous, dict)
-            else self.supervisor._installation_ids.get(plugin_id),
-        }
-        self._save_state(state)
+        with self._operation_lock:
+            self.package(plugin_id)
+            persisted = self._state().get(plugin_id)
+            quarantined = (
+                isinstance(persisted, dict) and persisted.get("status") == "quarantined"
+            )
+            # Revoke execution before waiting for any worker to finish.
+            self._transition(plugin_id, enabled=False, status="stopping")
+            try:
+                self.supervisor.stop(plugin_id)
+            except Exception:
+                self._transition(
+                    plugin_id, status="quarantined" if quarantined else "failed"
+                )
+                raise
+            self._transition(
+                plugin_id, status="quarantined" if quarantined else "disabled"
+            )
+
+    def quarantine(self, plugin_id: str) -> None:
+        with self._operation_lock:
+            self.package(plugin_id)
+            self._transition(plugin_id, enabled=False, status="quarantined")
+            self.supervisor.stop(plugin_id)
 
     def diagnostics(self, plugin_id: str) -> dict[str, Any]:
         self.package(plugin_id)
@@ -1591,11 +1757,7 @@ class PluginRegistry:
     def action(
         self, plugin_id: str, action_id: str, values: dict[str, Any], *, user_id: str | None = None
     ) -> dict[str, Any]:
-        persisted = self._state().get(plugin_id)
-        if not isinstance(persisted, dict) or not persisted.get("enabled", False):
-            raise RuntimePolicyError("plugin must be enabled before actions can run")
-        if self.supervisor.exit_code(plugin_id) not in (None, 0):
-            raise RuntimePolicyError("failed plugin cannot run actions")
+        self._require_active(plugin_id)
         document = self.ui(plugin_id)
         action = next(
             (
@@ -1688,13 +1850,7 @@ class PluginRegistry:
         *,
         user_id: str,
     ) -> dict[str, Any]:
-        persisted = self._state().get(plugin_id)
-        if not isinstance(persisted, dict) or not persisted.get("enabled", False):
-            raise RuntimePolicyError(
-                "plugin must be enabled before backend routes can run"
-            )
-        if self.supervisor.exit_code(plugin_id) not in (None, 0):
-            raise RuntimePolicyError("failed plugin cannot serve backend routes")
+        self._require_active(plugin_id)
         package, manifest = self.package(plugin_id)
         route = next(
             (item for item in self._backend_routes(manifest) if item["id"] == route_id),
@@ -1725,15 +1881,17 @@ class PluginRegistry:
         return result
 
     def delete(self, plugin_id: str) -> None:
-        package, manifest = self.package(plugin_id)
-        self.supervisor.stop(plugin_id)
-        quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
-        self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
-        self.supervisor._storage(plugin_id).uninstall()
-        shutil.rmtree(package, ignore_errors=False)
-        state = self._state()
-        state.pop(plugin_id, None)
-        self._save_state(state)
+        with self._operation_lock:
+            package, manifest = self.package(plugin_id)
+            self.stop(plugin_id)
+            quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
+            self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
+            self.supervisor._storage(plugin_id).uninstall()
+            shutil.rmtree(package, ignore_errors=False)
+            with self._state_lock:
+                state = self._state()
+                state.pop(plugin_id, None)
+                self._save_state(state)
 
     def restore_enabled(self) -> None:
         state = self._state()
