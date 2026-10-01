@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import json
 import mimetypes
 import os
 import time
@@ -14,6 +15,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import raiseload
 
 from src.api.routes.settings import (
     get_or_create_app_integration_settings,
@@ -32,16 +34,21 @@ from src.features.metadata.games.search import search_game_metadata
 from src.features.notification_providers.delivery import ensure_deliveries
 from src.plugin_api.capabilities import capability_implies
 from src.plugin_api.contracts import (
+    DocumentChunkRepresentation,
     DocumentContentRepresentation,
     DocumentRepresentation,
     NotificationProviderRegistration,
+)
+from src.plugin_api.documents import (
+    MAX_CHUNK_BYTES,
+    DocumentAccessError,
+    document_path,
+    read_representation,
 )
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.sessions import dispatch_sessions
 
 _DATA_ROOT = Path("/data/users")
-_MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
-_TEXT_DOCUMENT_EXTENSIONS = {".txt", ".md", ".markdown", ".csv", ".log", ".rst", ".html", ".htm", ".xhtml"}
 _METHOD_CAPABILITIES = {
     "games.list": "games.read",
     "games.metadata.search": "games.read",
@@ -72,37 +79,9 @@ def runtime_token_is_valid(token: str | None) -> bool:
 
 
 def _document_path(game: Game, item: GameFileItem) -> Path:
-    if not game.folder_location or item.kind != "doc":
+    if item.kind != "doc":
         raise LookupError("document not found")
-    document_root = (
-        _DATA_ROOT / str(game.user_id) / "games" / game.folder_location / "docs"
-    ).resolve()
-    candidate = (document_root / item.filename).resolve()
-    try:
-        candidate.relative_to(document_root)
-    except ValueError as exc:
-        raise LookupError("document not found") from exc
-    if not candidate.is_file():
-        raise LookupError("document not found")
-    return candidate
-
-
-def _document_media_type(path: Path) -> str:
-    if path.suffix.lower() == ".pdf":
-        with path.open("rb") as handle:
-            if handle.read(5) != b"%PDF-":
-                raise ValueError("document is not a valid PDF")
-        return "application/pdf"
-    if path.suffix.lower() not in _TEXT_DOCUMENT_EXTENSIONS:
-        raise ValueError("document type is not supported")
-    data = path.read_bytes()
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError("text document is not valid UTF-8") from exc
-    if any(ord(character) < 32 and character not in "\n\r\t" for character in text):
-        raise ValueError("text document contains binary control characters")
-    return "text/html" if path.suffix.lower() in {".html", ".htm", ".xhtml"} else "text/plain"
+    return document_path(_DATA_ROOT, game.user_id, game.folder_location, item.filename)
 
 
 def _document_dto(game: Game, item: GameFileItem, path: Path) -> DocumentRepresentation:
@@ -227,9 +206,11 @@ async def dispatch_gateway_request(
 
     if method == "documents.list":
         limit = max(1, min(int(payload.get("limit", 50)), 200))
+        offset = max(0, int(payload.get("offset", 0)))
         document_rows = (
             await db.execute(
                 select(GameFileItem, Game)
+                .options(raiseload("*"))
                 .join(Game, Game.id == GameFileItem.game_id)
                 .where(
                     Game.user_id == user_id,
@@ -237,27 +218,48 @@ async def dispatch_gateway_request(
                     GameFileItem.kind == "doc",
                     GameFileItem.deleted_at.is_(None),
                 )
-                .order_by(Game.sort_title, GameFileItem.filename)
+                .order_by(Game.sort_title, GameFileItem.filename, GameFileItem.id)
+                .offset(offset)
                 .limit(limit)
             )
         ).all()
         documents = []
+        consumed_rows = 0
+        serialized_bytes = 0
         for item, game in document_rows:
             try:
                 path = _document_path(game, item)
-            except LookupError:
+            except (LookupError, DocumentAccessError):
+                consumed_rows += 1
                 continue
-            documents.append(_document_dto(game, item, path).model_dump(mode="json"))
-        return {"documents": documents}
+            document_metadata = _document_dto(game, item, path).model_dump(mode="json")
+            metadata_bytes = len(json.dumps(document_metadata).encode("utf-8"))
+            # Include ASCII-escaped Unicode and reserve space for action/route envelopes.
+            if "offset" in payload and serialized_bytes + metadata_bytes > 48 * 1024:
+                break
+            documents.append(document_metadata)
+            serialized_bytes += metadata_bytes
+            consumed_rows += 1
+        listing_result: dict[str, Any] = {"documents": documents}
+        if "offset" in payload:
+            listing_result["next_offset"] = (
+                offset + consumed_rows
+                if consumed_rows < len(document_rows) or len(document_rows) == limit
+                else None
+            )
+        return listing_result
 
     if method == "documents.read":
         try:
             document_id = UUID(str(payload.get("document_id", "")))
         except ValueError as exc:
+            if "chunk_bytes" in payload:
+                return DocumentAccessError("invalid", "document_id must be a UUID", 400).representation()
             raise ValueError("document_id must be a UUID") from exc
         row = (
             await db.execute(
                 select(GameFileItem, Game)
+                .options(raiseload("*"))
                 .join(Game, Game.id == GameFileItem.game_id)
                 .where(
                     GameFileItem.id == document_id,
@@ -269,17 +271,51 @@ async def dispatch_gateway_request(
             )
         ).one_or_none()
         if row is None:
+            if "chunk_bytes" in payload:
+                return DocumentAccessError("missing", "Document not found.", 404).representation()
             raise LookupError("document not found")
         item, game = row
-        path = _document_path(game, item)
-        if path.stat().st_size > _MAX_DOCUMENT_BYTES:
-            raise ValueError("document exceeds the 5 MiB Plugin API limit")
-        media_type = _document_media_type(path)
+        try:
+            path = _document_path(game, item)
+            data, media_type, document_format, digest = read_representation(path)
+            if "chunk_bytes" in payload:
+                offset = payload.get("offset", 0)
+                chunk_bytes = payload["chunk_bytes"]
+                if (
+                    not isinstance(offset, int) or isinstance(offset, bool)
+                    or not isinstance(chunk_bytes, int) or isinstance(chunk_bytes, bool)
+                    or not 0 <= offset <= len(data) or not 1 <= chunk_bytes <= MAX_CHUNK_BYTES
+                ):
+                    raise DocumentAccessError("invalid", "Invalid document chunk range.", 400)
+                expected_digest = payload.get("content_sha256")
+                if offset and expected_digest != digest:
+                    raise DocumentAccessError("changed", "Document changed. Open it again.", 409)
+                document = _document_dto(game, item, path).model_copy(
+                    update={"media_type": media_type, "size_bytes": len(data)}
+                )
+                chunk = data[offset:offset + chunk_bytes]
+                return DocumentChunkRepresentation(
+                    document=document,
+                    encoding="base64",
+                    content=base64.b64encode(chunk).decode("ascii"),
+                    format=document_format,
+                    offset=offset,
+                    next_offset=offset + len(chunk),
+                    complete=offset + len(chunk) == len(data),
+                    content_sha256=digest,
+                ).model_dump(mode="json")
+        except DocumentAccessError as exc:
+            if "chunk_bytes" in payload:
+                return exc.representation()
+            raise
+        # Keep the original unchunked v1 representation compatible.
+        if document_format == "html":
+            media_type = "text/html"
         document = _document_dto(game, item, path).model_copy(update={"media_type": media_type})
         content = DocumentContentRepresentation(
             document=document,
             encoding="base64",
-            content=base64.b64encode(path.read_bytes()).decode("ascii"),
+            content=base64.b64encode(data).decode("ascii"),
         )
         return content.model_dump(mode="json")
 

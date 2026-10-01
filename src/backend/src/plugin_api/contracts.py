@@ -157,6 +157,17 @@ class DocumentContentRepresentation(ContractModel):
     content: str = Field(max_length=7_000_000)
 
 
+class DocumentChunkRepresentation(DocumentContentRepresentation):
+    """Additive bounded read transport that fits the runtime action/route limit."""
+
+    content: str = Field(max_length=32_768)
+    format: str = Field(pattern=r"^(pdf|text|html)$")
+    offset: int = Field(ge=0)
+    next_offset: int = Field(ge=0)
+    complete: bool
+    content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class SessionRepresentation(ContractModel):
     """Permissioned session metadata; credentials are never exposed."""
 

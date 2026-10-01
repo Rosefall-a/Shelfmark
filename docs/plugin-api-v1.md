@@ -64,3 +64,5 @@ Manifest validation is deliberately static: it validates data without importing 
 Compatibility is evaluated independently for SDK and application versions. An incompatible manifest is classified before activation and is quarantined rather than executed. Manifest version migration is a pure data transformation; it never loads plugin code.
 
 Dependencies support required/optional dependencies, semantic-version constraints, deterministic dependency-first ordering, missing/incompatible dependency rejection, and cycle detection. Dependency resolution occurs before plugin activation.
+
+Scoped game documents: see [document transport, format policy and security tests](plugin-documents.md).

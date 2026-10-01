@@ -58,3 +58,5 @@ Compatibility is evaluated independently for SDK and application versions. An in
 Dependencies support required/optional dependencies, semantic-version constraints, deterministic dependency-first ordering, missing/incompatible dependency rejection, and cycle detection. Dependency resolution occurs before plugin activation.
 
 See [Plugin capability APIs](plugin-capabilities.md) for the current method map and domain-specific limits, and [Plugin backend routes](plugin-backend-routes.md) for authenticated HTTP integration.
+
+Scoped game documents: see [document transport, format policy and security tests](plugin-documents.md).

@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   approvePluginAction,
   buildInitialValues,
+  dispatchPluginAction,
+  PluginActionError,
   validateField,
   type PluginUiDocument,
   type UiAction,
@@ -164,21 +166,15 @@ async function handleFrontendMessage(event: MessageEvent) {
         );
         return;
       }
-      const response = await fetch(
-        `/api/plugins/${encodeURIComponent(props.document.plugin_id)}/actions/${encodeURIComponent(action.id)}`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            values: data.values || {},
-            confirmed: Boolean(action.confirmation),
-          }),
-        },
+      result = await dispatchPluginAction(
+        props.document.plugin_id,
+        action.id,
+        data.values && typeof data.values === "object"
+          ? (data.values as Record<string, unknown>)
+          : {},
+        undefined,
+        Boolean(action.confirmation),
       );
-      if (!response.ok)
-        throw new Error("Plugin action could not be completed.");
-      result = (await response.json()) as Record<string, unknown>;
     } else if (method === "plugin.context") {
       result = {
         plugin_id: props.document.plugin_id,
@@ -199,6 +195,8 @@ async function handleFrontendMessage(event: MessageEvent) {
         requestId,
         error:
           error instanceof Error ? error.message : "Plugin API request failed.",
+        status_code:
+          error instanceof PluginActionError ? error.status : undefined,
       },
       "*",
     );

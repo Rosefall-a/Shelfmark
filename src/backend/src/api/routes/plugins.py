@@ -180,6 +180,12 @@ _PLUGIN_FRONTEND_CSP = (
 )
 
 
+def _private_plugin_response(response: Response) -> None:
+    """Plugin user data must not be cached or interpreted through MIME sniffing."""
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+
 @lru_cache(maxsize=8)
 def _catalogue_store_for(path: str, official_url: str) -> CatalogueStore:
     return CatalogueStore(Path(path), official_url)
@@ -1731,7 +1737,7 @@ async def plugin_geoip_upload(
     return {"configured": result["configured"], "kind": kind}
 
 
-@router.post("/{plugin_id}/actions/{action_id}")
+@router.post("/{plugin_id}/actions/{action_id}", dependencies=[Depends(_private_plugin_response)])
 async def plugin_action(
     plugin_id: str,
     action_id: str,
@@ -1871,7 +1877,7 @@ class PluginGatewayIn(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-@router.post("/runtime/gateway")
+@router.post("/runtime/gateway", dependencies=[Depends(_private_plugin_response)])
 async def plugin_gateway(
     payload: PluginGatewayIn,
     db: AsyncSession = Depends(get_db),
@@ -2255,7 +2261,11 @@ async def _dispatch_backend_route(
     )
     if result.status_code == 204:
         return Response(status_code=204)
-    return JSONResponse(status_code=result.status_code, content=result.body)
+    return JSONResponse(
+        status_code=result.status_code,
+        content=result.body,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.api_route(

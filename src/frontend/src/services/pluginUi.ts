@@ -181,6 +181,16 @@ export interface PluginActionContext {
   resource_type?: string;
 }
 
+export class PluginActionError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super("Plugin action could not be completed.");
+    this.name = "PluginActionError";
+    this.status = status;
+  }
+}
+
 export async function dispatchPluginAction(
   pluginId: string,
   actionId: string,
@@ -197,7 +207,7 @@ export async function dispatchPluginAction(
       body: JSON.stringify({ values, context, confirmed }),
     },
   );
-  if (!response.ok) throw new Error("Plugin action could not be completed.");
+  if (!response.ok) throw new PluginActionError(response.status);
   return (await response.json()) as Record<string, unknown>;
 }
 
