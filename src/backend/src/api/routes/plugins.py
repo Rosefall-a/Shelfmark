@@ -34,6 +34,7 @@ from sqlalchemy import or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.responses import JSONResponse
 
 from src.core.auth import get_current_admin, get_current_user, verify_password
 from src.database.models.notification import Notification
@@ -44,6 +45,12 @@ from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
 from src.database.session import get_db
+from src.plugin_api.backend_routes import (
+    BackendRouteConflictError,
+    ResolvedBackendRoute,
+    resolve_backend_route,
+    validate_host_route_ownership,
+)
 from src.plugin_api.capabilities import (
     calculate_permission_delta,
     capability_children,
@@ -53,6 +60,8 @@ from src.plugin_api.capabilities import (
 )
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import (
+    BackendRouteAuthorization,
+    BackendRouteScope,
     Capability,
     CapabilityRef,
     PluginDependency,
@@ -82,8 +91,11 @@ from src.plugin_api.updates import (
 )
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
+host_router = APIRouter(tags=["plugin-host-routes"])
 logger = logging.getLogger(__name__)
 _client = PluginRuntimeClient()
+_MAX_PLUGIN_ROUTE_BODY_BYTES = 48 * 1024
+_MAX_PLUGIN_ROUTE_ENVELOPE_BYTES = 64 * 1024
 
 
 class PluginSettingsIn(BaseModel):
@@ -124,6 +136,15 @@ class PluginCatalogEntry(BaseModel):
     release_notes: str | None = Field(default=None, max_length=4_000)
     changelog_url: str | None = Field(default=None, max_length=2048)
     dependencies: tuple[PluginDependency, ...] = ()
+
+
+class PluginBackendRouteResponse(BaseModel):
+    """Bounded JSON response returned by an isolated backend route handler."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status_code: int = Field(default=200, ge=200, le=599)
+    body: Any = None
 
 
 class PluginCatalogueCreate(BaseModel):
@@ -458,6 +479,24 @@ async def _plan_candidate_dependencies(
     return plan_dependencies(manifest, installed, available or ())
 
 
+async def _validate_backend_route_candidate(manifest: Any) -> None:
+    """Ensure one package cannot take over an existing plugin-owned host URL."""
+
+    if not any(route.scope is BackendRouteScope.HOST for route in manifest.backend_routes):
+        return
+    try:
+        validate_host_route_ownership(
+            await _client.plugins(),
+            candidate_plugin_id=manifest.plugin_id,
+            candidate_routes=manifest.backend_routes,
+        )
+    except BackendRouteConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "plugin_route_conflict", "message": str(exc)},
+        ) from exc
+
+
 def _dangerous_approved_permissions(
     inspected: InspectedPackage, approved_keys: set[str]
 ) -> list[str]:
@@ -686,6 +725,7 @@ async def _install_plugin_package(
         inspected = _inspect_install_candidate(temporary_path)
         verified = inspected.package
         trust = inspected.trust
+        await _validate_backend_route_candidate(verified.manifest)
         if not trust.installable:
             raise HTTPException(
                 status_code=400,
@@ -1634,6 +1674,7 @@ async def _update_plugin_package(
     try:
         temporary_path, _, _ = await _store_plugin_upload(file, "plugin-update-")
         inspected = _inspect_install_candidate(temporary_path)
+        await _validate_backend_route_candidate(inspected.package.manifest)
         if not inspected.trust.installable:
             raise HTTPException(status_code=400, detail="Plugin package signature is invalid.")
         if not inspected.trust.is_verified and not allow_untrusted:
@@ -2193,3 +2234,379 @@ async def runtime_health(admin: User = Depends(get_current_admin)) -> dict:
         return await _client.health()
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
+
+
+def _backend_route_error(
+    status_code: int, code: str, message: str, request_id: UUID
+) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "api_version": "v1",
+            "code": code,
+            "message": message,
+            "request_id": str(request_id),
+        },
+    )
+
+
+async def _backend_route_request(
+    request: Request,
+    path_parameters: dict[str, str],
+    request_id: UUID | None = None,
+) -> dict[str, Any]:
+    error_request_id = request_id or uuid4()
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > _MAX_PLUGIN_ROUTE_BODY_BYTES:
+                raise _backend_route_error(
+                    413,
+                    "invalid_request",
+                    "Plugin request body exceeds 48 KiB.",
+                    error_request_id,
+                )
+        except ValueError as exc:
+            raise _backend_route_error(
+                400,
+                "invalid_request",
+                "Content-Length must be an integer.",
+                error_request_id,
+            ) from exc
+    raw_body = await request.body()
+    if len(raw_body) > _MAX_PLUGIN_ROUTE_BODY_BYTES:
+        raise _backend_route_error(
+            413,
+            "invalid_request",
+            "Plugin request body exceeds 48 KiB.",
+            error_request_id,
+        )
+    body: dict[str, Any] | None = None
+    if raw_body:
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            raise _backend_route_error(
+                415,
+                "invalid_request",
+                "Plugin backend routes accept JSON request bodies.",
+                error_request_id,
+            )
+        try:
+            decoded = json.loads(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise _backend_route_error(
+                400,
+                "invalid_request",
+                "Plugin request body is not valid JSON.",
+                error_request_id,
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise _backend_route_error(
+                422,
+                "invalid_request",
+                "Plugin request body must be a JSON object.",
+                error_request_id,
+            )
+        body = decoded
+    payload = {
+        "method": request.method,
+        "path": request.url.path,
+        "path_parameters": path_parameters,
+        "query": {
+            key: request.query_params.getlist(key) for key in sorted(request.query_params.keys())
+        },
+        "headers": {
+            key: request.headers[key]
+            for key in ("accept", "content-type")
+            if key in request.headers
+        },
+        "body": body,
+    }
+    if len(json.dumps(payload, separators=(",", ":")).encode("utf-8")) > (
+        _MAX_PLUGIN_ROUTE_ENVELOPE_BYTES
+    ):
+        raise _backend_route_error(
+            413,
+            "invalid_request",
+            "Plugin request exceeds the 64 KiB route limit.",
+            error_request_id,
+        )
+    return payload
+
+
+async def _resolve_plugin_backend_route(
+    *,
+    scope: BackendRouteScope,
+    route_path: str,
+    method: str,
+    request_id: UUID,
+    plugin_id: str | None = None,
+) -> ResolvedBackendRoute:
+    """Resolve the single installation that owns a declared request path."""
+
+    try:
+        installed_plugins = await _client.plugins()
+        if scope is BackendRouteScope.HOST:
+            validate_host_route_ownership(installed_plugins)
+        resolved = resolve_backend_route(
+            installed_plugins,
+            scope=scope,
+            path=route_path,
+            method=method,
+            plugin_id=plugin_id,
+        )
+    except BackendRouteConflictError as exc:
+        logger.error("Plugin backend route ownership conflict: path=%s error=%s", route_path, exc)
+        raise _backend_route_error(409, "conflict", str(exc), request_id) from exc
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    if resolved is None:
+        raise _backend_route_error(404, "not_found", "Plugin backend route not found.", request_id)
+    return resolved
+
+
+def _route_installation(
+    resolved: ResolvedBackendRoute, request_id: UUID
+) -> tuple[str, UUID]:
+    """Validate live installation identity and lifecycle state."""
+
+    plugin = resolved.plugin
+    owner_id = str(plugin.get("plugin_id", ""))
+    installation_value = plugin.get("installation_id")
+    if not installation_value:
+        raise _backend_route_error(
+            409, "unavailable", "Plugin installation identity is missing.", request_id
+        )
+    try:
+        installation_id = UUID(str(installation_value))
+    except ValueError as exc:
+        raise _backend_route_error(
+            409, "unavailable", "Plugin installation identity is invalid.", request_id
+        ) from exc
+    if (
+        not plugin.get("enabled")
+        or not plugin.get("compatible", True)
+        or plugin.get("status") == "failed"
+        or plugin.get("health") == "unhealthy"
+    ):
+        logger.warning(
+            "Plugin backend route unavailable: request_id=%s plugin_id=%s "
+            "installation_id=%s route_id=%s",
+            request_id,
+            owner_id,
+            installation_id,
+            resolved.route.id,
+        )
+        raise _backend_route_error(
+            409, "unavailable", "Plugin is not available to serve backend routes.", request_id
+        )
+    return owner_id, installation_id
+
+
+async def _authorize_plugin_backend_route(
+    db: AsyncSession,
+    *,
+    resolved: ResolvedBackendRoute,
+    scope: BackendRouteScope,
+    user: User,
+    request_id: UUID,
+) -> tuple[str, UUID]:
+    """Enforce host authorization policy and the installation-scoped capability grant."""
+
+    owner_id, installation_id = _route_installation(resolved, request_id)
+    if resolved.route.authorization is BackendRouteAuthorization.ADMIN and not getattr(
+        user, "is_admin", False
+    ):
+        logger.warning(
+            "Plugin backend route denied: request_id=%s plugin_id=%s installation_id=%s "
+            "route_id=%s authorization=admin user_id=%s",
+            request_id,
+            owner_id,
+            installation_id,
+            resolved.route.id,
+            user.id,
+        )
+        raise _backend_route_error(403, "forbidden", "Administrator access required.", request_id)
+
+    required_capability = (
+        Capability.BACKEND_ROUTES_PLUGIN
+        if scope is BackendRouteScope.PLUGIN
+        else Capability.BACKEND_ROUTES_HOST
+    )
+    if not await has_capability_grant(
+        db,
+        plugin_id=owner_id,
+        installation_id=installation_id,
+        capability=required_capability.value,
+        user_id=user.id,
+    ):
+        logger.warning(
+            "Plugin backend route denied: request_id=%s plugin_id=%s installation_id=%s "
+            "route_id=%s capability=%s user_id=%s",
+            request_id,
+            owner_id,
+            installation_id,
+            resolved.route.id,
+            required_capability.value,
+            user.id,
+        )
+        raise _backend_route_error(
+            403,
+            "forbidden",
+            f"Permission {required_capability.value} has not been granted.",
+            request_id,
+        )
+    return owner_id, installation_id
+
+
+async def _execute_plugin_backend_route(
+    request: Request,
+    *,
+    resolved: ResolvedBackendRoute,
+    owner_id: str,
+    user: User,
+    request_id: UUID,
+) -> PluginBackendRouteResponse:
+    """Execute one bounded runtime handler and validate its JSON response."""
+
+    route_request = await _backend_route_request(
+        request, resolved.path_parameters, request_id
+    )
+    route_request["user"] = {
+        "id": str(user.id),
+        "username": str(getattr(user, "username", "")),
+        "is_admin": bool(getattr(user, "is_admin", False)),
+    }
+    try:
+        raw_result = await _client.route(
+            owner_id,
+            resolved.route.id,
+            route_request,
+            user_id=str(user.id),
+        )
+        result = PluginBackendRouteResponse.model_validate(raw_result)
+        json.dumps(result.body, allow_nan=False)
+    except (TypeError, ValueError, ValidationError) as exc:
+        logger.warning(
+            "Plugin backend route returned an invalid response: request_id=%s plugin_id=%s "
+            "route_id=%s",
+            request_id,
+            owner_id,
+            resolved.route.id,
+        )
+        raise _backend_route_error(
+            502, "invalid_request", "Plugin returned an invalid route response.", request_id
+        ) from exc
+    except PluginRuntimeRequestError as exc:
+        logger.warning(
+            "Plugin backend route execution failed: request_id=%s plugin_id=%s route_id=%s",
+            request_id,
+            owner_id,
+            resolved.route.id,
+        )
+        raise _backend_route_error(
+            502, "unavailable", "Plugin backend route is unavailable.", request_id
+        ) from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    return result
+
+
+async def _dispatch_backend_route(
+    request: Request,
+    *,
+    scope: BackendRouteScope,
+    route_path: str,
+    db: AsyncSession,
+    user: User | None = None,
+    plugin_id: str | None = None,
+) -> Response:
+    """Authenticate, authorize, and dispatch a declared plugin backend route."""
+
+    request_id = uuid4()
+    resolved = await _resolve_plugin_backend_route(
+        scope=scope,
+        route_path=route_path,
+        method=request.method,
+        request_id=request_id,
+        plugin_id=plugin_id,
+    )
+    if user is None:
+        user = await get_current_user(
+            db,
+            request.headers.get("authorization"),
+            request.cookies.get("session"),
+        )
+    owner_id, installation_id = await _authorize_plugin_backend_route(
+        db,
+        resolved=resolved,
+        scope=scope,
+        user=user,
+        request_id=request_id,
+    )
+    result = await _execute_plugin_backend_route(
+        request,
+        resolved=resolved,
+        owner_id=owner_id,
+        user=user,
+        request_id=request_id,
+    )
+    logger.info(
+        "Plugin backend route completed: request_id=%s plugin_id=%s installation_id=%s "
+        "route_id=%s scope=%s method=%s user_id=%s status=%s",
+        request_id,
+        owner_id,
+        installation_id,
+        resolved.route.id,
+        scope.value,
+        request.method,
+        user.id,
+        result.status_code,
+    )
+    if result.status_code == 204:
+        return Response(status_code=204)
+    return JSONResponse(status_code=result.status_code, content=result.body)
+
+
+@router.api_route(
+    "/{plugin_id}/{route_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+async def plugin_backend_route(
+    plugin_id: str,
+    route_path: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Dispatch one authenticated request within a plugin-owned namespace."""
+
+    return await _dispatch_backend_route(
+        request,
+        scope=BackendRouteScope.PLUGIN,
+        route_path=route_path,
+        plugin_id=plugin_id,
+        db=db,
+    )
+
+
+@host_router.api_route(
+    "/{route_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    include_in_schema=False,
+)
+async def plugin_host_backend_route(
+    route_path: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Dispatch a privileged plugin route only after all core routes were considered."""
+
+    return await _dispatch_backend_route(
+        request,
+        scope=BackendRouteScope.HOST,
+        route_path=f"/{route_path}",
+        db=db,
+    )

@@ -497,6 +497,111 @@ class PluginNativeFrontendDeclaration(ContractModel):
         return values
 
 
+class BackendRouteScope(StrEnum):
+    """Host-owned URL areas available to a declared plugin route."""
+
+    PLUGIN = "plugin"
+    HOST = "host"
+
+
+class BackendRouteAuthorization(StrEnum):
+    """Authentication policy enforced by the host before plugin execution."""
+
+    AUTHENTICATED = "authenticated"
+    ADMIN = "admin"
+
+
+class BackendRouteMethod(StrEnum):
+    """HTTP methods supported by the bounded plugin route transport."""
+
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    PATCH = "PATCH"
+    DELETE = "DELETE"
+
+
+class PluginBackendRoute(ContractModel):
+    """A statically declared backend handler mounted and mediated by the host."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    scope: BackendRouteScope = BackendRouteScope.PLUGIN
+    path: str = Field(min_length=1, max_length=255)
+    methods: tuple[BackendRouteMethod, ...] = (BackendRouteMethod.GET,)
+    handler: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$",
+    )
+    authorization: BackendRouteAuthorization = BackendRouteAuthorization.AUTHENTICATED
+
+    @field_validator("path")
+    @classmethod
+    def validate_path(cls, value: str) -> str:
+        """Reject catch-all, traversal, and otherwise ambiguous route segments."""
+
+        segment_pattern = r"[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\}"
+        parts = (
+            value.removeprefix("/api/").split("/") if value.startswith("/") else value.split("/")
+        )
+        if not parts or any(not re.fullmatch(segment_pattern, part) for part in parts):
+            raise ValueError("backend route path contains an invalid segment")
+        parameters = [part for part in parts if part.startswith("{")]
+        if len(parameters) != len(set(parameters)):
+            raise ValueError("backend route path contains duplicate parameters")
+        return value.rstrip("/")
+
+    @field_validator("methods")
+    @classmethod
+    def validate_methods(
+        cls, values: tuple[BackendRouteMethod, ...]
+    ) -> tuple[BackendRouteMethod, ...]:
+        """Require a non-empty set of supported, unique HTTP methods."""
+
+        if not values:
+            raise ValueError("backend route must declare at least one method")
+        if len(values) != len(set(values)):
+            raise ValueError("backend route methods cannot contain duplicates")
+        return values
+
+    @model_validator(mode="after")
+    def validate_scope_path(self) -> "PluginBackendRoute":
+        """Apply namespace-specific ownership rules to the declared path."""
+
+        scope = cast(BackendRouteScope, self.scope)
+        path = cast(str, self.path)
+        # Pydantic fields are runtime values; pylint otherwise treats ``path`` as FieldInfo.
+        # pylint: disable=no-member
+        if scope is BackendRouteScope.PLUGIN and path.startswith("/"):
+            raise ValueError("namespaced backend route paths must be relative")
+        reserved_plugin_roots = {
+            "actions",
+            "changelog",
+            "disable",
+            "enable",
+            "frontend",
+            "logs",
+            "native-frontend",
+            "permissions",
+            "retry",
+            "secrets",
+            "settings",
+            "ui",
+            "update",
+        }
+        if (
+            scope is BackendRouteScope.PLUGIN
+            and path.split("/", 1)[0] in reserved_plugin_roots
+        ):
+            raise ValueError("namespaced backend route conflicts with a host-owned plugin path")
+        if scope is BackendRouteScope.HOST and not path.startswith("/api/"):
+            raise ValueError("host backend route paths must start with /api/")
+        if scope is BackendRouteScope.HOST and path.startswith("/api/plugins/"):
+            raise ValueError("host backend routes cannot claim the plugin management namespace")
+        # pylint: enable=no-member
+        return self
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -520,6 +625,7 @@ class PluginManifest(ContractModel):
     integrity: IntegrityMetadata
     frontend: PluginFrontendDeclaration | None = None
     native_frontend: PluginNativeFrontendDeclaration | None = None
+    backend_routes: tuple[PluginBackendRoute, ...] = ()
 
     @field_validator("version")
     @classmethod
@@ -555,6 +661,33 @@ class PluginManifest(ContractModel):
                 )
         if self.native_frontend is not None and Capability.FRONTEND_NATIVE not in capability_names:
             raise ValueError("native_frontend requires the frontend.native capability")
+        route_ids = [route.id for route in self.backend_routes]
+        if len(route_ids) != len(set(route_ids)):
+            raise ValueError("manifest contains duplicate backend route declarations")
+        route_owners: list[tuple[BackendRouteScope, str, BackendRouteMethod]] = []
+        for route in self.backend_routes:
+            required = (
+                Capability.BACKEND_ROUTES_PLUGIN
+                if route.scope is BackendRouteScope.PLUGIN
+                else Capability.BACKEND_ROUTES_HOST
+            )
+            if not {
+                required,
+                Capability.BACKEND_ROUTES,
+                Capability.FULL_API,
+            }.intersection(capability_names):
+                raise ValueError(f"backend route {route.id} requires {required.value}")
+            for method in route.methods:
+                route_parts = route.path.split("/")
+                for owner_scope, owner_path, owner_method in route_owners:
+                    owner_parts = owner_path.split("/")
+                    overlaps = len(route_parts) == len(owner_parts) and all(
+                        left == right or left.startswith("{") or right.startswith("{")
+                        for left, right in zip(route_parts, owner_parts, strict=True)
+                    )
+                    if route.scope is owner_scope and method is owner_method and overlaps:
+                        raise ValueError("manifest contains conflicting backend routes")
+                route_owners.append((route.scope, route.path, method))
         return self
 
 
@@ -1209,6 +1342,10 @@ __all__ = [
     "PluginUiDocument",
     "PluginFrontendDeclaration",
     "PluginNativeFrontendDeclaration",
+    "BackendRouteAuthorization",
+    "BackendRouteMethod",
+    "BackendRouteScope",
+    "PluginBackendRoute",
     "HostExtensionSlot",
     "HostPage",
     "UiContextLocation",

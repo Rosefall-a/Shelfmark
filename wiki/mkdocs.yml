@@ -55,6 +55,7 @@ nav:
       - API Examples: development/api-examples.md
       - Plugin API v1: development/plugin-api-v1.md
       - Plugin Capability APIs: development/plugin-capabilities.md
+      - Plugin Backend Routes: development/plugin-backend-routes.md
       - Plugin Manifest & Compatibility: development/plugin-manifest.md
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Plugin Permissions & Scoped Identities: development/plugin-permissions.md

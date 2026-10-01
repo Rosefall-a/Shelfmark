@@ -16,6 +16,7 @@ The v1 boundary defines:
 - API version negotiation;
 - versioned events, subscriptions and acknowledgements;
 - notification and metadata provider coordinator interfaces.
+- host-mediated namespaced and privileged backend route declarations.
 
 The contract layer must not expose ORM models, database sessions, environment values, secrets, filesystem paths, or unrestricted application internals.
 
@@ -56,4 +57,4 @@ Compatibility is evaluated independently for SDK and application versions. An in
 
 Dependencies support required/optional dependencies, semantic-version constraints, deterministic dependency-first ordering, missing/incompatible dependency rejection, and cycle detection. Dependency resolution occurs before plugin activation.
 
-See [Plugin capability APIs](plugin-capabilities.md) for the current method map and domain-specific limits.
+See [Plugin capability APIs](plugin-capabilities.md) for the current method map and domain-specific limits, and [Plugin backend routes](plugin-backend-routes.md) for authenticated HTTP integration.

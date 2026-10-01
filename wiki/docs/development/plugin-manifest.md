@@ -12,6 +12,7 @@ A manifest declares:
 - Plugin SDK compatibility range;
 - application compatibility range;
 - capability requests;
+- static namespaced or privileged backend route declarations;
 - human-readable permission rationales;
 - required and optional plugin dependencies;
 - declarative settings, actions, pages and menu identifiers;
@@ -50,6 +51,8 @@ Dependency resolution must complete before plugin activation.
 ## Security boundary
 
 Manifest metadata does not grant capabilities. Gateway authorization remains responsible for enforcing grants. The application verifies package digest/signature/trust before installation, and the runtime independently verifies the archive/digest before atomically installing it. Plugin code is not imported during either verification pass.
+
+Backend routes declare a stable ID, scope, path, methods, handler entrypoint, and host-enforced authorization policy. Normal relative paths require `backend.routes.plugin`; direct `/api/...` host paths require `backend.routes.host`. Conflicting routes, reserved plugin-management paths, missing capabilities, unsafe segments, and dynamic/literal route ambiguity are rejected statically.
 
 The existing `frontend` declaration always means a sandboxed iframe bundle. A
 `native_frontend` declaration is a separate, privileged contract and is valid only

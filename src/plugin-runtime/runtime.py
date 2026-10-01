@@ -60,6 +60,24 @@ _MAX_PACKAGE_ENTRIES = 1000
 _MAX_PACKAGE_FILE_BYTES = 16 * 1024 * 1024
 _MAX_PACKAGE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 _MAX_PACKAGE_COMPRESSION_RATIO = 100.0
+_BACKEND_ROUTE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+_BACKEND_ROUTE_SEGMENT = re.compile(r"^(?:[a-z0-9][a-z0-9._-]*|\{[a-z_][a-z0-9_]*\})$")
+_BACKEND_ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+_RESERVED_PLUGIN_ROUTE_ROOTS = {
+    "actions",
+    "changelog",
+    "disable",
+    "enable",
+    "frontend",
+    "logs",
+    "native-frontend",
+    "permissions",
+    "retry",
+    "secrets",
+    "settings",
+    "ui",
+    "update",
+}
 
 
 class RuntimePolicyError(ValueError):
@@ -273,7 +291,11 @@ class PluginSupervisor:
             return {}
 
     def _handle_gateway_request(
-        self, plugin_id: str, request: dict[str, Any]
+        self,
+        plugin_id: str,
+        request: dict[str, Any],
+        *,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         method = str(request.get("method", ""))
         capability = str(request.get("capability", ""))
@@ -326,8 +348,8 @@ class PluginSupervisor:
             }
         if not self.gateway_url or len(self.gateway_token) < 32:
             raise RuntimePolicyError("plugin gateway is not configured")
-        user_id = self._user_ids.get(plugin_id)
-        if not user_id:
+        resolved_user_id = user_id or self._user_ids.get(plugin_id)
+        if not resolved_user_id:
             raise RuntimePolicyError(
                 "plugin has no user context; enable it from the Plugin Manager first"
             )
@@ -339,7 +361,7 @@ class PluginSupervisor:
                 "plugin_id": plugin_id,
                 "installation_id": installation_id,
                 "request_id": str(uuid4()),
-                "user_id": user_id,
+                "user_id": resolved_user_id,
                 "method": method,
                 "capability": capability,
                 "payload": payload,
@@ -511,7 +533,13 @@ class PluginSupervisor:
         return process
 
     def execute(
-        self, spec: PluginSpec, package_dir: Path, payload: bytes, timeout: float = 30.0
+        self,
+        spec: PluginSpec,
+        package_dir: Path,
+        payload: bytes,
+        timeout: float = 30.0,
+        *,
+        user_id: str | None = None,
     ) -> bytes:
         """Run a bounded action while mediating its Plugin API requests."""
         spec.validate()
@@ -610,7 +638,13 @@ class PluginSupervisor:
                     output = json.dumps(message["plugin_action_result"]).encode("utf-8")
                     break
                 try:
-                    response = self._handle_gateway_request(spec.plugin_id, message)
+                    response = (
+                        self._handle_gateway_request(spec.plugin_id, message)
+                        if user_id is None
+                        else self._handle_gateway_request(
+                            spec.plugin_id, message, user_id=user_id
+                        )
+                    )
                 except Exception as exc:
                     self._log(
                         spec.plugin_id,
@@ -779,6 +813,125 @@ class PluginRegistry:
         return package, data
 
     @staticmethod
+    def _backend_routes(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+        raw_routes = manifest.get("backend_routes", [])
+        if not isinstance(raw_routes, list):
+            raise RuntimePolicyError("plugin backend_routes must be a list")
+        routes: list[dict[str, Any]] = []
+        route_ids: set[str] = set()
+        for raw_route in raw_routes:
+            if not isinstance(raw_route, dict):
+                raise RuntimePolicyError("plugin backend route must be an object")
+            route_id = raw_route.get("id")
+            scope = raw_route.get("scope", "plugin")
+            path = raw_route.get("path")
+            methods = raw_route.get("methods", ["GET"])
+            handler = raw_route.get("handler")
+            authorization = raw_route.get("authorization", "authenticated")
+            if not isinstance(route_id, str) or not _BACKEND_ROUTE_ID.fullmatch(
+                route_id
+            ):
+                raise RuntimePolicyError("plugin backend route has an invalid id")
+            if route_id in route_ids:
+                raise RuntimePolicyError("plugin backend route ids must be unique")
+            route_ids.add(route_id)
+            if scope not in {"plugin", "host"}:
+                raise RuntimePolicyError("plugin backend route has an invalid scope")
+            if not isinstance(path, str) or len(path) > 255:
+                raise RuntimePolicyError("plugin backend route has an invalid path")
+            if scope == "plugin" and path.startswith("/"):
+                raise RuntimePolicyError(
+                    "namespaced backend route path must be relative"
+                )
+            if scope == "plugin" and path.split("/", 1)[0] in _RESERVED_PLUGIN_ROUTE_ROOTS:
+                raise RuntimePolicyError(
+                    "namespaced backend route conflicts with plugin management"
+                )
+            if scope == "host" and not path.startswith("/api/"):
+                raise RuntimePolicyError(
+                    "host backend route path must start with /api/"
+                )
+            if scope == "host" and path.startswith("/api/plugins/"):
+                raise RuntimePolicyError(
+                    "host backend route cannot claim plugin management"
+                )
+            route_parts = path.removeprefix("/api/").split("/")
+            if not route_parts or any(
+                not _BACKEND_ROUTE_SEGMENT.fullmatch(part) for part in route_parts
+            ):
+                raise RuntimePolicyError("plugin backend route path is invalid")
+            parameters = [part for part in route_parts if part.startswith("{")]
+            if len(parameters) != len(set(parameters)):
+                raise RuntimePolicyError(
+                    "plugin backend route path contains duplicate parameters"
+                )
+            if (
+                not isinstance(methods, list)
+                or not methods
+                or len(methods) != len(set(methods))
+                or any(method not in _BACKEND_ROUTE_METHODS for method in methods)
+            ):
+                raise RuntimePolicyError("plugin backend route methods are invalid")
+            if not isinstance(handler, str) or not _ENTRYPOINT.fullmatch(handler):
+                raise RuntimePolicyError("plugin backend route handler is invalid")
+            if authorization not in {"authenticated", "admin"}:
+                raise RuntimePolicyError(
+                    "plugin backend route authorization is invalid"
+                )
+            routes.append(
+                {
+                    "id": route_id,
+                    "scope": scope,
+                    "path": path,
+                    "methods": methods,
+                    "handler": handler,
+                    "authorization": authorization,
+                }
+            )
+        for index, route in enumerate(routes):
+            route_parts = str(route["path"]).strip("/").split("/")
+            for other in routes[index + 1 :]:
+                if route["scope"] != other["scope"] or not set(
+                    route["methods"]
+                ).intersection(other["methods"]):
+                    continue
+                other_parts = str(other["path"]).strip("/").split("/")
+                overlaps = len(route_parts) == len(other_parts) and all(
+                    left == right or left.startswith("{") or right.startswith("{")
+                    for left, right in zip(route_parts, other_parts, strict=True)
+                )
+                if overlaps:
+                    raise RuntimePolicyError("plugin backend routes conflict")
+        return routes
+
+    def _validate_host_route_ownership(
+        self, plugin_id: str, routes: list[dict[str, Any]]
+    ) -> None:
+        candidate_routes = [route for route in routes if route["scope"] == "host"]
+        for package in self.packages():
+            if package.name == plugin_id:
+                continue
+            _, installed_manifest = self.package(package.name)
+            for installed in self._backend_routes(installed_manifest):
+                if installed["scope"] != "host":
+                    continue
+                for candidate in candidate_routes:
+                    if not set(installed["methods"]).intersection(candidate["methods"]):
+                        continue
+                    installed_parts = str(installed["path"]).strip("/").split("/")
+                    candidate_parts = str(candidate["path"]).strip("/").split("/")
+                    overlaps = len(installed_parts) == len(candidate_parts) and all(
+                        left == right or left.startswith("{") or right.startswith("{")
+                        for left, right in zip(
+                            installed_parts, candidate_parts, strict=True
+                        )
+                    )
+                    if overlaps:
+                        raise RuntimePolicyError(
+                            f"host backend route conflicts with {package.name}"
+                        )
+
+    @staticmethod
     def _payload_files(package: Path) -> list[Path]:
         return sorted(
             p
@@ -843,6 +996,7 @@ class PluginRegistry:
                 for p in data.get("permissions", [])
                 if isinstance(p.get("capability"), dict)
             ],
+            "backend_routes": self._backend_routes(data),
             "dependencies": [
                 dependency
                 for dependency in data.get("dependencies", [])
@@ -994,6 +1148,21 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin manifest has an invalid plugin id")
         if not _ENTRYPOINT.fullmatch(str(manifest.get("entrypoint", ""))):
             raise RuntimePolicyError("plugin manifest has an invalid entrypoint")
+        backend_routes = self._backend_routes(manifest)
+        capabilities = {
+            item.get("name")
+            for item in manifest.get("capabilities", [])
+            if isinstance(item, dict)
+        }
+        for backend_route in backend_routes:
+            required = (
+                "backend.routes.plugin"
+                if backend_route["scope"] == "plugin"
+                else "backend.routes.host"
+            )
+            if not {required, "backend.routes", "api.full"}.intersection(capabilities):
+                raise RuntimePolicyError(f"plugin backend route requires {required}")
+        self._validate_host_route_ownership(plugin_id, backend_routes)
         frontend = manifest.get("frontend")
         if frontend is not None:
             if not isinstance(frontend, dict) or not isinstance(
@@ -1262,6 +1431,22 @@ class PluginRegistry:
         )
         return (sys.executable, "-c", script)
 
+    @staticmethod
+    def _route_command(handler: str) -> tuple[str, ...]:
+        if not _ENTRYPOINT.fullmatch(handler):
+            raise RuntimePolicyError("plugin backend route has an invalid handler")
+        module, _, function = handler.partition(":")
+        function = function or "main"
+        script = (
+            "import importlib,json,sys; "
+            f"m=importlib.import_module({module!r}); "
+            f"f=getattr(m,{function!r}); "
+            "result=f(json.loads(sys.stdin.readline())); "
+            "json.dump({'plugin_action_result':result},sys.stdout); "
+            "sys.stdout.write('\\n');sys.stdout.flush()"
+        )
+        return (sys.executable, "-c", script)
+
     def start(self, plugin_id: str, user_id: str | None = None) -> None:
         package, manifest = self.package(plugin_id)
         item = self._item(package)
@@ -1449,6 +1634,50 @@ class PluginRegistry:
                 )
         return result
 
+    def route(
+        self,
+        plugin_id: str,
+        route_id: str,
+        request: dict[str, Any],
+        *,
+        user_id: str,
+    ) -> dict[str, Any]:
+        persisted = self._state().get(plugin_id)
+        if not isinstance(persisted, dict) or not persisted.get("enabled", False):
+            raise RuntimePolicyError(
+                "plugin must be enabled before backend routes can run"
+            )
+        if self.supervisor.exit_code(plugin_id) not in (None, 0):
+            raise RuntimePolicyError("failed plugin cannot serve backend routes")
+        package, manifest = self.package(plugin_id)
+        route = next(
+            (item for item in self._backend_routes(manifest) if item["id"] == route_id),
+            None,
+        )
+        if route is None:
+            raise KeyError(route_id)
+        if request.get("method") not in route["methods"]:
+            raise RuntimePolicyError("backend route method is not declared")
+        try:
+            payload = json.dumps(request, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise RuntimePolicyError(
+                "backend route request must be JSON-compatible"
+            ) from exc
+        output = self.supervisor.execute(
+            PluginSpec(plugin_id, self._route_command(str(route["handler"]))),
+            package,
+            payload,
+            user_id=user_id,
+        )
+        try:
+            result = json.loads(output.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RuntimePolicyError("backend route returned invalid JSON") from exc
+        if not isinstance(result, dict):
+            raise RuntimePolicyError("backend route response must be an object")
+        return result
+
     def delete(self, plugin_id: str) -> None:
         package, manifest = self.package(plugin_id)
         self.supervisor.stop(plugin_id)
@@ -1574,6 +1803,29 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 result = self.server.registry.action(
                     parts[1], parts[3], payload.get("values", {})
                 )  # type: ignore[attr-defined]
+                self._json(200, result)
+                return
+            if len(parts) == 4 and parts[0] == "plugins" and parts[2] == "routes":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 1 or length > 64 * 1024:
+                    raise RuntimePolicyError(
+                        "plugin backend route payload must be between 1 byte and 64 KiB"
+                    )
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict) or not isinstance(
+                    payload.get("request"), dict
+                ):
+                    raise RuntimePolicyError("plugin backend route payload is invalid")
+                user_id = payload.get("user_id")
+                try:
+                    UUID(str(user_id))
+                except ValueError as exc:
+                    raise RuntimePolicyError(
+                        "plugin backend route user identity is invalid"
+                    ) from exc
+                result = self.server.registry.route(  # type: ignore[attr-defined]
+                    parts[1], parts[3], payload["request"], user_id=str(user_id)
+                )
                 self._json(200, result)
                 return
             self._json(404, {"detail": "not found"})

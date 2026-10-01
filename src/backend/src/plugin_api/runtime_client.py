@@ -130,3 +130,22 @@ class PluginRuntimeClient:
             f"/plugins/{quote(plugin_id, safe='')}/actions/{quote(action_id, safe='')}",
             json={"values": values},
         )
+
+    async def route(
+        self,
+        plugin_id: str,
+        route_id: str,
+        request: dict[str, Any],
+        *,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """Execute one declared backend route as the authenticated request user."""
+
+        result = await self._request(
+            "POST",
+            f"/plugins/{quote(plugin_id, safe='')}/routes/{quote(route_id, safe='')}",
+            json={"request": request, "user_id": user_id},
+        )
+        if not isinstance(result, dict):
+            raise PluginRuntimeRequestError("plugin backend route returned an invalid response")
+        return result

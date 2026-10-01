@@ -39,6 +39,7 @@ from src.api.routes import set as set_routes
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
 from src.api.routes.plugin_permissions import router as plugin_permissions_router
+from src.api.routes.plugins import host_router as plugin_host_routes
 from src.api.routes.plugins import router as plugins_router
 from src.api.routes.setup import router as setup_router
 from src.api.routes.settings import get_or_create_app_integration_settings
@@ -150,3 +151,7 @@ async def start_jobs_loop() -> None:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# This catch-all must remain last so plugins cannot shadow host-owned routes.
+app.include_router(plugin_host_routes)
