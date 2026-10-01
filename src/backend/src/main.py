@@ -52,6 +52,7 @@ from src.database.session import SessionLocal
 from src.features.backup.scheduler import run_backup_loop
 from src.features.jobs import run_jobs_loop
 from src.features.trash.sweep import run_sweep_loop
+from src.plugin_api.backend_routes import reserve_host_routes
 
 app = FastAPI(
     title="My API", docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json"
@@ -154,4 +155,9 @@ def health():
 
 
 # This catch-all must remain last so plugins cannot shadow host-owned routes.
+reserve_host_routes(
+    (route.path, frozenset(route.methods or ()))
+    for route in app.routes
+    if hasattr(route, "path") and hasattr(route, "methods")
+)
 app.include_router(plugin_host_routes)

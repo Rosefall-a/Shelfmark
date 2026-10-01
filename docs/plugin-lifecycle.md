@@ -26,6 +26,8 @@ Invalid and incompatible manifests are contained as data errors and never execut
 
 ## Runtime and installation boundaries
 
+Executable contributions require an enabled, compatible, running installation. Starting, stopping, failed, disabled and quarantined installations retain backend route ownership but cannot execute contributions. Stop/disable preserve quarantine until explicit recovery. See [the contribution lifecycle audit](plugin-contribution-lifecycle-audit.md) for frontend reconciliation, worker cleanup, conflict rules and regression coverage.
+
 `PluginLifecycleManager` owns lifecycle state and delegates execution through the `RuntimeController` boundary to the isolated runtime from #267. It does not import plugin modules, pass core credentials, or bypass gateway authorization.
 
 Package integrity is checked against the manifest before the separate `PackageInstaller` boundary is invoked. Plugin storage remains owned by #268.

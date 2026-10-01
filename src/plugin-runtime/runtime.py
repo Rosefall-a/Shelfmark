@@ -899,7 +899,7 @@ class PluginRegistry:
             and state.get("enabled")
             and state.get("status") == "starting"
             and method
-            in {"lifecycle.ready", "settings.get", "storage.get", "storage.keys"}
+            in {"lifecycle.ready", "settings.get", "storage.get", "storage.keys", "capabilities.check"}
         ):
             return True
         return bool(

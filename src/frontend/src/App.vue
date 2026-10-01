@@ -7,11 +7,35 @@ import CommandPalette from "./components/CommandPalette.vue";
 import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { loadSharedPreferences } from "./state/preferences";
-import { watch } from "vue";
+import { onUnmounted, watch } from "vue";
+import {
+  clearPluginExtensions,
+  refreshPluginExtensions,
+} from "./state/pluginExtensions";
 import PluginExtensionSlot from "./components/plugins/PluginExtensionSlot.vue";
 import PluginOverlayHost from "./components/plugins/PluginOverlayHost.vue";
 
 const route = useRoute();
+let pluginRefreshTimer: ReturnType<typeof setInterval> | undefined;
+watch(
+  () => currentUser.value?.id,
+  (id) => {
+    clearInterval(pluginRefreshTimer);
+    clearPluginExtensions();
+    if (id) {
+      void refreshPluginExtensions();
+      pluginRefreshTimer = setInterval(
+        () => void refreshPluginExtensions(),
+        5000,
+      );
+    }
+  },
+  { immediate: true },
+);
+onUnmounted(() => {
+  clearInterval(pluginRefreshTimer);
+  clearPluginExtensions();
+});
 // preferences are per user, so load them once someone is signed in
 watch(
   () => currentUser.value?.id,

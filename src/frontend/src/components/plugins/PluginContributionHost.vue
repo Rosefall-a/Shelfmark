@@ -8,6 +8,7 @@ import type {
 } from "../../services/pluginUi";
 import { dispatchPluginAction } from "../../services/pluginUi";
 import { nativePluginComponents } from "../../state/pluginNative";
+import { activePluginDocuments } from "../../state/pluginExtensions";
 import PluginUiHost from "./PluginUiHost.vue";
 
 const props = defineProps<{
@@ -21,6 +22,9 @@ const props = defineProps<{
 const emit = defineEmits<{ navigate: [pageId: string] }>();
 
 const failed = ref(false);
+const active = computed(() =>
+  Boolean(activePluginDocuments.value[props.pluginId]),
+);
 const component = computed(
   () => nativePluginComponents.value[`${props.pluginId}:${props.pageId}`],
 );
@@ -64,19 +68,19 @@ const nativeHost = computed(() => ({
 </script>
 
 <template>
-  <p v-if="failed" class="plugin-failure" role="status">
+  <p v-if="active && failed" class="plugin-failure" role="status">
     This plugin contribution failed and was removed from the page.
   </p>
   <component
     :is="component"
-    v-else-if="component"
+    v-else-if="active && component"
     :plugin-id="pluginId"
     :page-id="pageId"
     :context="context ?? {}"
     :host="nativeHost"
   />
   <PluginUiHost
-    v-else
+    v-else-if="active"
     :document="document"
     :page-id="pageId"
     :context="context"

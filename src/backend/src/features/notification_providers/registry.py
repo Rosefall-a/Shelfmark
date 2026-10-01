@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
+from src.plugin_api.lifecycle import plugin_contributions_active
+from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
 
 from .base import NotificationProvider
 from .plugin import PluginNotificationProvider
@@ -21,7 +23,20 @@ async def get_notification_providers(
             )
         )
     ).all()
+    if not registrations:
+        return {}
+    runtime = PluginRuntimeClient()
+    try:
+        plugins = await runtime.plugins()
+    except PluginRuntimeUnavailable:
+        return {}
+    active = {
+        (plugin["plugin_id"], str(plugin.get("installation_id")))
+        for plugin in plugins
+        if plugin_contributions_active(plugin)
+    }
     return {
-        registration.provider_id: PluginNotificationProvider(registration)
+        registration.provider_id: PluginNotificationProvider(registration, runtime=runtime)
         for registration in registrations
+        if (registration.plugin_id, str(registration.installation_id)) in active
     }

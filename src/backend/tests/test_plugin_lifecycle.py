@@ -5,11 +5,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from src.plugin_api.contracts import PluginManifest
 from src.plugin_api.lifecycle import (
     LifecycleState,
@@ -129,6 +128,18 @@ def test_start_failures_are_contained_and_quarantined(tmp_path: Path) -> None:
     assert health.state == LifecycleState.QUARANTINED
     assert health.consecutive_failures == 2
     assert not lifecycle.records()[0].enabled
+    assert runtime.stopped == ["example.plugin", "example.plugin"]
+
+
+def test_disable_and_stop_cannot_clear_quarantine(tmp_path: Path) -> None:
+    runtime = FakeRuntime(fail_start=True)
+    lifecycle = manager(runtime, quarantine_after=1)
+    discover(lifecycle, tmp_path)
+    install(lifecycle)
+    asyncio.run(lifecycle.start("example.plugin"))
+    assert asyncio.run(lifecycle.disable("example.plugin")).state == LifecycleState.QUARANTINED
+    assert asyncio.run(lifecycle.stop("example.plugin")).state == LifecycleState.QUARANTINED
+    assert not lifecycle.records()[0].enabled
 
 
 def test_health_failures_quarantine_and_success_resets(tmp_path: Path) -> None:
@@ -226,6 +237,51 @@ def test_quarantine_stops_running_runtime(tmp_path: Path) -> None:
     asyncio.run(lifecycle.health_check("example.plugin"))
     assert lifecycle.health("example.plugin").state == LifecycleState.QUARANTINED
     assert runtime.stopped == ["example.plugin"]
+
+
+def test_disable_waits_for_pending_start_then_stops_workers(tmp_path: Path) -> None:
+    async def run() -> None:
+        entered = asyncio.Event()
+        finish = asyncio.Event()
+
+        class PendingRuntime(FakeRuntime):
+            async def start(self, plugin_id: str, package_path: Path) -> None:
+                entered.set()
+                await finish.wait()
+                await super().start(plugin_id, package_path)
+
+        runtime = PendingRuntime()
+        lifecycle = manager(runtime)
+        discover(lifecycle, tmp_path)
+        await lifecycle.install("example.plugin")
+        starting = asyncio.create_task(lifecycle.start("example.plugin"))
+        await entered.wait()
+        stopping = asyncio.create_task(lifecycle.disable("example.plugin"))
+        await asyncio.sleep(0)
+        assert lifecycle.records()[0].enabled is False
+        assert runtime.stopped == []
+        finish.set()
+        await asyncio.gather(starting, stopping)
+        assert runtime.stopped == ["example.plugin"]
+        assert lifecycle.records()[0].state == LifecycleState.DISABLED
+
+    asyncio.run(run())
+
+
+def test_quarantine_cleanup_failure_does_not_clear_quarantine(tmp_path: Path) -> None:
+    class FailingRuntime(FakeRuntime):
+        async def stop(self, plugin_id: str) -> None:
+            raise RuntimeError(f"cannot stop {plugin_id}")
+
+    lifecycle = manager(FailingRuntime(healthy=False), quarantine_after=1)
+    discover(lifecycle, tmp_path)
+    install(lifecycle)
+    asyncio.run(lifecycle.start("example.plugin"))
+    asyncio.run(lifecycle.health_check("example.plugin"))
+    record = lifecycle.records()[0]
+    assert record.state == LifecycleState.QUARANTINED
+    assert not record.enabled
+    assert "quarantine stop failed" in record.last_error
 
 
 def test_disable_running_plugin_stops_before_disabled_state(tmp_path: Path) -> None:

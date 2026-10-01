@@ -1,10 +1,50 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   comparePluginContributions,
   derivePluginContributions,
+  refreshPluginExtensions,
+  clearPluginExtensions,
+  activePluginDocuments,
+  activePluginDialog,
+  openPluginDialog,
+  pageReplacement,
+  pluginNavigation,
+  pluginSettingsSections,
+  pluginSlots,
+  pluginOverlays,
+  pluginDialogs,
+  pluginContextualActions,
+  pluginRoutes,
+  pluginPageReplacements,
 } from "../state/pluginExtensions";
+import { nativePluginComponent } from "../state/pluginNative";
 import type { PluginUiDocument } from "../services/pluginUi";
 import type { PluginSummary } from "../services/plugins";
+
+const native = vi.hoisted(() => ({ cleanup: vi.fn(), activate: vi.fn() }));
+vi.mock("../state/pluginNative", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../state/pluginNative")>();
+  return {
+    ...original,
+    reconcileNativePlugins: (
+      sources: Parameters<typeof original.reconcileNativePlugins>[0],
+    ) =>
+      original.reconcileNativePlugins(sources, async () => ({
+        activate(context) {
+          native.activate(context.pluginId);
+          context.registerComponent("dashboard", { render: () => null });
+          context.onCleanup(native.cleanup);
+        },
+      })),
+  };
+});
+
+afterEach(() => {
+  clearPluginExtensions();
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
 
 const plugin: PluginSummary = {
   plugin_id: "example.plugin",
@@ -124,6 +164,129 @@ const document: PluginUiDocument = {
 };
 
 describe("plugin extension registry", () => {
+  it("reconciles every contribution and native code across lifecycle transitions through HTTP", async () => {
+    let current = plugin;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(url === "/api/plugins" ? [current] : document),
+            { status: 200 },
+          ),
+      ),
+    );
+    const registries = [
+      pluginNavigation,
+      pluginSettingsSections,
+      pluginSlots,
+      pluginOverlays,
+      pluginDialogs,
+      pluginContextualActions,
+      pluginRoutes,
+      pluginPageReplacements,
+    ];
+    for (const status of [
+      "enabled",
+      "starting",
+      "running",
+      "stopping",
+      "disabled",
+      "running",
+      "failed",
+      "quarantined",
+      "running",
+    ] as const) {
+      current = { ...plugin, status, enabled: status !== "disabled" };
+      await refreshPluginExtensions();
+      for (const registry of registries) {
+        if (status === "running")
+          expect(registry.value.length).toBeGreaterThan(0);
+        else expect(registry.value).toEqual([]);
+      }
+      if (status === "running") {
+        expect(
+          nativePluginComponent(plugin.plugin_id, "dashboard"),
+        ).toBeDefined();
+        expect(
+          openPluginDialog(plugin.plugin_id, "help-dialog-contribution"),
+        ).toBe(true);
+      } else {
+        expect(
+          nativePluginComponent(plugin.plugin_id, "dashboard"),
+        ).toBeUndefined();
+        expect(activePluginDialog.value).toBeNull();
+        expect(activePluginDocuments.value).toEqual({});
+        expect(pageReplacement("home")).toBeUndefined();
+      }
+    }
+    expect(native.activate).toHaveBeenCalledTimes(3);
+    expect(native.cleanup).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents a stale UI response from restoring a disabled plugin", async () => {
+    let finish!: (response: Response) => void;
+    let current = plugin;
+    const fetcher = vi.fn(async (url: string) =>
+      url === "/api/plugins"
+        ? new Response(JSON.stringify([current]))
+        : new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const first = refreshPluginExtensions();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    current = { ...plugin, enabled: false, status: "disabled" };
+    await refreshPluginExtensions();
+    finish(new Response(JSON.stringify(document)));
+    await first;
+    expect(pluginNavigation.value).toEqual([]);
+    expect(activePluginDocuments.value).toEqual({});
+    expect(native.activate).not.toHaveBeenCalled();
+  });
+
+  it("namespaces IDs and selects replacements independently of discovery order", async () => {
+    const first = { ...plugin, plugin_id: "a.plugin" };
+    const second = { ...plugin, plugin_id: "z.plugin" };
+    let plugins = [second, first];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url === "/api/plugins"
+                ? plugins
+                : {
+                    ...document,
+                    plugin_id: url.includes("a.plugin")
+                      ? first.plugin_id
+                      : second.plugin_id,
+                  },
+            ),
+          ),
+      ),
+    );
+    await refreshPluginExtensions();
+    const snapshot = pluginNavigation.value.map((item) => [
+      item.pluginId,
+      item.contributionId,
+    ]);
+    expect(pageReplacement("home")?.pluginId).toBe("a.plugin");
+    expect(
+      pluginSlots.value.filter((item) => item.extensionId === "home-dashboard"),
+    ).toHaveLength(2);
+    plugins = [first, second];
+    await refreshPluginExtensions();
+    expect(
+      pluginNavigation.value.map((item) => [
+        item.pluginId,
+        item.contributionId,
+      ]),
+    ).toEqual(snapshot);
+    expect(pageReplacement("home")?.pluginId).toBe("a.plugin");
+  });
   it("derives host-owned routes and slots from an enabled plugin", () => {
     const contributions = derivePluginContributions(plugin, document);
 

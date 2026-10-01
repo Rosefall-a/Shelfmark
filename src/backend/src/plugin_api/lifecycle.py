@@ -8,16 +8,16 @@ through the RuntimeController protocol.
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
-import json
 from pathlib import Path
 from typing import Awaitable, Mapping, Protocol
 from uuid import UUID, uuid4
 
-from .updates import PluginPackageVerifier, TrustedPublisher, VerifiedPackage, canonical_payload_digest
 from .contracts import (
     CompatibilityStatus,
     IntegrityMetadata,
@@ -25,6 +25,12 @@ from .contracts import (
     PluginUiDeclaration,
     StorageRequirements,
     resolve_plugin_dependencies,
+)
+from .updates import (
+    PluginPackageVerifier,
+    TrustedPublisher,
+    VerifiedPackage,
+    canonical_payload_digest,
 )
 
 
@@ -37,6 +43,7 @@ class LifecycleState(StrEnum):
     DISABLED = "disabled"
     STARTING = "starting"
     RUNNING = "running"
+    STOPPING = "stopping"
     STOPPED = "stopped"
     FAILED_INSTALL = "failed_install"
     FAILED_START = "failed_start"
@@ -47,6 +54,16 @@ class LifecycleState(StrEnum):
 
 class RuntimeUnavailable(RuntimeError):
     """Raised when the isolated runtime cannot accept a lifecycle operation."""
+
+
+def plugin_contributions_active(plugin: Mapping[str, object]) -> bool:
+    """Enablement is a preference; contributions require a live, healthy runtime."""
+    return bool(
+        plugin.get("enabled") is True
+        and plugin.get("compatible") is True
+        and plugin.get("status") == LifecycleState.RUNNING
+        and plugin.get("health") in {"healthy", "unknown"}
+    )
 
 
 class RuntimeController(Protocol):
@@ -211,6 +228,7 @@ class PluginLifecycleManager:
         self.quarantine_after = quarantine_after
         self.safe_mode = False
         self._records: dict[str, PluginRecord] = {}
+        self._operation_locks: dict[str, asyncio.Lock] = {}
         self._logs: deque[LifecycleLog] = deque(maxlen=max_logs)
         self.storage_cleanup = storage_cleanup
 
@@ -377,7 +395,13 @@ class PluginLifecycleManager:
 
     async def disable(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
-        if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
+        if record.state == LifecycleState.QUARANTINED:
+            record.enabled = False
+            return await self.stop(plugin_id)
+        if record.state in {
+            LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY,
+            LifecycleState.FAILED_START, LifecycleState.FAILED_STOP,
+        }:
             record.enabled = False
             result = await self.stop(plugin_id)
             if result.state == LifecycleState.FAILED_STOP:
@@ -391,6 +415,10 @@ class PluginLifecycleManager:
 
     async def start(self, plugin_id: str) -> PluginRecord:
         """Start one plugin, containing failures so core startup cannot fail."""
+        async with self._operation_locks.setdefault(plugin_id, asyncio.Lock()):
+            return await self._start(plugin_id)
+
+    async def _start(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
         if self.safe_mode or not record.enabled:
             if self.safe_mode:
@@ -435,18 +463,35 @@ class PluginLifecycleManager:
             self._log("info", "started", plugin_id, "plugin is running")
         except Exception as exc:
             self._record_failure(record, "start_failed", f"plugin failed to start: {exc}")
+            try:
+                await self.runtime.stop(plugin_id)
+            except Exception as cleanup_error:
+                self._log("error", "start_cleanup_failed", plugin_id, str(cleanup_error))
         return record
 
     async def stop(self, plugin_id: str) -> PluginRecord:
+        """Serialize shutdown with startup so late startup cannot revive workers."""
+        async with self._operation_locks.setdefault(plugin_id, asyncio.Lock()):
+            return await self._stop(plugin_id)
+
+    async def _stop(self, plugin_id: str) -> PluginRecord:
         record = self._get(plugin_id)
+        quarantined = record.state == LifecycleState.QUARANTINED
+        record.state = LifecycleState.STOPPING
         try:
             await self.runtime.stop(plugin_id)
         except Exception as exc:
             self._record_failure(record, "stop_failed", f"plugin failed to stop: {exc}")
+            if quarantined:
+                record.state = LifecycleState.QUARANTINED
+                record.enabled = False
             if record.state == LifecycleState.QUARANTINED:
                 return record
             return record
-        record.state = LifecycleState.STOPPED if record.enabled else LifecycleState.DISABLED
+        record.state = (
+            LifecycleState.QUARANTINED if quarantined
+            else LifecycleState.STOPPED if record.enabled else LifecycleState.DISABLED
+        )
         self._log("info", "stopped", plugin_id, "plugin stopped")
         return record
 
@@ -484,6 +529,10 @@ class PluginLifecycleManager:
 
     async def health_check(self, plugin_id: str) -> PluginHealth:
         """Check one plugin and quarantine after repeated failures."""
+        async with self._operation_locks.setdefault(plugin_id, asyncio.Lock()):
+            return await self._health_check(plugin_id)
+
+    async def _health_check(self, plugin_id: str) -> PluginHealth:
         record = self._get(plugin_id)
         record.last_checked_at = self._now()
         if record.state not in {LifecycleState.RUNNING, LifecycleState.UNHEALTHY}:
@@ -503,10 +552,11 @@ class PluginLifecycleManager:
             record.last_error = record.last_error or "plugin reported unhealthy"
             if record.consecutive_failures >= self.quarantine_after:
                 record.enabled = False
+                record.state = LifecycleState.STOPPING
                 try:
                     await self.runtime.stop(plugin_id)
                 except Exception as exc:
-                    record.state = LifecycleState.FAILED_STOP
+                    record.state = LifecycleState.QUARANTINED
                     record.last_error = f"plugin quarantine stop failed: {exc}"
                     self._log("error", "quarantine_stop_failed", plugin_id, record.last_error, record.consecutive_failures)
                 else:
@@ -585,6 +635,7 @@ __all__ = [
     "PluginHealth",
     "PluginLifecycleManager",
     "PluginRecord",
+    "plugin_contributions_active",
     "RuntimeController",
     "RuntimeUnavailable",
     "Sha256PackageVerifier",

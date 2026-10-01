@@ -1074,6 +1074,12 @@ class PluginUiDocument(ContractModel):
         unique([item.id for item in self.dialog_contributions], "dialog contribution")
         unique([item.id for item in self.contextual_actions], "contextual action")
         unique([item.id for item in self.routes], "plugin route")
+        unique([item.path.strip("/") for item in self.routes], "plugin route path")
+        for route in self.routes:
+            if any(part == "" for part in route.path.split("/")):
+                raise ValueError("plugin route path cannot contain empty segments")
+            if route.path in page_ids and route.page_id != route.path:
+                raise ValueError("plugin route path conflicts with a page identifier")
         unique([item.id for item in self.page_replacements], "page replacement")
 
         action_set = set(action_ids)

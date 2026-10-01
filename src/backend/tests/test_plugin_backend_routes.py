@@ -256,6 +256,14 @@ def test_conflicting_host_route_ownership_is_rejected() -> None:
     [
         {"enabled": False, "status": "disabled"},
         {"status": "failed", "health": "unhealthy"},
+        {"status": "enabled"},
+        {"status": "starting"},
+        {"status": "stopping"},
+        {"status": "quarantined"},
+        {"status": "failed_start"},
+        {"status": "failed_stop"},
+        {"status": "stopped"},
+        {"status": "completed"},
     ],
 )
 async def test_disabled_or_failed_plugin_cannot_serve_routes(monkeypatch, changes) -> None:

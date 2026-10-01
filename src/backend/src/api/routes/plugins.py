@@ -33,9 +33,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.datastructures import UploadFile as StarletteUploadFile
-from starlette.responses import JSONResponse
-
 from src.core.auth import get_current_admin, get_current_user, verify_password
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
@@ -89,6 +86,8 @@ from src.plugin_api.updates import (
     PackageVerificationError,
     PluginPackageVerifier,
 )
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.responses import JSONResponse
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 host_router = APIRouter(tags=["plugin-host-routes"])
@@ -1994,7 +1993,7 @@ async def plugin_ui(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    _, capabilities = await _plugin_and_capabilities(plugin_id, db, user, require_enabled=False)
+    _, capabilities = await _plugin_and_capabilities(plugin_id, db, user)
     try:
         payload = await _client.plugin_ui(quote(plugin_id, safe=""))
     except PluginRuntimeRequestError as exc:
@@ -2212,7 +2211,16 @@ async def plugin_gateway(
 ) -> dict[str, Any]:
     if not runtime_token_is_valid(runtime_token):
         raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
-    plugin = await _live_plugin(payload.plugin_id)
+    plugin = await _live_plugin(payload.plugin_id, require_enabled=False)
+    starting_authorization = (
+        payload.method == "capabilities.check"
+        and plugin.get("enabled") is True
+        and plugin.get("compatible") is True
+        and plugin.get("status") == "starting"
+        and plugin.get("health") in {"healthy", "unknown"}
+    )
+    if not installation_is_executable(plugin) and not starting_authorization:
+        raise HTTPException(status_code=409, detail="Plugin installation is not executable.")
     if UUID(str(plugin["installation_id"])) != payload.installation_id:
         raise HTTPException(status_code=409, detail="Plugin installation identity does not match.")
     user = await db.scalar(select(User).where(User.id == payload.user_id, User.is_active.is_(True)))

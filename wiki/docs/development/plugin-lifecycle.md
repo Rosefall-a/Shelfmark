@@ -29,4 +29,12 @@ The application exposes the lifecycle endpoints under /api/plugins and delegates
 
 ## Installation and activation
 
-Newly installed plugins are disabled by default. Installation records the administrator's contextual consent choices and does not activate the plugin. An administrator must explicitly enable it. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `stopped` rather than falsely as healthy.
+Newly installed plugins are disabled by default. Installation records the administrator's contextual consent choices and does not activate the plugin. An administrator must explicitly enable it. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose running process exits is reported as `failed` rather than falsely as healthy.
+
+## Contribution lifecycle
+
+Contributions execute only while their installation is enabled, compatible and running. Starting, stopping, failed, disabled and quarantined plugins retain reserved backend routes, but cannot execute them. Their navigation, Settings contributions, overlays, dialogs, contextual actions, page extensions and replacements disappear. Event polling, provider registration/discovery/delivery, and supervised workers also stop. Provider records and grants remain available for reactivation of the same installation.
+
+The frontend reconciles lifecycle state every five seconds and after local Plugin Manager operations. Server execution checks take effect immediately. Removing a privileged native frontend bundle reloads the frontend to terminate its JavaScript realm; native cleanup callbacks alone cannot stop arbitrary retained code. Stop/disable preserve quarantine.
+
+Duplicate IDs within a plugin document and duplicate route paths are rejected. IDs are scoped to their plugin. Replacement conflicts resolve by ascending order, plugin ID, then contribution ID using lexicographic comparisons. Plugin host-route claims cannot overlap existing plugins or the application's registered routes, including catchalls; disabled and quarantined owners still reserve their declarations.

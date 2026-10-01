@@ -7,16 +7,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.database.models.plugin_permissions import PluginPermissionGrant
 from src.plugin_api.capabilities import capability_grant_candidates
+from src.plugin_api.lifecycle import plugin_contributions_active
 
 
 def installation_is_executable(plugin: dict[str, Any]) -> bool:
     """Accept only affirmative live lifecycle metadata from the runtime registry."""
-    return (
-        plugin.get("enabled") is True
-        and plugin.get("compatible") is True
-        and plugin.get("status") in {"running", "completed", "stopped"}
-        and plugin.get("health") in {"healthy", "unknown"}
-    )
+    return plugin_contributions_active(plugin)
 
 
 async def has_capability_grant(

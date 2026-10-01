@@ -301,8 +301,43 @@ export function validateDocument(document: PluginUiDocument): string[] {
   const contextualActions = document.contextual_actions ?? [];
   const routes = document.routes ?? [];
   const pageReplacements = document.page_replacements ?? [];
-  const extensionIds = new Set<string>();
-  const contributionIds = new Set<string>();
+  const routePaths = new Set<string>();
+  for (const route of routes) {
+    if (
+      routePaths.has(route.path) ||
+      route.path.split("/").some((part) => !part)
+    )
+      errors.push(`Plugin route ${route.path} is ambiguous.`);
+    if (pages.has(route.path) && route.page_id !== route.path)
+      errors.push(
+        `Plugin route ${route.path} conflicts with a page identifier.`,
+      );
+    routePaths.add(route.path);
+  }
+  const groups: Array<[string, Array<{ id: string }>]> = [
+    ["Setting", document.settings],
+    ["Action", document.actions],
+    ["Table", document.tables],
+    ["Dialog", document.dialogs],
+    ["Menu", document.menus],
+    ["Page", document.pages],
+    ["Extension", extensions],
+    ["Navigation", navigation],
+    ["Settings contribution", settingsSections],
+    ["Overlay", overlays],
+    ["Dialog contribution", dialogContributions],
+    ["Contextual action", contextualActions],
+    ["Route", routes],
+    ["Page replacement", pageReplacements],
+  ];
+  for (const [kind, items] of groups) {
+    const ids = new Set<string>();
+    for (const item of items) {
+      if (ids.has(item.id))
+        errors.push(`${kind} ${item.id} is declared more than once.`);
+      ids.add(item.id);
+    }
+  }
 
   for (const menu of document.menus) {
     if (menu.page_id && !pages.has(menu.page_id))
@@ -327,9 +362,6 @@ export function validateDocument(document: PluginUiDocument): string[] {
         errors.push(`Page ${page.id} references an unknown dialog.`);
   }
   for (const extension of extensions) {
-    if (extensionIds.has(extension.id))
-      errors.push(`Extension ${extension.id} is declared more than once.`);
-    extensionIds.add(extension.id);
     if (!HOST_EXTENSION_SLOTS.includes(extension.slot))
       errors.push(`Extension ${extension.id} uses an unsupported host slot.`);
     if (!pages.has(extension.page_id))
@@ -343,11 +375,6 @@ export function validateDocument(document: PluginUiDocument): string[] {
     ...routes,
     ...pageReplacements,
   ]) {
-    if (contributionIds.has(contribution.id))
-      errors.push(
-        `Contribution ${contribution.id} is declared more than once.`,
-      );
-    contributionIds.add(contribution.id);
     if (!pages.has(contribution.page_id))
       errors.push(
         `Contribution ${contribution.id} references an unknown page.`,
@@ -356,11 +383,6 @@ export function validateDocument(document: PluginUiDocument): string[] {
   const routeIds = new Set(routes.map((item) => item.id));
   const settingsSectionIds = new Set(settingsSections.map((item) => item.id));
   for (const contribution of navigation) {
-    if (contributionIds.has(contribution.id))
-      errors.push(
-        `Contribution ${contribution.id} is declared more than once.`,
-      );
-    contributionIds.add(contribution.id);
     const targets = [
       contribution.page_id,
       contribution.route_id,
@@ -439,7 +461,10 @@ export function pluginPathForPage(
   pageId: string,
 ): string {
   return (
-    document.routes?.find((route) => route.page_id === pageId)?.path ?? pageId
+    document.routes
+      ?.filter((route) => route.page_id === pageId)
+      .map((route) => route.path)
+      .sort()[0] ?? pageId
   );
 }
 

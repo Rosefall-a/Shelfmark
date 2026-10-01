@@ -1,5 +1,24 @@
 export type PluginStatus =
-  "running" | "stopped" | "quarantined" | "failed" | "disabled" | "unknown";
+  | "enabled"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "completed"
+  | "quarantined"
+  | "failed"
+  | "failed_start"
+  | "failed_stop"
+  | "disabled"
+  | "unknown";
+export function pluginContributionsActive(plugin: PluginSummary): boolean {
+  return (
+    plugin.enabled &&
+    plugin.compatible &&
+    plugin.status === "running" &&
+    (plugin.health === "healthy" || plugin.health === "unknown")
+  );
+}
 export interface PluginSummary {
   plugin_id: string;
   name: string;

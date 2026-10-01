@@ -339,9 +339,7 @@ async def test_unavailable_installations_cannot_execute_any_entrypoint(boundary,
         assert (
             await client.get("/api/plugins/audit.plugin/native-frontend/native/index.js")
         ).status_code == 409
-        document = (await client.get("/api/plugins/audit.plugin/ui")).json()
-        assert document["native_frontend"] is None
-        assert document["page_replacements"] == []
+        assert (await client.get("/api/plugins/audit.plugin/ui")).status_code == 409
     boundary.runtime.action.assert_not_awaited()
     boundary.runtime.route.assert_not_awaited()
     boundary.runtime.native_frontend_asset.assert_not_awaited()
@@ -621,7 +619,9 @@ async def test_runtime_egress_requires_persisted_operation_grant(
     boundary, broker, monkeypatch, tmp_path, capability
 ):
     registry = broker.runtime.PluginRegistry(tmp_path / "registry", broker.supervisor)
-    registry._save_state({"audit.plugin": {"enabled": True}})
+    registry._transition("audit.plugin", enabled=True, status="running")
+    monkeypatch.setattr(registry, "_item", lambda _package: boundary.plugin)
+    monkeypatch.setattr(broker.supervisor, "running", lambda _id: True)
     monkeypatch.setattr(
         registry, "ui", lambda _id: {"actions": [{"id": "deliver", "handler": "entry:deliver"}]}
     )

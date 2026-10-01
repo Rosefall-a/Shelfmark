@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import { activePluginDocuments } from "../../state/pluginExtensions";
 import type {
   PluginPermissionGrant,
   PluginPermissionRequest,
@@ -37,6 +38,9 @@ const emit = defineEmits<{
 type Tab = "overview" | "settings" | "permissions" | "diagnostics";
 const tab = ref<Tab>("overview");
 const closeButton = ref<HTMLButtonElement | null>(null);
+const contributionsActive = computed(() =>
+  Boolean(activePluginDocuments.value[props.plugin.plugin_id]),
+);
 
 watch(
   () => props.plugin.plugin_id,
@@ -155,7 +159,7 @@ watch(
 
           <section v-else-if="tab === 'settings'" class="panel">
             <PluginUiHost
-              v-if="document"
+              v-if="document && contributionsActive"
               :document="document"
               @save="emit('save', $event)"
               @action="(item, values) => emit('action', item, values)"

@@ -1,5 +1,9 @@
 import { ref, shallowReadonly } from "vue";
-import { fetchPlugins, type PluginSummary } from "../services/plugins";
+import {
+  fetchPlugins,
+  pluginContributionsActive,
+  type PluginSummary,
+} from "../services/plugins";
 import {
   fetchPluginUi,
   type HostExtensionSlot,
@@ -9,7 +13,7 @@ import {
   type UiNavigationLocation,
   type UiPage,
 } from "../services/pluginUi";
-import { reconcileNativePlugins } from "./pluginNative";
+import { reconcileNativePlugins, retainNativePlugins } from "./pluginNative";
 
 export interface PluginNavigationContribution {
   pluginId: string;
@@ -136,8 +140,7 @@ export function derivePluginContributions(
   document: PluginUiDocument,
 ): PluginContributions {
   if (
-    !plugin.enabled ||
-    !plugin.compatible ||
+    !pluginContributionsActive(plugin) ||
     document.plugin_id !== plugin.plugin_id
   )
     return emptyContributions();
@@ -323,7 +326,54 @@ const dialogState = ref<PluginDialogContribution[]>([]);
 const contextualActionState = ref<PluginContextualActionContribution[]>([]);
 const routeState = ref<PluginRouteContribution[]>([]);
 const replacementState = ref<PluginPageReplacementContribution[]>([]);
-let loading: Promise<void> | null = null;
+let refreshVersion = 0;
+const documentState = ref<Record<string, PluginUiDocument>>({});
+export const activePluginDocuments = shallowReadonly(documentState);
+
+function retainContributions(pluginIds: ReadonlySet<string>): void {
+  navigationState.value = navigationState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  settingsState.value = settingsState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  slotState.value = slotState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  overlayState.value = overlayState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  dialogState.value = dialogState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  contextualActionState.value = contextualActionState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  routeState.value = routeState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  replacementState.value = replacementState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  documentState.value = Object.fromEntries(
+    Object.entries(documentState.value).filter(([id]) => pluginIds.has(id)),
+  );
+  if (
+    activeDialogState.value &&
+    !pluginIds.has(activeDialogState.value.pluginId)
+  )
+    activeDialogState.value = null;
+  retainNativePlugins(pluginIds);
+}
+
+export function clearPluginExtensions(): void {
+  refreshVersion++;
+  retainContributions(new Set());
+}
+
+function compareIds(first: string, second: string): number {
+  return first < second ? -1 : first > second ? 1 : 0;
+}
 
 export const pluginNavigation = shallowReadonly(navigationState);
 export const pluginSettingsSections = shallowReadonly(settingsState);
@@ -340,18 +390,20 @@ export function comparePluginContributions(
 ): number {
   return (
     first.order - second.order ||
-    first.pluginId.localeCompare(second.pluginId) ||
-    first.contributionId.localeCompare(second.contributionId)
+    compareIds(first.pluginId, second.pluginId) ||
+    compareIds(first.contributionId, second.contributionId)
   );
 }
 
-export function refreshPluginExtensions(): Promise<void> {
-  if (loading) return loading;
-  loading = (async () => {
+export async function refreshPluginExtensions(): Promise<void> {
+  const version = ++refreshVersion;
+  try {
     const plugins = await fetchPlugins();
-    const enabled = plugins.filter(
-      (plugin) => plugin.enabled && plugin.compatible,
-    );
+    if (version !== refreshVersion) return;
+    const enabled = plugins
+      .filter(pluginContributionsActive)
+      .sort((a, b) => compareIds(a.plugin_id, b.plugin_id));
+    retainContributions(new Set(enabled.map((plugin) => plugin.plugin_id)));
     const loaded = await Promise.all(
       enabled.map(async (plugin) => {
         try {
@@ -365,24 +417,28 @@ export function refreshPluginExtensions(): Promise<void> {
         }
       }),
     );
+    if (version !== refreshVersion) return;
     const contributions = loaded.map((item) => item.contributions);
-    await reconcileNativePlugins(
-      enabled.flatMap((plugin, index) => {
-        const document = loaded[index]?.document;
-        const nativeFrontend = document?.native_frontend;
-        return nativeFrontend && hasCapability(plugin, "frontend.native")
-          ? [
-              {
-                pluginId: plugin.plugin_id,
-                version: plugin.version,
-                entry: nativeFrontend.entry,
-                styles: nativeFrontend.styles,
-                pageIds: document.pages.map((page) => page.id),
-              },
-            ]
-          : [];
-      }),
+    documentState.value = Object.fromEntries(
+      loaded.flatMap((item) =>
+        item.document ? [[item.document.plugin_id, item.document]] : [],
+      ),
     );
+    const nativeSources = enabled.flatMap((plugin, index) => {
+      const document = loaded[index]?.document;
+      const nativeFrontend = document?.native_frontend;
+      return nativeFrontend && hasCapability(plugin, "frontend.native")
+        ? [
+            {
+              pluginId: plugin.plugin_id,
+              version: plugin.version,
+              entry: nativeFrontend.entry,
+              styles: nativeFrontend.styles,
+              pageIds: document.pages.map((page) => page.id),
+            },
+          ]
+        : [];
+    });
     navigationState.value = contributions
       .flatMap((item) => item.navigation)
       .sort(comparePluginContributions);
@@ -394,7 +450,7 @@ export function refreshPluginExtensions(): Promise<void> {
       .filter((item) => item.hostPage === "home")
       .map((item) => ({
         pluginId: item.pluginId,
-        extensionId: item.contributionId,
+        extensionId: `replacement:${item.contributionId}`,
         slot: "home.replace" as const,
         page: item.page,
         order: item.order,
@@ -406,13 +462,19 @@ export function refreshPluginExtensions(): Promise<void> {
     ].sort(
       (a, b) =>
         a.order - b.order ||
-        a.pluginId.localeCompare(b.pluginId) ||
-        a.extensionId.localeCompare(b.extensionId),
+        compareIds(a.pluginId, b.pluginId) ||
+        compareIds(a.extensionId, b.extensionId),
     );
     overlayState.value = contributions
       .flatMap((item) => item.overlays)
       .sort(comparePluginContributions);
-    dialogState.value = contributions.flatMap((item) => item.dialogs);
+    dialogState.value = contributions
+      .flatMap((item) => item.dialogs)
+      .sort(
+        (a, b) =>
+          compareIds(a.pluginId, b.pluginId) ||
+          compareIds(a.contributionId, b.contributionId),
+      );
     if (
       activeDialogState.value &&
       !dialogState.value.some(
@@ -425,14 +487,22 @@ export function refreshPluginExtensions(): Promise<void> {
     contextualActionState.value = contributions
       .flatMap((item) => item.contextualActions)
       .sort(comparePluginContributions);
-    routeState.value = contributions.flatMap((item) => item.routes);
+    routeState.value = contributions
+      .flatMap((item) => item.routes)
+      .sort(
+        (a, b) =>
+          compareIds(a.pluginId, b.pluginId) ||
+          compareIds(a.path, b.path) ||
+          compareIds(a.contributionId, b.contributionId),
+      );
     replacementState.value = contributions
       .flatMap((item) => item.replacements)
       .sort(comparePluginContributions);
-  })().finally(() => {
-    loading = null;
-  });
-  return loading;
+    // Publish lifecycle removal before waiting on privileged plugin code.
+    await reconcileNativePlugins(nativeSources);
+  } catch {
+    if (version === refreshVersion) clearPluginExtensions();
+  }
 }
 
 const activeDialogState = ref<PluginDialogContribution | null>(null);

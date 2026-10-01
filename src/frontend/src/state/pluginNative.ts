@@ -57,6 +57,7 @@ interface NativePluginModule {
 interface ActiveNativePlugin {
   signature: string;
   cleanup: () => void;
+  requiresReload: boolean;
 }
 
 type ModuleImporter = (url: string) => Promise<NativePluginModule>;
@@ -116,19 +117,36 @@ function deactivate(pluginId: string): void {
     // A privileged plugin cleanup failure must not interrupt host cleanup.
   }
   removeComponents(pluginId);
+  // Privileged modules can retain timers and host references outside our SDK.
+  // Destroy their browser realm instead of relying on cooperative cleanup.
+  if (active.requiresReload && typeof window !== "undefined")
+    window.location.reload();
+}
+
+export function retainNativePlugins(pluginIds: ReadonlySet<string>): void {
+  for (const pluginId of [...activePlugins.keys()]) {
+    if (!pluginIds.has(pluginId)) deactivate(pluginId);
+  }
 }
 
 async function activate(
   source: NativeFrontendSource,
   importer: ModuleImporter,
 ): Promise<void> {
-  const signature = `${source.version}:${source.entry}:${source.styles.join(",")}`;
+  const signature = JSON.stringify([
+    source.version,
+    source.entry,
+    source.styles,
+    [...source.pageIds].sort(),
+  ]);
   if (activePlugins.get(source.pluginId)?.signature === signature) return;
   deactivate(source.pluginId);
   const cleanups: Array<() => void> = [];
   const registeredKeys: string[] = [];
+  let disposed = false;
   const cleanup = () => {
-    for (const callback of cleanups.reverse()) {
+    disposed = true;
+    for (const callback of cleanups.splice(0).reverse()) {
       try {
         callback();
       } catch {
@@ -136,12 +154,24 @@ async function activate(
       }
     }
     if (registeredKeys.length) {
+      const removedKeys = registeredKeys.splice(0);
       componentState.value = Object.fromEntries(
         Object.entries(componentState.value).filter(
-          ([key]) => !registeredKeys.includes(key),
+          ([key]) => !removedKeys.includes(key),
         ),
       );
     }
+  };
+  // Track pending imports too, so removal cancels activation before it starts.
+  const activation = {
+    signature,
+    cleanup,
+    requiresReload: importer === defaultImporter,
+  };
+  activePlugins.set(source.pluginId, activation);
+  const requireActive = () => {
+    if (disposed || activePlugins.get(source.pluginId) !== activation)
+      throw new Error("Plugin frontend is no longer active.");
   };
   try {
     if (typeof document !== "undefined") {
@@ -157,6 +187,7 @@ async function activate(
     const module = await importer(
       `${assetUrl(source.pluginId, source.entry)}?v=${encodeURIComponent(source.version)}`,
     );
+    if (disposed) return;
     const entry = module.activate ?? module.default;
     if (typeof entry !== "function")
       throw new Error(
@@ -165,6 +196,7 @@ async function activate(
     const result = await entry({
       pluginId: source.pluginId,
       registerComponent(pageId, component) {
+        requireActive();
         if (!/^[a-z0-9][a-z0-9._-]*$/.test(pageId))
           throw new Error("Native component page ID is invalid.");
         if (!source.pageIds.includes(pageId))
@@ -179,15 +211,18 @@ async function activate(
         };
       },
       onCleanup(callback) {
-        cleanups.push(callback);
+        if (disposed) callback();
+        else cleanups.push(callback);
       },
       vue: { computed, defineComponent, h, reactive, readonly, ref },
       host: {
         async navigate(path) {
+          requireActive();
           if (!hostRouter) throw new Error("Host router is not ready.");
           await hostRouter.push(path);
         },
         async runAction(actionId, values = {}) {
+          requireActive();
           const response = await fetch(
             `/api/plugins/${encodeURIComponent(source.pluginId)}/actions/${encodeURIComponent(actionId)}`,
             {
@@ -202,6 +237,7 @@ async function activate(
           return (await response.json()) as Record<string, unknown>;
         },
         async saveSettings(values) {
+          requireActive();
           const response = await fetch(
             `/api/plugins/${encodeURIComponent(source.pluginId)}/settings`,
             {
@@ -215,18 +251,25 @@ async function activate(
             throw new Error("Plugin settings could not be saved.");
         },
         openDialog(contributionId) {
+          requireActive();
           dialogOpener(source.pluginId, contributionId);
         },
       },
     });
     if (typeof result === "function") cleanups.push(result);
     else if (result?.deactivate) cleanups.push(result.deactivate);
-    activePlugins.set(source.pluginId, { signature, cleanup });
+    if (disposed) {
+      cleanup();
+      return;
+    }
     const failures = { ...failureState.value };
     delete failures[source.pluginId];
     failureState.value = failures;
   } catch (error) {
     cleanup();
+    if (activePlugins.get(source.pluginId) !== activation) return;
+    // Keep failed production imports tracked: a later lifecycle removal must
+    // still destroy any code they evaluated before throwing.
     failureState.value = {
       ...failureState.value,
       [source.pluginId]:
@@ -242,9 +285,7 @@ export async function reconcileNativePlugins(
   importer: ModuleImporter = defaultImporter,
 ): Promise<void> {
   const requested = new Set(sources.map((source) => source.pluginId));
-  for (const pluginId of [...activePlugins.keys()]) {
-    if (!requested.has(pluginId)) deactivate(pluginId);
-  }
+  retainNativePlugins(requested);
   await Promise.all(sources.map((source) => activate(source, importer)));
 }
 

@@ -9,6 +9,14 @@ from pydantic import ValidationError
 
 from .contracts import BackendRouteScope, PluginBackendRoute
 
+_host_routes: tuple[tuple[str, frozenset[str]], ...] = ()
+
+
+def reserve_host_routes(routes: Iterable[tuple[str, frozenset[str]]]) -> None:
+    """Record the real host router's paths for installation conflict validation."""
+    global _host_routes
+    _host_routes = tuple(sorted(routes, key=lambda item: item[0]))
+
 
 class BackendRouteConflictError(ValueError):
     """Raised when more than one installed plugin claims the same request."""
@@ -28,10 +36,14 @@ def route_paths_overlap(left: str, right: str) -> bool:
 
     left_parts = left.strip("/").split("/")
     right_parts = right.strip("/").split("/")
-    return len(left_parts) == len(right_parts) and all(
-        left_part == right_part or left_part.startswith("{") or right_part.startswith("{")
-        for left_part, right_part in zip(left_parts, right_parts, strict=True)
-    )
+    for left_part, right_part in zip(left_parts, right_parts, strict=False):
+        if left_part.endswith(":path}") or right_part.endswith(":path}"):
+            return True
+        if left_part != right_part and not (
+            left_part.startswith("{") or right_part.startswith("{")
+        ):
+            return False
+    return len(left_parts) == len(right_parts)
 
 
 def match_route_path(declared: str, requested: str) -> dict[str, str] | None:
@@ -87,6 +99,13 @@ def validate_host_route_ownership(
             for route in candidate_routes
             if route.scope is BackendRouteScope.HOST
         )
+    owners.sort(key=lambda item: (item[0], item[1].path, item[1].id))
+    for plugin_id, route in owners:
+        for path, methods in _host_routes:
+            if set(route.methods).intersection(methods) and route_paths_overlap(route.path, path):
+                raise BackendRouteConflictError(
+                    f"host route {route.path} from {plugin_id} overlaps host-owned route {path}"
+                )
     for index, (plugin_id, route) in enumerate(owners):
         for other_plugin_id, other_route in owners[index + 1 :]:
             if not set(route.methods).intersection(other_route.methods):
@@ -129,6 +148,7 @@ __all__ = [
     "ResolvedBackendRoute",
     "match_route_path",
     "plugin_backend_routes",
+    "reserve_host_routes",
     "resolve_backend_route",
     "route_paths_overlap",
     "validate_host_route_ownership",

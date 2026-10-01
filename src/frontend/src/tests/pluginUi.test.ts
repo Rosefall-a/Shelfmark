@@ -49,6 +49,63 @@ const document: PluginUiDocument = {
 };
 
 describe("plugin UI host contract", () => {
+  it("rejects duplicate navigation IDs, extension IDs and route paths in either order", () => {
+    const first = { ...document.pages[0]!, id: "first" };
+    const second = { ...document.pages[0]!, id: "second" };
+    for (const pageIds of [
+      [first.id, second.id],
+      [second.id, first.id],
+    ]) {
+      const conflicting = {
+        ...document,
+        pages: [first, second],
+        navigation: pageIds.map((page_id) => ({
+          id: "same",
+          location: "main.sidebar" as const,
+          label: page_id,
+          page_id,
+          order: 0,
+          visibility: { admin_only: false },
+        })),
+        extensions: pageIds.map((page_id) => ({
+          id: "same",
+          slot: "home.after-widgets" as const,
+          page_id,
+          order: 0,
+        })),
+        routes: pageIds.map((page_id) => ({
+          id: page_id,
+          path: "same-path",
+          page_id,
+        })),
+      };
+      expect(validateDocument(conflicting)).toContain(
+        "Navigation same is declared more than once.",
+      );
+      expect(validateDocument(conflicting)).toContain(
+        "Extension same is declared more than once.",
+      );
+      expect(validateDocument(conflicting)).toContain(
+        "Plugin route same-path is ambiguous.",
+      );
+    }
+  });
+
+  it("chooses route aliases lexically regardless of document order", () => {
+    const aliases = [
+      { id: "z", path: "z-alias", page_id: "settings" },
+      { id: "a", path: "a-alias", page_id: "settings" },
+    ];
+    expect(
+      pluginPathForPage({ ...document, routes: aliases }, "settings"),
+    ).toBe("a-alias");
+    expect(
+      pluginPathForPage(
+        { ...document, routes: [...aliases].reverse() },
+        "settings",
+      ),
+    ).toBe("a-alias");
+  });
   it("rejects dangling declarative references", () => {
     expect(
       validateDocument({
