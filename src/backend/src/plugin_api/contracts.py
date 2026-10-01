@@ -53,6 +53,8 @@ class Capability(StrEnum):
     TASKS_BACKGROUND = "tasks.background"
     SESSIONS_ADMIN_READ = "sessions.admin.read"
     SESSIONS_ADMIN_REVOKE = "sessions.admin.revoke"
+    SESSIONS_GEOIP_READ = "sessions.geoip.read"
+    SESSIONS_GEOIP_CONFIGURE = "sessions.geoip.configure"
     MEDIA_IMPORT = "media.import"
     PLUGIN_STORAGE = "plugin.storage"
     PLUGIN_SETTINGS = "plugin.settings"
@@ -156,12 +158,22 @@ class DocumentContentRepresentation(ContractModel):
 
 
 class SessionRepresentation(ContractModel):
-    """Non-sensitive user session metadata; credentials are never exposed."""
+    """Permissioned session metadata; credentials are never exposed."""
 
     id: UUID
     created_at: int = Field(ge=0)
     expires_at: int = Field(ge=0)
     active: bool
+    user_id: UUID | None = None
+    username: str | None = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    last_seen_at: int | None = Field(default=None, ge=0)
+    revoked_at: int | None = Field(default=None, ge=0)
+    state: str = Field(default="active", pattern=r"^(active|expired|revoked)$")
+    is_current: bool = False
+    location: dict[str, str | int | float | None] = Field(default_factory=dict)
+    anomaly: dict[str, str | None] = Field(default_factory=dict)
 
 
 class NotificationProviderRegistration(ContractModel):
@@ -577,6 +589,7 @@ class PluginBackendRoute(ContractModel):
         reserved_plugin_roots = {
             "actions",
             "changelog",
+            "capabilities",
             "disable",
             "enable",
             "frontend",

@@ -186,6 +186,7 @@ export async function dispatchPluginAction(
   actionId: string,
   values: Record<string, unknown> = {},
   context?: PluginActionContext,
+  confirmed = false,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(
     `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(actionId)}`,
@@ -193,7 +194,7 @@ export async function dispatchPluginAction(
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values, context }),
+      body: JSON.stringify({ values, context, confirmed }),
     },
   );
   if (!response.ok) throw new Error("Plugin action could not be completed.");

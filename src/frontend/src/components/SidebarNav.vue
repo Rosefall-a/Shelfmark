@@ -105,7 +105,13 @@ async function activatePluginNavigation(
 ) {
   if (!item.action) return;
   if (!approvePluginAction(item.action, window.confirm)) return;
-  await dispatchPluginAction(item.pluginId, item.action.id);
+  await dispatchPluginAction(
+    item.pluginId,
+    item.action.id,
+    {},
+    undefined,
+    Boolean(item.action.confirmation),
+  );
   close();
 }
 

@@ -18,8 +18,10 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from src.api.routes import plugin_permissions, plugins
+
+from src.api.routes import auth, plugin_permissions, plugins
 from src.core.auth import hash_token
+from src.core.geoip import GeoLocation
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
@@ -162,6 +164,7 @@ def boundary(monkeypatch):
         monkeypatch.setattr(plugins, "_client", runtime)
         monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", "x" * 32)
         app = FastAPI()
+        app.include_router(auth.router)
         app.include_router(plugins.router)
         app.include_router(plugin_permissions.router)
         app.include_router(plugins.host_router)
@@ -193,6 +196,303 @@ def grant(boundary, capability="sessions.read", **changes):
     boundary.session.add(row)
     boundary.session.commit()
     return row
+
+
+@pytest.mark.asyncio
+async def test_session_metadata_state_filters_and_ownership(boundary):
+    grant(boundary)
+    own = boundary.sessions[0]
+    own.ip_address = "203.0.113.1"
+    own.user_agent = "Example browser"
+    own.geo_country = "Australia"
+    own.geo_network_type = "asn"
+    own.geo_network_number = 64500
+    own.geo_network_organization = "Example network"
+    own.anomaly_reason = "New geographic location"
+    own.anomaly_previous_location = "New Zealand"
+    boundary.session.commit()
+    response = await request(boundary, payload={"q": "example network", "anomaly": True})
+    data = response.json()["payload"]["sessions"]
+    assert response.status_code == 200 and len(data) == 1
+    assert data[0]["ip_address"] == own.ip_address
+    assert data[0]["user_agent"] == own.user_agent
+    assert data[0]["location"]["network_number"] == 64500
+    assert data[0]["anomaly"]["previous_location"] == "New Zealand"
+    assert "token" not in response.text
+    # A caller cannot manufacture another user's self-service scope.
+    response = await request(boundary, payload={"user_id": str(boundary.users[1].id)})
+    assert response.status_code == 422
+    assert (await request(boundary, payload={"q": "does not exist"})).json()["payload"][
+        "sessions"
+    ] == []
+    own.revoked_at = 10
+    boundary.session.commit()
+    response = await request(boundary, payload={"state": "revoked"})
+    assert response.json()["payload"]["sessions"][0]["active"] is False
+    assert (await request(boundary, payload={"state": "active"})).json()["payload"][
+        "sessions"
+    ] == []
+
+
+@pytest.mark.asyncio
+async def test_session_revoke_cannot_cross_users_or_bypass_read_only_grants(boundary):
+    grant(boundary)
+    payload = {"session_id": str(boundary.sessions[1].id), "confirmed": True}
+    assert (
+        await request(
+            boundary, method="sessions.revoke", capability="sessions.revoke", payload=payload
+        )
+    ).status_code == 403
+    grant(boundary, "sessions.revoke")
+    assert (
+        await request(
+            boundary, method="sessions.revoke", capability="sessions.revoke", payload=payload
+        )
+    ).status_code == 422
+    assert boundary.sessions[1].revoked_at is None
+    payload["session_id"] = str(boundary.sessions[0].id)
+    assert (
+        await request(
+            boundary, method="sessions.revoke", capability="sessions.revoke", payload=payload
+        )
+    ).status_code == 200
+    boundary.session.refresh(boundary.sessions[0])
+    assert boundary.sessions[0].revoked_at is not None
+    assert (
+        await request(
+            boundary, method="sessions.revoke", capability="sessions.revoke", payload=payload
+        )
+    ).status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session_id", [None, "", "not-a-uuid", "../../sessions", 7, [], {}])
+async def test_session_revoke_rejects_malformed_identifiers(boundary, session_id):
+    grant(boundary, "sessions.revoke")
+    response = await request(
+        boundary,
+        method="sessions.revoke",
+        capability="sessions.revoke",
+        payload={"session_id": session_id, "confirmed": True},
+    )
+    assert response.status_code == 422
+    assert all(session.revoked_at is None for session in boundary.sessions)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("confirmed", [None, False, "true", 1])
+async def test_session_gateway_requires_explicit_boolean_confirmation(boundary, confirmed):
+    grant(boundary, "sessions.revoke")
+    response = await request(
+        boundary,
+        method="sessions.revoke_all",
+        capability="sessions.revoke",
+        payload={"confirmed": confirmed},
+    )
+    assert response.status_code == 422
+    assert boundary.sessions[0].revoked_at is None
+
+
+@pytest.mark.asyncio
+async def test_session_bulk_revoke_is_scoped_and_current_session_cookie_stops_working(boundary):
+    grant(boundary, "sessions.revoke")
+    response = await request(
+        boundary,
+        method="sessions.revoke_all",
+        capability="sessions.revoke",
+        payload={"confirmed": True},
+    )
+    assert response.status_code == 200 and response.json()["payload"]["revoked"] == 1
+    assert boundary.sessions[1].revoked_at is None
+    grant(boundary)
+    assert (await request(boundary, "/api/plugins/audit.plugin/actions/read")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_session_admin_capability_also_requires_administrator(boundary):
+    grant(boundary, "sessions.admin.read")
+    grant(boundary, "sessions.admin.revoke")
+    boundary.users[0].is_admin = False
+    boundary.session.commit()
+    assert (
+        await request(boundary, method="sessions.admin.list", capability="sessions.admin.read")
+    ).status_code == 403
+    assert (
+        await request(
+            boundary,
+            method="sessions.admin.revoke_all",
+            capability="sessions.admin.revoke",
+            payload={"confirmed": True},
+        )
+    ).status_code == 403
+    boundary.users[0].is_admin = True
+    boundary.session.commit()
+    response = await request(
+        boundary,
+        method="sessions.admin.revoke_user",
+        capability="sessions.admin.revoke",
+        payload={"user_id": str(boundary.users[1].id), "confirmed": True},
+    )
+    assert response.status_code == 200 and response.json()["payload"]["revoked"] == 1
+    assert boundary.sessions[0].revoked_at is None
+
+
+@pytest.mark.asyncio
+async def test_session_action_confirmation_and_host_created_current_identity(boundary):
+    grant(boundary, "sessions.revoke")
+    document = boundary.runtime.plugin_ui.return_value
+    document["actions"].append(
+        {
+            "id": "revoke",
+            "capability": {"name": "sessions.revoke", "version": 1},
+            "confirmation": "Revoke?",
+        }
+    )
+    path = "/api/plugins/audit.plugin/actions/revoke"
+    assert (await request(boundary, path, values={"confirmed": True})).status_code == 409
+    boundary.runtime.action.assert_not_awaited()
+    response = await request(
+        boundary,
+        path,
+        confirmed=True,
+        values={"_plugin_context": {"session_id": str(boundary.sessions[1].id)}},
+    )
+    assert response.status_code == 200
+    values = boundary.runtime.action.call_args.args[2]
+    assert values["_plugin_context"]["session_id"] == str(boundary.sessions[0].id)
+    assert values["_plugin_context"]["confirmed"] is True
+    boundary.plugin["enabled"] = False
+    assert (await request(boundary, path, confirmed=True)).status_code == 409
+    assert (
+        await request(
+            boundary,
+            method="sessions.revoke_all",
+            capability="sessions.revoke",
+            payload={"confirmed": True},
+        )
+    ).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_session_pagination_does_not_truncate_at_two_hundred(boundary):
+    grant(boundary)
+    owner = boundary.users[0].id
+    for index in range(202):
+        boundary.session.add(
+            UserSession(
+                id=uuid4(),
+                user_id=owner,
+                token_hash=f"{index:064x}",
+                created_at=1,
+                last_seen_at=1,
+                expires_at=9999999999,
+            )
+        )
+    boundary.session.commit()
+    first = (await request(boundary, payload={"limit": 200})).json()["payload"]
+    assert len(first["sessions"]) == 200 and first["next_cursor"]
+    second = (
+        await request(boundary, payload={"limit": 200, "cursor": first["next_cursor"]})
+    ).json()["payload"]
+    assert len(second["sessions"]) == 3 and second["next_cursor"] is None
+    assert not {s["id"] for s in first["sessions"]} & {s["id"] for s in second["sessions"]}
+    assert (
+        await request(boundary, payload={"cursor": str(boundary.sessions[1].id)})
+    ).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_geoip_upload_requires_active_plugin_admin_grant_and_confirmation(boundary):
+    async def upload(**params):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=boundary.app),
+            base_url="http://test",
+            cookies={"session": boundary.tokens[boundary.users[0].id]},
+        ) as client:
+            return await client.post(
+                "/api/plugins/audit.plugin/capabilities/sessions/geoip",
+                params=params,
+                files={"file": ("test.mmdb", b"invalid-mmdb")},
+            )
+
+    assert (await upload(confirmed="true")).status_code == 403
+    grant(boundary, "sessions.geoip.configure")
+    assert (await upload()).status_code == 409
+    assert (await upload(kind="city", confirmed="true")).status_code == 400
+    assert (await upload(kind="unknown", confirmed="true")).status_code == 422
+    boundary.plugin["enabled"] = False
+    assert (await upload(confirmed="true")).status_code == 409
+    boundary.plugin["enabled"] = True
+    boundary.users[0].is_admin = False
+    boundary.session.commit()
+    assert (await upload(confirmed="true")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_password_login_uses_shared_metadata_and_anomaly_notification(boundary, monkeypatch):
+    previous = boundary.sessions[0]
+    previous.geo_country = "Australia"
+    boundary.session.commit()
+    monkeypatch.setattr(auth, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(
+        "src.core.session_manager.geoip.lookup",
+        lambda _ip: GeoLocation(
+            country="New Zealand",
+            city="Auckland",
+            network_type="asn",
+            network_number=64500,
+        ),
+    )
+    queue = AsyncMock()
+    monkeypatch.setattr("src.core.session_manager._queue_anomaly_notification", queue)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/auth/login",
+            json={
+                "username_or_email": "alice",
+                "password": "test-password",
+            },
+            headers={"x-real-ip": "8.8.8.8", "user-agent": "Example browser"},
+        )
+    assert response.status_code == 200
+    row = boundary.session.scalar(
+        select(UserSession).where(
+            UserSession.id != previous.id, UserSession.user_id == previous.user_id
+        )
+    )
+    assert row.ip_address == "8.8.8.8" and row.user_agent == "Example browser"
+    assert row.geo_network_number == 64500 and row.geo_city == "Auckland"
+    assert row.anomaly_previous_location == "Australia"
+    assert "New Zealand" in row.anomaly_reason
+    queue.assert_awaited_once_with(boundary.db, boundary.users[0], row)
+
+
+@pytest.mark.asyncio
+async def test_geoip_status_is_admin_only_and_credential_free(boundary, monkeypatch):
+    grant(boundary, "sessions.geoip.read")
+    monkeypatch.setattr(
+        "src.plugin_api.sessions.geoip.availability",
+        lambda: {
+            "city": True,
+            "country": False,
+            "network": True,
+        },
+    )
+    response = await request(
+        boundary, method="sessions.geoip.status", capability="sessions.geoip.read"
+    )
+    assert response.json()["payload"] == {
+        "city": {"configured": True},
+        "country": {"configured": False},
+        "network": {"configured": True},
+    }
+    boundary.users[0].is_admin = False
+    boundary.session.commit()
+    assert (
+        await request(boundary, method="sessions.geoip.status", capability="sessions.geoip.read")
+    ).status_code == 403
 
 
 async def request(boundary, path="/api/plugins/runtime/gateway", **changes):

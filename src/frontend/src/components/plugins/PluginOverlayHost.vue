@@ -17,7 +17,13 @@ async function runDialogAction(actionId: string) {
   );
   if (!contribution || !action) return;
   if (!approvePluginAction(action, window.confirm)) return;
-  await dispatchPluginAction(contribution.pluginId, action.id);
+  await dispatchPluginAction(
+    contribution.pluginId,
+    action.id,
+    {},
+    undefined,
+    Boolean(action.confirmation),
+  );
 }
 </script>
 

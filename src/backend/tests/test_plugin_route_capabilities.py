@@ -5,7 +5,7 @@ from unittest.mock import ANY, AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from src.api.routes import plugins
 
@@ -61,6 +61,7 @@ async def test_action_dispatch_requires_exact_installation_grant(monkeypatch) ->
             plugins.PluginSettingsIn(values={}),
             ANY,
             user,
+            request=Request({"type": "http", "headers": []}),
         )
 
     assert denied.value.status_code == 403
@@ -93,6 +94,7 @@ async def test_action_result_cannot_spoof_host_identity(monkeypatch) -> None:
         plugins.PluginSettingsIn(values={}),
         ANY,
         user,
+        request=Request({"type": "http", "headers": []}),
     )
 
     assert result["plugin_id"] == "example.plugin"
@@ -205,6 +207,7 @@ async def test_context_payload_requires_declared_scoped_capability(monkeypatch) 
             ),
             ANY,
             user,
+            request=Request({"type": "http", "headers": []}),
         )
 
     assert denied.value.status_code == 403

@@ -3,6 +3,9 @@
 See the [runtime authorization audit](plugin-api-v1-authorization-audit.md) for the
 concrete HTTP request trace, enforcement corrections, integration coverage, and limits.
 
+See [scoped session capabilities](plugin-session-capabilities.md) for rich session
+metadata, ownership, confirmed revocation, and administrator GeoIP operations.
+
 This document defines the contract foundation for Plugin Hub (#262), implemented by #263 and its contract sub-issues #274-#278.
 
 ## Scope

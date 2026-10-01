@@ -7,6 +7,7 @@ import type {
   UiValues,
 } from "../../services/pluginUi";
 import { dispatchPluginAction } from "../../services/pluginUi";
+import { approvePluginAction } from "../../services/pluginUi";
 import { nativePluginComponents } from "../../state/pluginNative";
 import { activePluginDocuments } from "../../state/pluginExtensions";
 import PluginUiHost from "./PluginUiHost.vue";
@@ -58,12 +59,24 @@ async function run(action: UiAction, values: UiValues) {
     action.id,
     values,
     props.actionContext,
+    Boolean(action.confirmation),
   );
 }
 
 const nativeHost = computed(() => ({
-  runAction: (actionId: string, values: Record<string, unknown> = {}) =>
-    dispatchPluginAction(props.pluginId, actionId, values, props.actionContext),
+  runAction: async (actionId: string, values: Record<string, unknown> = {}) => {
+    const action = props.document.actions.find((item) => item.id === actionId);
+    if (!action) throw new Error("Plugin action not found.");
+    if (!approvePluginAction(action, window.confirm))
+      return { cancelled: true };
+    return dispatchPluginAction(
+      props.pluginId,
+      actionId,
+      values,
+      props.actionContext,
+      Boolean(action.confirmation),
+    );
+  },
 }));
 </script>
 

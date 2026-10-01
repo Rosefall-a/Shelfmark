@@ -21,6 +21,39 @@ afterEach(() => {
 });
 
 describe("native plugin lifecycle", () => {
+  it("requires host confirmation before sending a destructive action", async () => {
+    const confirm = vi
+      .fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ revoked: 1 }) });
+    vi.stubGlobal("window", { confirm });
+    vi.stubGlobal("fetch", fetch);
+    let context!: NativePluginContext;
+    await reconcileNativePlugins(
+      [
+        {
+          ...source,
+          actions: [{ id: "revoke", confirmation: "Revoke sessions?" }],
+        },
+      ],
+      async () => ({
+        activate(value) {
+          context = value;
+        },
+      }),
+    );
+    expect(await context.host.runAction("revoke")).toEqual({ cancelled: true });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await context.host.runAction("revoke")).toEqual({ revoked: 1 });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      values: {},
+      confirmed: true,
+    });
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
   it("reloads the browser realm when a production import is removed, including failed imports", async () => {
     resetNativePluginsForTests();
     const reload = vi.fn();

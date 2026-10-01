@@ -48,6 +48,14 @@ class GeoIpProvider:
         self._asn_reader = None
         self._loaded_asn_path: Path | None = None
 
+    def availability(self) -> dict[str, bool]:
+        """Report usable database kinds without exposing filesystem paths or readers."""
+        return {
+            "city": self._get_reader() is not None,
+            "country": self._get_country_reader() is not None,
+            "network": self._get_asn_reader() is not None,
+        }
+
     @staticmethod
     def _open(path: Path):
         if not path.is_file():

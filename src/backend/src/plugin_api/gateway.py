@@ -12,14 +12,14 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.api.routes.settings import (
     get_or_create_app_integration_settings,
     get_or_create_scan_settings,
 )
 from src.core.integrations import resolve_integrations
-from src.database.models.auth import UserSession
 from src.database.models.game import Game
 from src.database.models.game_file_item import GameFileItem
 from src.database.models.media_item import MediaItem
@@ -35,9 +35,9 @@ from src.plugin_api.contracts import (
     DocumentContentRepresentation,
     DocumentRepresentation,
     NotificationProviderRegistration,
-    SessionRepresentation,
 )
 from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.sessions import dispatch_sessions
 
 _DATA_ROOT = Path("/data/users")
 _MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
@@ -49,6 +49,9 @@ _METHOD_CAPABILITIES = {
     "documents.read": "documents.read",
     "sessions.list": "sessions.read",
     "sessions.revoke": "sessions.revoke",
+    "sessions.revoke_all": "sessions.revoke",
+    "sessions.admin.revoke_user": "sessions.admin.revoke",
+    "sessions.geoip.status": "sessions.geoip.read",
     "sessions.admin.list": "sessions.admin.read",
     "sessions.admin.revoke": "sessions.admin.revoke",
     "sessions.admin.revoke_all": "sessions.admin.revoke",
@@ -280,75 +283,8 @@ async def dispatch_gateway_request(
         )
         return content.model_dump(mode="json")
 
-    if method == "sessions.list":
-        limit = max(1, min(int(payload.get("limit", 50)), 200))
-        user_sessions = (
-            (
-                await db.execute(
-                    select(UserSession)
-                    .where(UserSession.user_id == user_id)
-                    .order_by(UserSession.created_at.desc())
-                    .limit(limit)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        now = int(time.time())
-        sessions = [
-            SessionRepresentation(
-                id=session.id,
-                created_at=session.created_at,
-                expires_at=session.expires_at,
-                active=session.expires_at > now,
-            ).model_dump(mode="json")
-            for session in user_sessions
-        ]
-        return {"sessions": sessions}
-
-    if method == "sessions.revoke":
-        try:
-            session_id = UUID(str(payload.get("session_id", "")))
-        except ValueError as exc:
-            raise ValueError("session_id must be a UUID") from exc
-        revoke_result = await db.execute(
-            update(UserSession).where(UserSession.id == session_id, UserSession.user_id == user_id, UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time()))
-        )
-        if not revoke_result.rowcount:
-            raise LookupError("session not found")
-        await db.commit()
-        return {"revoked": True, "session_id": str(session_id)}
-
-    if method == "sessions.admin.list":
-        from src.database.models.user import User
-        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
-        if admin is None:
-            raise PermissionError("administrator access is required")
-        limit = max(1, min(int(payload.get("limit", 100)), 200))
-        rows = (await db.execute(select(UserSession, User.username).join(User, User.id == UserSession.user_id).order_by(UserSession.last_seen_at.desc()).limit(limit))).all()
-        now = int(time.time())
-        return {"sessions": [{"id": str(s.id), "user_id": str(s.user_id), "username": u, "ip_address": s.ip_address, "user_agent": s.user_agent, "created_at": s.created_at, "last_seen_at": s.last_seen_at, "expires_at": s.expires_at, "revoked_at": s.revoked_at, "active": s.revoked_at is None and s.expires_at > now, "state": "revoked" if s.revoked_at is not None else ("active" if s.expires_at > now else "expired"), "location": {"country": s.geo_country, "region": s.geo_region, "city": s.geo_city, "latitude": s.geo_latitude, "longitude": s.geo_longitude, "network_label": s.geo_network_label, "network_number": s.geo_network_number, "network_organization": s.geo_network_organization}, "anomaly": {"reason": s.anomaly_reason, "previous_location": s.anomaly_previous_location}} for s, u in rows]}
-
-    if method == "sessions.admin.revoke":
-        from src.database.models.user import User
-        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
-        if admin is None:
-            raise PermissionError("administrator access is required")
-        session_id = UUID(str(payload.get("session_id", "")))
-        result = await db.execute(update(UserSession).where(UserSession.id == session_id, UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time())))
-        if not result.rowcount:
-            raise LookupError("session not found")
-        await db.commit()
-        return {"revoked": True, "session_id": str(session_id)}
-
-    if method == "sessions.admin.revoke_all":
-        from src.database.models.user import User
-        admin = await db.scalar(select(User).where(User.id == user_id, User.is_admin.is_(True), User.is_active.is_(True)))
-        if admin is None:
-            raise PermissionError("administrator access is required")
-        result = await db.execute(update(UserSession).where(UserSession.revoked_at.is_(None)).values(revoked_at=int(time.time())))
-        await db.commit()
-        return {"revoked": result.rowcount}
+    if method.startswith("sessions."):
+        return await dispatch_sessions(db, user_id=user_id, method=method, payload=payload)
 
     if method == "media.import":
         imported = []

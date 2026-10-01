@@ -223,7 +223,7 @@ async def upload_geoip(
 ) -> dict[str, object]:
     """Validate and atomically replace one optional local GeoIP database."""
     del admin
-    data = await file.read()
+    data = await file.read(256 * 1024 * 1024 + 1)
     if not data or len(data) > 256 * 1024 * 1024:
         raise HTTPException(400, "Invalid GeoIP database size.")
     paths = {"city": geoip.path, "country": geoip.country_path, "network": geoip.asn_path}
@@ -252,5 +252,5 @@ async def upload_geoip(
         raise
     except OSError as exc:
         temporary.unlink(missing_ok=True)
-        raise HTTPException(400, f"Could not store GeoIP database: {exc}") from exc
+        raise HTTPException(400, "Could not store GeoIP database.") from exc
     return {"configured": True, "kind": kind, "path": str(path)}

@@ -33,7 +33,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.core.auth import get_current_admin, get_current_user, verify_password
+from starlette.datastructures import UploadFile as StarletteUploadFile
+from starlette.responses import JSONResponse
+
+from src.api.routes.session_manager import upload_geoip
+from src.core.auth import get_current_admin, get_current_user, hash_token, verify_password
+from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
@@ -84,8 +89,6 @@ from src.plugin_api.updates import (
     PackageVerificationError,
     PluginPackageVerifier,
 )
-from starlette.datastructures import UploadFile as StarletteUploadFile
-from starlette.responses import JSONResponse
 
 router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 host_router = APIRouter(tags=["plugin-host-routes"])
@@ -93,6 +96,9 @@ logger = logging.getLogger(__name__)
 _client = PluginRuntimeClient()
 _MAX_PLUGIN_ROUTE_BODY_BYTES = 48 * 1024
 _MAX_PLUGIN_ROUTE_ENVELOPE_BYTES = 64 * 1024
+_GEOIP_UPLOAD_FILE = File(...)
+_PLUGIN_DB = Depends(get_db)
+_PLUGIN_ADMIN = Depends(get_current_admin)
 
 
 class PluginSettingsIn(BaseModel):
@@ -110,6 +116,7 @@ class PluginActionContext(BaseModel):
 
 
 class PluginActionIn(PluginSettingsIn):
+    confirmed: bool = Field(default=False, strict=True)
     context: PluginActionContext | None = None
 
 
@@ -1680,6 +1687,50 @@ async def save_plugin_settings(
     return {"plugin_id": plugin_id, "saved": True}
 
 
+async def _current_browser_session_id(
+    db: AsyncSession, user_id: UUID, request: Request
+) -> str | None:
+    """Resolve a non-secret session identifier from authenticated host cookies."""
+    token = request.cookies.get("session")
+    if not token:
+        return None
+    session_id = await db.scalar(
+        select(UserSession.id).where(
+            UserSession.user_id == user_id,
+            UserSession.token_hash == hash_token(token),
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > int(time.time()),
+        )
+    )
+    return str(session_id) if session_id else None
+
+
+@router.post("/{plugin_id}/capabilities/sessions/geoip")
+async def plugin_geoip_upload(
+    plugin_id: str,
+    *,
+    file: UploadFile = _GEOIP_UPLOAD_FILE,
+    kind: str = Query(default="city", pattern="^(city|country|network)$"),
+    confirmed: bool = Query(default=False),
+    db: AsyncSession = _PLUGIN_DB,
+    admin: User = _PLUGIN_ADMIN,
+) -> dict[str, object]:
+    """Allow enabled plugins with a narrow grant to replace a local GeoIP database."""
+    plugin = await _live_plugin(plugin_id)
+    if not await has_capability_grant(
+        db,
+        plugin_id=plugin_id,
+        installation_id=UUID(str(plugin["installation_id"])),
+        capability="sessions.geoip.configure",
+        user_id=admin.id,
+    ):
+        raise HTTPException(403, "Permission sessions.geoip.configure has not been granted.")
+    if not confirmed:
+        raise HTTPException(409, "Explicit GeoIP replacement confirmation is required.")
+    result = await upload_geoip(file=file, kind=kind, admin=admin)
+    return {"configured": result["configured"], "kind": kind}
+
+
 @router.post("/{plugin_id}/actions/{action_id}")
 async def plugin_action(
     plugin_id: str,
@@ -1687,7 +1738,10 @@ async def plugin_action(
     payload: PluginActionIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    *,
+    request: Request,
 ) -> dict:
+    """Authorize a declared action and supply host-owned authentication context."""
     request_id = uuid4()
     plugin = await _live_plugin(plugin_id)
     document = await _client.plugin_ui(quote(plugin_id, safe=""))
@@ -1717,9 +1771,11 @@ async def plugin_action(
             raise HTTPException(
                 status_code=403, detail=f"Permission {capability} has not been granted."
             )
+    if action.get("confirmation") and getattr(payload, "confirmed", False) is not True:
+        raise HTTPException(status_code=409, detail="Explicit action confirmation is required.")
     values = dict(payload.values)
     values.pop("_plugin_context", None)
-    context: dict[str, str] = {
+    context: dict[str, Any] = {
         "path": f"/plugins/{plugin_id}",
         "user_id": str(user.id),
     }
@@ -1773,6 +1829,11 @@ async def plugin_action(
         )
         if action_context.resource_type is not None:
             context["resource_type"] = action_context.resource_type
+    context["confirmed"] = getattr(payload, "confirmed", False)
+    context["is_admin"] = bool(getattr(user, "is_admin", False))
+    session_id = await _current_browser_session_id(db, user.id, request)
+    if session_id:
+        context["session_id"] = session_id
     values["_plugin_context"] = context
     try:
         result = await _client.action(
@@ -2094,10 +2155,12 @@ async def _execute_plugin_backend_route(
     owner_id: str,
     user: User,
     request_id: UUID,
+    db: AsyncSession,
 ) -> PluginBackendRouteResponse:
     """Execute one bounded runtime handler and validate its JSON response."""
 
     route_request = await _backend_route_request(request, resolved.path_parameters, request_id)
+    route_request["current_session_id"] = await _current_browser_session_id(db, user.id, request)
     route_request["user"] = {
         "id": str(user.id),
         "username": str(getattr(user, "username", "")),
@@ -2176,6 +2239,7 @@ async def _dispatch_backend_route(
         owner_id=owner_id,
         user=user,
         request_id=request_id,
+        db=db,
     )
     logger.info(
         "Plugin backend route completed: request_id=%s plugin_id=%s installation_id=%s "

@@ -40,6 +40,10 @@ loaded into the Vue host only when the enabled installation has
 declared by this document. The host owns registration, stylesheet,
 failure-isolation, and cleanup lifecycle.
 
+Declared action confirmation is handled in both modes and enforced on the host
+action endpoint. Requests use strict boolean `confirmed` (default false). Native
+`host.runAction` returns `{ cancelled: true }` when confirmation is declined.
+
 ## Custom frontend sandbox
 
 See [Custom plugin frontend sandbox design](plugin-ui-sandbox.md). The authenticated

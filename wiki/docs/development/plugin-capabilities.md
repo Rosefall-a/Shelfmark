@@ -32,8 +32,14 @@ The principal families are:
 | Capability | Methods | Returned data and limits |
 | --- | --- | --- |
 | `documents.read` | `documents.list`, `documents.read` | User-owned game-document metadata and at most 5 MiB of base64 PDF or UTF-8 plain text. No filesystem paths, HTML, SVG, active content, or arbitrary binary data. |
-| `sessions.read` | `sessions.list` | Opaque session ID, creation time, expiry time, and active state for the authenticated user. No cookies, tokens, hashes, IP addresses, or user-agent data. |
-| `sessions.revoke` | `sessions.revoke` | Deletes one session only when it belongs to the authenticated user. UI actions should declare host-owned confirmation. |\n| `sessions.admin.read` | `sessions.admin.list` | Administrator-only session metadata including user, device, location and anomaly fields. The host re-checks administrator status. |\n| `sessions.admin.revoke` | `sessions.admin.revoke`, `sessions.admin.revoke_all` | Administrator-only session revocation. |\n| `media.write` | `media.import` | Imports normalized movie metadata into the authenticated user media library; plugins never receive ORM objects. |\n| `tasks.background` | Plugin-owned background execution | Allows a plugin to remain active for approved background work; the host still controls process/resource limits. |
+| `sessions.read` | `sessions.list` | Caller-owned session IDs, state/current indication, timestamps, IP/user agent, approximate location/network/ASN, and anomaly context. No cookies, tokens, or hashes. Filtered cursor pages default to 50, maximum 200. |
+| `sessions.revoke` | `sessions.revoke`, `sessions.revoke_all` | Confirmed caller-owned revocation sets `revoked_at`, retaining audit metadata. Separate from read permission. |
+| `sessions.admin.read` | `sessions.admin.list` | Cross-user filtered session metadata; active administrator role independently required. |
+| `sessions.admin.revoke` | `sessions.admin.revoke`, `sessions.admin.revoke_user`, `sessions.admin.revoke_all` | Confirmed admin single, selected-user, or server-wide revocation. |
+| `sessions.geoip.read` | `sessions.geoip.status` | Administrator-only City/Country/Network availability booleans; no filesystem paths. |
+| `sessions.geoip.configure` | Multipart capability endpoint | Administrator-only confirmed MMDB replacement, bounded to 256 MiB and validated by the host. |
+| `media.write` | `media.import` | Imports normalized movie metadata into the authenticated user media library; plugins never receive ORM objects. |
+| `tasks.background` | Plugin-owned background execution | Allows a plugin to remain active for approved background work; the host still controls process/resource limits. |
 | `notifications.send` | `notifications.send` | Creates a user-scoped in-app notification; core then creates eligible provider delivery rows. |
 | `notification_providers.register` | `notification_providers.register`, `notification_providers.unregister` | Registers a provider ID namespaced below the plugin ID and one declared action ID. |
 | `notification_providers.deliver` | Core invokes the registered action | Allows minimized eligible delivery work after core preference/grant checks. It does not allow querying notification tables or controlling retries. |

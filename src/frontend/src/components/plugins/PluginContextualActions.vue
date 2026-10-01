@@ -42,6 +42,7 @@ async function run(index: number) {
       contribution.action.id,
       {},
       props.context,
+      Boolean(contribution.action.confirmation),
     );
   } catch (cause) {
     error.value =
@@ -61,6 +62,7 @@ async function navigate(index: number) {
       contribution.action.id,
       {},
       props.context,
+      Boolean(contribution.action.confirmation),
     );
     return;
   }

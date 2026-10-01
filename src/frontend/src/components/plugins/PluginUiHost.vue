@@ -170,7 +170,10 @@ async function handleFrontendMessage(event: MessageEvent) {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ values: data.values || {} }),
+          body: JSON.stringify({
+            values: data.values || {},
+            confirmed: Boolean(action.confirmation),
+          }),
         },
       );
       if (!response.ok)

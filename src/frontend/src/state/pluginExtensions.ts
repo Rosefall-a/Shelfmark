@@ -435,6 +435,7 @@ export async function refreshPluginExtensions(): Promise<void> {
               entry: nativeFrontend.entry,
               styles: nativeFrontend.styles,
               pageIds: document.pages.map((page) => page.id),
+              actions: document.actions,
             },
           ]
         : [];

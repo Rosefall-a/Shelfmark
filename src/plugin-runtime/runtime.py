@@ -67,6 +67,7 @@ _BACKEND_ROUTE_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 _RESERVED_PLUGIN_ROUTE_ROOTS = {
     "actions",
     "changelog",
+    "capabilities",
     "disable",
     "enable",
     "frontend",

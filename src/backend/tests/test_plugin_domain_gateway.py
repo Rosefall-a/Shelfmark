@@ -126,7 +126,9 @@ def test_documents_read_supports_html_representation(tmp_path, monkeypatch) -> N
     document_id = uuid4()
     document_root = tmp_path / str(user_id) / "games" / "example" / "docs"
     document_root.mkdir(parents=True)
-    (document_root / "page.html").write_text("<h1>Safe</h1><script>alert(1)</script>", encoding="utf-8")
+    (document_root / "page.html").write_text(
+        "<h1>Safe</h1><script>alert(1)</script>", encoding="utf-8"
+    )
     game = Game(
         id=game_id,
         user_id=user_id,
@@ -166,7 +168,7 @@ def test_session_access_exposes_no_credentials_and_revoke_is_user_scoped() -> No
         expires_at=int(time.time()) + 60,
     )
     listed = dispatch(
-        FakeDb(execute_results=[FakeResult(scalar_rows=[session])]),
+        FakeDb(execute_results=[FakeResult(rows=[(session, "owner")])]),
         method="sessions.list",
         capability="sessions.read",
         user_id=user_id,
@@ -179,7 +181,7 @@ def test_session_access_exposes_no_credentials_and_revoke_is_user_scoped() -> No
         db,
         method="sessions.revoke",
         capability="sessions.revoke",
-        payload={"session_id": str(session_id)},
+        payload={"session_id": str(session_id), "confirmed": True},
         user_id=user_id,
     )
     assert revoked == {"revoked": True, "session_id": str(session_id)}

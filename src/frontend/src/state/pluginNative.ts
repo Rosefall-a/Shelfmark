@@ -11,6 +11,7 @@ import {
   type Component,
 } from "vue";
 import type { Router } from "vue-router";
+import { checkAuth } from "./auth";
 
 export interface NativeFrontendSource {
   pluginId: string;
@@ -18,6 +19,7 @@ export interface NativeFrontendSource {
   entry: string;
   styles: string[];
   pageIds: string[];
+  actions?: Array<{ id: string; confirmation?: string }>;
 }
 
 export interface NativePluginContext {
@@ -219,17 +221,24 @@ async function activate(
         async navigate(path) {
           requireActive();
           if (!hostRouter) throw new Error("Host router is not ready.");
+          if (path === "/login") await checkAuth();
           await hostRouter.push(path);
         },
         async runAction(actionId, values = {}) {
           requireActive();
+          const action = source.actions?.find((item) => item.id === actionId);
+          if (action?.confirmation && !window.confirm(action.confirmation))
+            return { cancelled: true };
           const response = await fetch(
             `/api/plugins/${encodeURIComponent(source.pluginId)}/actions/${encodeURIComponent(actionId)}`,
             {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ values }),
+              body: JSON.stringify({
+                values,
+                confirmed: Boolean(action?.confirmation),
+              }),
             },
           );
           if (!response.ok)

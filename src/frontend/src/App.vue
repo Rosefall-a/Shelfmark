@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import SidebarNav from "./components/SidebarNav.vue";
 import TaskProgressToast from "./components/TaskProgressToast.vue";
 import ShortcutsHelp from "./components/ShortcutsHelp.vue";
@@ -14,8 +14,10 @@ import {
 } from "./state/pluginExtensions";
 import PluginExtensionSlot from "./components/plugins/PluginExtensionSlot.vue";
 import PluginOverlayHost from "./components/plugins/PluginOverlayHost.vue";
+import { fetchCurrentUser } from "./services/auth";
 
 const route = useRoute();
+const router = useRouter();
 let pluginRefreshTimer: ReturnType<typeof setInterval> | undefined;
 watch(
   () => currentUser.value?.id,
@@ -24,10 +26,19 @@ watch(
     clearPluginExtensions();
     if (id) {
       void refreshPluginExtensions();
-      pluginRefreshTimer = setInterval(
-        () => void refreshPluginExtensions(),
-        5000,
-      );
+      pluginRefreshTimer = setInterval(async () => {
+        try {
+          const user = await fetchCurrentUser();
+          if (!user) {
+            currentUser.value = null;
+            await router.replace("/login");
+            return;
+          }
+          await refreshPluginExtensions();
+        } catch {
+          // Preserve the current screen during transient connectivity failures.
+        }
+      }, 5000);
     }
   },
   { immediate: true },
