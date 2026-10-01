@@ -1,6 +1,8 @@
 # Plugin Permissions & Scoped Identities
 
-The permission gateway is default-deny and is enforced at the gateway rather than by plugin UI.
+The permission gateway is default-deny and is enforced at the host gateway for every
+operation. Declarations in manifests, UI documents and backend routes, and pending
+permission requests, never grant access.
 
 ## Administrator workflow
 1. The Plugin Manager statically verifies an uploaded package and displays its identity, publisher trust, dependencies, UI contribution summary, and every requested capability before installation.
@@ -26,7 +28,28 @@ Update review compares the previous manifest requests, candidate requests, curre
 
 
 ## Audit and security
-Permission requests, grants, revocations, and audit records are persisted. The production gateway resolves the current installed package and requires an active exact or hierarchical grant matching plugin ID, installation ID, capability version, and optional user scope. Disabled installations cannot dispatch actions.
+Permission requests, grants, revocations, and audit records are persisted. The production
+gateway resolves the current live installation and requires an active exact or hierarchical
+grant matching plugin ID, installation ID, capability version, and optional user/device
+scope. Disabled, failed, quarantined, incompatible, or unknown installations cannot
+execute capabilities. Revocation is checked on the next request, including runtime-local
+storage/settings and provider delivery after destination lookup.
+
+Browser and runtime transports do not currently authenticate a device identity. They
+cannot use device-scoped grants, even if the caller supplies a matching device UUID.
+Issuing a scoped client credential does not itself activate a device-authenticated transport.
+
+Native frontend assets require an explicit `frontend.native` grant. Home and Settings
+replacement contributions each require their own page-specific grant. Backend routes
+require `backend.routes.plugin` or `backend.routes.host`; domain operations issued by
+their handlers still require their own capabilities. Provider registration, notification
+sending and provider delivery have separate operation capabilities.
+
+Runtime-local operations query the host with `capabilities.check` before accessing
+broker-owned storage/settings or sending external notifications. Plugins use granted
+storage/settings APIs; persistent storage is not directly mounted into the plugin sandbox.
+The explicit `NONBUBBLE_ENV` development mode still disables that isolation and is not
+suitable for untrusted plugin code.
 
 The policy is default-deny and rejects requests without authenticated user context. A grant with no user scope means any authenticated user; a scoped grant must match the authenticated user exactly.
 

@@ -1,6 +1,17 @@
 # Plugin capability APIs
 
-Plugin API v1 maps every gateway method to exactly one capability. The runtime attaches plugin ID, installation ID, user ID, request ID, and the requested capability; the backend then requires an active grant for that installation, version, and user scope. This check is performed by the backend for every privileged operation. Browser controls, runtime process isolation, and bubblewrap are defense in depth, not authorization boundaries.
+Plugin API v1 maps domain gateway methods to their required capabilities. The runtime
+attaches its own plugin/installation identity, the authenticated action user (or the
+installation's activation user for background requests), request ID, and requested
+capability/version. The host checks the live installation and persisted grants for
+every operation. Runtime-local storage/settings and delivery use the side-effect-free
+`capabilities.check` method to recheck their required capability before execution.
+Browser controls and manifest/UI/route declarations never authorize operations.
+
+Grants must match the installation, capability version and user/device scope. The
+current browser/runtime transports have no authenticated device identity and cannot
+consume device-scoped grants. A grant from another installation is denied even when
+`plugin_id` matches. Revocation takes effect at the next authorization check.
 
 ## Hierarchical grants
 
