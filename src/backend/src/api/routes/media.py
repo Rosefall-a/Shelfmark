@@ -77,7 +77,8 @@ async def _sync_inbox_items(user_id: UUID, db: AsyncSession) -> None:
 
 @router.post("/inbox")
 async def upload_to_inbox(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, list[dict]]:
@@ -85,7 +86,16 @@ async def upload_to_inbox(
     screenshots/clips/soundtrack by file type, to be grouped and assigned
     to games later."""
     results: list[dict] = []
-    for file in files:
+    uploads = list(files or [])
+    if file is not None:
+        uploads.append(file)
+    if not uploads:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+
+    for file in uploads:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
