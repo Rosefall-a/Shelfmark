@@ -14,7 +14,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import ValidationError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.api.routes.settings import (
     get_or_create_app_integration_settings,
     get_or_create_scan_settings,
@@ -124,8 +123,9 @@ async def dispatch_gateway_request(
     method: str,
     capability: str,
     payload: dict[str, Any],
+    capability_version: int = 1,
 ) -> dict[str, Any]:
-    required_capability = _METHOD_CAPABILITIES.get(method)
+    required_capability = capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
     if required_capability is None:
         raise ValueError(f"unsupported plugin gateway method: {method}")
     try:
@@ -140,8 +140,12 @@ async def dispatch_gateway_request(
         installation_id=installation_id,
         capability=capability,
         user_id=user_id,
+        capability_version=capability_version,
     ):
         raise PermissionError(f"permission {capability} has not been granted")
+
+    if method == "capabilities.check":
+        return {"authorized": True}
 
     if method == "media.list":
         limit = max(1, min(int(payload.get("limit", 100)), 200))

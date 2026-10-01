@@ -220,7 +220,7 @@ def capability_grant_candidates(capability: Capability | str) -> tuple[str, ...]
     try:
         resolved = capability if isinstance(capability, Capability) else Capability(capability)
     except ValueError:
-        return (str(capability),)
+        return ()
     candidates = [resolved, *capability_ancestors(resolved)]
     if resolved in _FULL_API_IMPLIED:
         candidates.append(Capability.FULL_API)

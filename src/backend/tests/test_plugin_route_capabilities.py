@@ -38,6 +38,9 @@ class FakeRuntimeClient:
                 "plugin_id": "example.plugin",
                 "installation_id": str(self.installation_id),
                 "enabled": True,
+                "compatible": True,
+                "status": "running",
+                "health": "healthy",
             }
         ]
 
@@ -68,6 +71,7 @@ async def test_action_dispatch_requires_exact_installation_grant(monkeypatch) ->
         installation_id=installation_id,
         capability="sessions.revoke",
         user_id=user.id,
+        capability_version=1,
     )
 
 

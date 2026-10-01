@@ -302,15 +302,17 @@ class PluginSupervisor:
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
             raise RuntimePolicyError("gateway payload must be an object")
-        if method.startswith("storage."):
-            manifest = self._manifest(plugin_id)
-            permissions = {
-                str(item.get("capability", {}).get("name"))
-                for item in manifest.get("permissions", [])
-                if isinstance(item, dict)
-            }
-            if "plugin.storage" not in permissions:
-                raise RuntimePolicyError("plugin.storage permission is required")
+        local_capability = {
+            "storage.put": "plugin.storage",
+            "storage.get": "plugin.storage",
+            "storage.delete": "plugin.storage",
+            "storage.keys": "plugin.storage",
+            "settings.get": "plugin.settings",
+        }.get(method)
+        if local_capability is not None:
+            # Declarations and caller-selected capabilities cannot authorize
+            # runtime-local operations. The host owns the live grant decision.
+            self._authorize_capability(plugin_id, local_capability, user_id=user_id)
         if method == "lifecycle.ready":
             self._log(
                 plugin_id,
@@ -364,6 +366,7 @@ class PluginSupervisor:
                 "user_id": resolved_user_id,
                 "method": method,
                 "capability": capability,
+                "capability_version": request.get("capability_version", 1),
                 "payload": payload,
             }
         ).encode()
@@ -386,6 +389,23 @@ class PluginSupervisor:
         if data.get("error"):
             raise RuntimePolicyError(str(data["error"]))
         return {"payload": data.get("payload", {})}
+
+    def _authorize_capability(
+        self, plugin_id: str, capability: str, *, user_id: str | None = None, version: int = 1
+    ) -> None:
+        response = self._handle_gateway_request(
+            plugin_id,
+            {
+                "method": "capabilities.check",
+                "capability": capability,
+                "capability_version": version,
+                "payload": {},
+            },
+            user_id=user_id,
+        )
+        payload = response.get("payload")
+        if not isinstance(payload, dict) or payload.get("authorized") is not True:
+            raise RuntimePolicyError("host did not authorize the capability")
 
     @staticmethod
     def _limits(limits: ResourceLimits) -> None:
@@ -420,6 +440,15 @@ class PluginSupervisor:
             # the per-plugin bwrap namespace/filesystem boundary is intentionally
             # disabled.
             return list(spec.command)
+        # Create the mask target even before settings have ever been saved.
+        # Otherwise a later host write would become visible through /plugin.
+        settings_path = package_dir / ".settings.json"
+        if settings_path.is_symlink():
+            raise RuntimePolicyError("plugin settings path must not be a symlink")
+        if not settings_path.exists():
+            with settings_path.open("x", encoding="utf-8") as handle:
+                handle.write("{}")
+            settings_path.chmod(0o600)
         return [
             "bwrap",
             "--unshare-all",
@@ -446,11 +475,15 @@ class PluginSupervisor:
             "--ro-bind",
             str(package_dir),
             "/plugin",
+            # Mutable settings are accessible only through the granted API.
+            "--ro-bind",
+            "/dev/null",
+            "/plugin/.settings.json",
             "--bind",
             str(workdir),
             "/plugin-work",
-            "--bind",
-            str(self._storage(spec.plugin_id).root),
+            # Persistent storage (including secrets) belongs to the broker.
+            "--tmpfs",
             "/plugin-data",
             "--chdir",
             "/plugin",
@@ -483,7 +516,7 @@ class PluginSupervisor:
                 "TMPDIR": "/tmp",
                 "PYTHONUNBUFFERED": "1",
                 "PYTHONDONTWRITEBYTECODE": "1",
-                "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
+                "PLUGIN_DATA_DIR": "/plugin-data",
                 **spec.environment,
             }
             try:
@@ -562,7 +595,7 @@ class PluginSupervisor:
                     "HOME": str(package_dir)
                     if self._nonbubble_enabled()
                     else "/plugin",
-                    "PLUGIN_DATA_DIR": str(self._storage(spec.plugin_id).root),
+                    "PLUGIN_DATA_DIR": "/plugin-data",
                     "TMPDIR": "/tmp",
                     "PYTHONUNBUFFERED": "1",
                     "PYTHONDONTWRITEBYTECODE": "1",
@@ -1556,11 +1589,13 @@ class PluginRegistry:
             raise RuntimePolicyError("Discord webhook delivery failed") from exc
 
     def action(
-        self, plugin_id: str, action_id: str, values: dict[str, Any]
+        self, plugin_id: str, action_id: str, values: dict[str, Any], *, user_id: str | None = None
     ) -> dict[str, Any]:
         persisted = self._state().get(plugin_id)
-        if isinstance(persisted, dict) and not persisted.get("enabled", False):
+        if not isinstance(persisted, dict) or not persisted.get("enabled", False):
             raise RuntimePolicyError("plugin must be enabled before actions can run")
+        if self.supervisor.exit_code(plugin_id) not in (None, 0):
+            raise RuntimePolicyError("failed plugin cannot run actions")
         document = self.ui(plugin_id)
         action = next(
             (
@@ -1572,6 +1607,16 @@ class PluginRegistry:
         )
         if action is None:
             raise KeyError(action_id)
+        capability = action.get("capability")
+        if capability is not None:
+            if not isinstance(capability, dict) or not isinstance(capability.get("name"), str):
+                raise RuntimePolicyError("plugin action capability is invalid")
+            self.supervisor._authorize_capability(
+                plugin_id,
+                capability["name"],
+                user_id=user_id,
+                version=capability.get("version", 1),
+            )
         handler = action.get("handler")
         if not isinstance(handler, str):
             raise RuntimePolicyError("plugin action does not declare a runtime handler")
@@ -1583,7 +1628,7 @@ class PluginRegistry:
             ) from exc
         package, manifest = self.package(plugin_id)
         output = self.supervisor.execute(
-            PluginSpec(plugin_id, self._action_command(handler)), package, payload
+            PluginSpec(plugin_id, self._action_command(handler)), package, payload, user_id=user_id
         )
         result: dict[str, Any] = {"completed": True}
         if output:
@@ -1602,10 +1647,11 @@ class PluginRegistry:
                     item.get("name") for item in manifest.get("capabilities", [])
                 }
                 delivery_provider = "notification_providers.deliver" in capabilities
-                if "notifications.send" not in capabilities and not delivery_provider:
-                    raise RuntimePolicyError(
-                        "plugin action requested Discord delivery without an approved delivery capability"
-                    )
+                self.supervisor._authorize_capability(
+                    plugin_id,
+                    "notification_providers.deliver" if delivery_provider else "notifications.send",
+                    user_id=user_id,
+                )
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
                     raise RuntimePolicyError(
@@ -1801,7 +1847,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length) if length else b"{}")
                 result = self.server.registry.action(
-                    parts[1], parts[3], payload.get("values", {})
+                    parts[1], parts[3], payload.get("values", {}), user_id=payload.get("user_id")
                 )  # type: ignore[attr-defined]
                 self._json(200, result)
                 return

@@ -123,12 +123,12 @@ class PluginRuntimeClient:
         await self._request("PUT", f"/plugins/{plugin_id}/settings", json=values)
 
     async def action(
-        self, plugin_id: str, action_id: str, values: dict[str, Any]
+        self, plugin_id: str, action_id: str, values: dict[str, Any], *, user_id: str | None = None
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"/plugins/{quote(plugin_id, safe='')}/actions/{quote(action_id, safe='')}",
-            json={"values": values},
+            json={"values": values, "user_id": user_id},
         )
 
     async def route(

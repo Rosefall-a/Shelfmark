@@ -55,6 +55,16 @@ async def test_plugin_provider_dispatches_minimized_delivery_contract(monkeypatc
         action_id="deliver",
     )
     runtime = AsyncMock()
+    runtime.plugins.return_value = [
+        {
+            "plugin_id": registration.plugin_id,
+            "installation_id": str(registration.installation_id),
+            "enabled": True,
+            "compatible": True,
+            "status": "running",
+            "health": "healthy",
+        }
+    ]
     runtime.action.return_value = {
         "success": True,
         "retryable": False,

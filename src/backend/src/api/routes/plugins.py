@@ -70,7 +70,7 @@ from src.plugin_api.contracts import (
     parse_semver,
 )
 from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
-from src.plugin_api.grants import has_capability_grant
+from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.installer import (
     DependencyPlan,
     InspectedPackage,
@@ -1162,6 +1162,27 @@ async def plugin_changelog(
             path.unlink(missing_ok=True)
 
 
+async def _live_plugin(plugin_id: str, *, require_enabled: bool = True) -> dict[str, Any]:
+    """Resolve a live installation before any capability can execute."""
+    try:
+        installed = await _client.plugins()
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    matches = [item for item in installed if item.get("plugin_id") == plugin_id]
+    if len(matches) != 1 or not matches[0].get("installation_id"):
+        raise HTTPException(status_code=404, detail="Plugin installation not found.")
+    plugin = matches[0]
+    try:
+        UUID(str(plugin["installation_id"]))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="Plugin installation identity is invalid."
+        ) from exc
+    if require_enabled and not installation_is_executable(plugin):
+        raise HTTPException(status_code=409, detail="Plugin installation is not executable.")
+    return plugin
+
+
 async def _plugin_and_capabilities(
     plugin_id: str,
     db: AsyncSession,
@@ -1170,17 +1191,9 @@ async def _plugin_and_capabilities(
     require_enabled: bool = True,
 ) -> tuple[dict[str, Any], frozenset[str]]:
     """Resolve one enabled installation and this user's effective grants."""
-    try:
-        plugins = await _client.plugins()
-    except PluginRuntimeUnavailable as exc:
-        raise _runtime_error(exc) from exc
-    plugin = next((item for item in plugins if item.get("plugin_id") == plugin_id), None)
-    if plugin is None or not plugin.get("installation_id"):
-        raise HTTPException(status_code=404, detail="Plugin installation not found.")
-    if require_enabled and (not plugin.get("enabled") or not plugin.get("compatible", True)):
-        raise HTTPException(
-            status_code=409, detail="Enable the compatible plugin before using its UI."
-        )
+    plugin = await _live_plugin(plugin_id, require_enabled=require_enabled)
+    if not installation_is_executable(plugin):
+        return plugin, frozenset()
     installation_id = UUID(str(plugin["installation_id"]))
     rows = await db.execute(
         select(
@@ -1190,6 +1203,7 @@ async def _plugin_and_capabilities(
             PluginPermissionGrant.plugin_id == plugin_id,
             PluginPermissionGrant.installation_id == installation_id,
             PluginPermissionGrant.revoked_at.is_(None),
+            PluginPermissionGrant.device_id.is_(None),
             or_(
                 PluginPermissionGrant.user_id.is_(None),
                 PluginPermissionGrant.user_id == user.id,
@@ -1297,6 +1311,7 @@ async def list_plugins(
                     PluginPermissionGrant.plugin_id == plugin.get("plugin_id"),
                     PluginPermissionGrant.installation_id == UUID(str(installation_id)),
                     PluginPermissionGrant.revoked_at.is_(None),
+                    PluginPermissionGrant.device_id.is_(None),
                     or_(
                         PluginPermissionGrant.user_id.is_(None),
                         PluginPermissionGrant.user_id == user.id,
@@ -1308,7 +1323,9 @@ async def list_plugins(
             {
                 **plugin,
                 "granted_capabilities": sorted(set(granted)),
-                "effective_capabilities": list(expand_capabilities(granted)),
+                "effective_capabilities": (
+                    list(expand_capabilities(granted)) if installation_is_executable(plugin) else []
+                ),
             }
         )
     return sorted(result, key=lambda value: value["plugin_id"])
@@ -2004,12 +2021,7 @@ async def save_plugin_secret(
 ) -> dict[str, Any]:
     if not key or len(key) > 128 or "/" in key or ".." in key:
         raise HTTPException(status_code=400, detail="Invalid plugin secret key.")
-    plugin = next(
-        (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id),
-        None,
-    )
-    if plugin is None or not plugin.get("installation_id"):
-        raise HTTPException(status_code=404, detail="Plugin installation not found.")
+    plugin = await _live_plugin(plugin_id)
     if not await has_capability_grant(
         db,
         plugin_id=plugin_id,
@@ -2044,12 +2056,7 @@ async def save_plugin_settings(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    plugin = next(
-        (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id),
-        None,
-    )
-    if plugin is None or not plugin.get("installation_id"):
-        raise HTTPException(status_code=404, detail="Plugin installation not found.")
+    plugin = await _live_plugin(plugin_id)
     if not await has_capability_grant(
         db,
         plugin_id=plugin_id,
@@ -2076,30 +2083,30 @@ async def plugin_action(
     user: User = Depends(get_current_user),
 ) -> dict:
     request_id = uuid4()
+    plugin = await _live_plugin(plugin_id)
     document = await _client.plugin_ui(quote(plugin_id, safe=""))
     action = next(
         (item for item in document.get("actions", []) if item.get("id") == action_id), None
     )
     if action is None:
         raise HTTPException(status_code=404, detail="Plugin action not found.")
-    plugin = next(
-        (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id), None
-    )
-    if plugin is None:
-        raise HTTPException(status_code=404, detail="Plugin not found.")
-    if not plugin.get("installation_id"):
-        raise HTTPException(status_code=409, detail="Plugin installation identity is missing.")
-    if not plugin.get("enabled"):
-        raise HTTPException(status_code=409, detail="Enable the plugin before running actions.")
     installation_id = UUID(str(plugin.get("installation_id")))
-    capability = (action.get("capability") or {}).get("name")
-    if capability:
+    capability_ref = action.get("capability")
+    if capability_ref is not None:
+        try:
+            reference = CapabilityRef.model_validate(capability_ref)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422, detail="Plugin action capability is invalid."
+            ) from exc
+        capability = reference.name.value
         if not await has_capability_grant(
             db,
             plugin_id=plugin_id,
             installation_id=installation_id,
             capability=capability,
             user_id=user.id,
+            capability_version=reference.version,
         ):
             raise HTTPException(
                 status_code=403, detail=f"Permission {capability} has not been granted."
@@ -2162,7 +2169,9 @@ async def plugin_action(
             context["resource_type"] = action_context.resource_type
     values["_plugin_context"] = context
     try:
-        result = await _client.action(quote(plugin_id, safe=""), quote(action_id, safe=""), values)
+        result = await _client.action(
+            quote(plugin_id, safe=""), quote(action_id, safe=""), values, user_id=str(user.id)
+        )
     except PluginRuntimeRequestError as exc:
         raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
@@ -2184,12 +2193,14 @@ async def plugin_action(
 
 
 class PluginGatewayIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     plugin_id: str
     installation_id: UUID
     request_id: UUID
     user_id: UUID
     method: str
     capability: str
+    capability_version: int = Field(default=1, ge=1)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -2201,6 +2212,12 @@ async def plugin_gateway(
 ) -> dict[str, Any]:
     if not runtime_token_is_valid(runtime_token):
         raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
+    plugin = await _live_plugin(payload.plugin_id)
+    if UUID(str(plugin["installation_id"])) != payload.installation_id:
+        raise HTTPException(status_code=409, detail="Plugin installation identity does not match.")
+    user = await db.scalar(select(User).where(User.id == payload.user_id, User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(status_code=403, detail="Active user context is required.")
     logger.info(
         "Plugin gateway dispatch: request_id=%s plugin_id=%s installation_id=%s method=%s capability=%s user_id=%s",
         payload.request_id,
@@ -2218,6 +2235,7 @@ async def plugin_gateway(
             installation_id=payload.installation_id,
             method=payload.method,
             capability=payload.capability,
+            capability_version=payload.capability_version,
             payload=payload.payload,
         )
     except PermissionError as exc:
@@ -2385,12 +2403,7 @@ def _route_installation(
         raise _backend_route_error(
             409, "unavailable", "Plugin installation identity is invalid.", request_id
         ) from exc
-    if (
-        not plugin.get("enabled")
-        or not plugin.get("compatible", True)
-        or plugin.get("status") == "failed"
-        or plugin.get("health") == "unhealthy"
-    ):
+    if not installation_is_executable(plugin):
         logger.warning(
             "Plugin backend route unavailable: request_id=%s plugin_id=%s "
             "installation_id=%s route_id=%s",

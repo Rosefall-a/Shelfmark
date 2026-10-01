@@ -7,7 +7,6 @@ import uuid
 import zipfile
 
 import pytest
-
 from runtime import (
     OutboundNetworkPolicy,
     PluginSpec,
@@ -391,7 +390,7 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
     )
 
     class FakeSupervisor:
-        def execute(self, spec, package_dir, payload):
+        def execute(self, spec, package_dir, payload, **kwargs):
             return json.dumps(
                 {
                     "discord": True,
@@ -400,6 +399,10 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
             ).encode()
 
     registry.supervisor.execute = FakeSupervisor().execute
+    registry._save_state({"example.discord": {"enabled": True}})
+    approved = []
+    monkeypatch.setattr(registry.supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
     monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
     delivered = []
     monkeypatch.setattr(
@@ -408,6 +411,7 @@ def test_runtime_discord_action_reads_secret_from_private_storage(
         lambda url, content: delivered.append((url, content)),
     )
     result = registry.action("example.discord", "announce", {})
+    assert approved == ["notifications.send", "notifications.send"]
     assert result == {"completed": True}
     assert delivered == [
         (
@@ -442,11 +446,12 @@ def test_runtime_action_returns_structured_provider_result(tmp_path) -> None:
     (package / "plugin.py").write_text("", encoding="utf-8")
 
     class FakeSupervisor:
-        def execute(self, spec, package_dir, payload):
+        def execute(self, spec, package_dir, payload, **kwargs):
             del spec, package_dir, payload
             return b'{"success":true,"retryable":false,"error":null}'
 
     registry.supervisor.execute = FakeSupervisor().execute
+    registry._save_state({"example.provider": {"enabled": True}})
     assert registry.action("example.provider", "deliver", {}) == {
         "success": True,
         "retryable": False,
@@ -491,7 +496,11 @@ def test_runtime_discord_provider_returns_core_delivery_result(
     registry.supervisor._storage("example.provider").put(
         "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
     )
-    registry.supervisor.execute = lambda *_args: b'{"discord":true,"content":"hello"}'
+    registry.supervisor.execute = lambda *_args, **_kwargs: b'{"discord":true,"content":"hello"}'
+    registry._save_state({"example.provider": {"enabled": True}})
+    approved = []
+    monkeypatch.setattr(registry.supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
     delivered = []
     monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
     monkeypatch.setattr(
@@ -506,6 +515,7 @@ def test_runtime_discord_provider_returns_core_delivery_result(
         "error": None,
     }
     assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
+    assert approved == ["notification_providers.deliver"]
 
 
 def test_action_handler_can_use_the_mediated_plugin_gateway(
@@ -570,8 +580,10 @@ def test_action_handler_can_use_the_mediated_plugin_gateway(
     )
     calls = []
 
-    def dispatch(plugin_id, message):
+    def dispatch(plugin_id, message, **kwargs):
         calls.append((plugin_id, message))
+        if message["method"] == "capabilities.check":
+            return {"payload": {"authorized": True}}
         return {"payload": {"documents": [{"id": "document-1"}]}}
 
     monkeypatch.setattr(supervisor, "_handle_gateway_request", dispatch)
@@ -580,8 +592,10 @@ def test_action_handler_can_use_the_mediated_plugin_gateway(
 
     assert result == {"documents": [{"id": "document-1"}]}
     assert calls[0][0] == "example.documents"
-    assert calls[0][1]["method"] == "documents.list"
+    assert calls[0][1]["method"] == "capabilities.check"
     assert calls[0][1]["capability"] == "documents.read"
+    assert calls[1][1]["method"] == "documents.list"
+    assert calls[1][1]["capability"] == "documents.read"
 
 
 def test_runtime_rejects_actions_for_disabled_installed_plugin(tmp_path) -> None:
@@ -619,7 +633,7 @@ def test_runtime_rejects_actions_for_disabled_installed_plugin(tmp_path) -> None
         registry.action("example.provider", "deliver", {})
 
 
-def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
+def test_runtime_gateway_settings_use_active_package_path(tmp_path, monkeypatch) -> None:
     from runtime import PluginSupervisor
 
     package = tmp_path / "package"
@@ -634,6 +648,9 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
         gateway_token="x" * 32,
     )
     supervisor._package_paths["example.ui-api"] = package
+    approved = []
+    monkeypatch.setattr(supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
     assert supervisor._handle_gateway_request(
         "example.ui-api",
         {
@@ -642,6 +659,7 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path) -> None:
             "payload": {"key": "display_mode"},
         },
     ) == {"payload": {"value": "dark"}}
+    assert approved == ["plugin.settings"]
 
 
 def test_runtime_digest_ignores_python_runtime_cache(tmp_path) -> None:

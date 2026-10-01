@@ -98,11 +98,12 @@ def test_runtime_dispatches_declared_action_in_supervisor(
         encoding="utf-8",
     )
     registry = PluginRegistry(root, PluginSupervisor(root=tmp_path / "processes"))
+    registry._save_state({"example.plugin": {"enabled": True}})
     calls = []
     monkeypatch.setattr(
         registry.supervisor,
         "execute",
-        lambda spec, package, payload: calls.append((spec, package, payload)),
+        lambda spec, package, payload, **kwargs: calls.append((spec, package, payload)),
     )
 
     assert registry.action("example.plugin", "ping", {"value": "ok"}) == {
@@ -148,6 +149,10 @@ def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> N
         ),
     )
     monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    registry._save_state({"example.plugin": {"enabled": True}})
+    approved = []
+    monkeypatch.setattr(registry.supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
     registry.supervisor._storage("example.plugin").put(
         "secrets/discord_webhook",
         b"https://discord.com/api/webhooks/test/x",
@@ -155,7 +160,7 @@ def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr(
         registry.supervisor,
         "execute",
-        lambda spec, package, payload: b'{"discord":true,"content":"hello"}',
+        lambda spec, package, payload, **kwargs: b'{"discord":true,"content":"hello"}',
     )
     sent = []
     monkeypatch.setattr(
@@ -164,6 +169,7 @@ def test_runtime_handles_discord_action_output(tmp_path: Path, monkeypatch) -> N
 
     assert registry.action("example.plugin", "announce", {}) == {"completed": True}
     assert sent == [("https://discord.com/api/webhooks/test/x", "hello")]
+    assert approved == ["notifications.send"]
 
 
 def test_runtime_rejects_tampered_package(tmp_path: Path) -> None:
