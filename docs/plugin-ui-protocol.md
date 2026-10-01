@@ -1,6 +1,9 @@
 # Plugin UI protocol
 
-Plugin UI v1 is a declarative, versioned document exchanged through the authenticated Plugin Gateway. The core frontend renders only a fixed set of native primitives; plugin code is never loaded into the browser.
+Plugin UI v1 is a declarative, versioned document exchanged through the
+authenticated Plugin Gateway. The core renders fixed primitives by default. A
+plugin may additionally declare an iframe frontend or an explicitly permissioned
+native bundle without changing the declarative schema's trust level.
 
 ## Schema
 
@@ -13,7 +16,9 @@ A PluginUiDocument contains:
 - read-only tables;
 - dialogs that reference declared actions;
 - menus that target local pages or declared actions;
-- pages that compose those primitives.
+- pages that compose those primitives;
+- navigation, Settings sections, host-page extensions, overlays/dialogs,
+  contextual actions, plugin-owned routes, and page-scoped replacements.
 
 All identifiers are stable lowercase IDs. Schema version v1 is negotiated as part of the Plugin API version rather than inferred from frontend implementation details.
 
@@ -27,10 +32,15 @@ Secret fields are represented only by their metadata. Existing secret values are
 
 Unknown schema versions must be rejected or rendered as an unsupported-plugin state. New schema versions must add semantics without silently changing the meaning of existing v1 fields.
 
-## Future custom UI
+## Executable UI modes
 
-Complex UIs have a separate design path in #295. They must not be introduced by adding arbitrary HTML, JavaScript, URLs, or component names to the declarative schema.
+`frontend.entry` is loaded only in the sandboxed iframe. `native_frontend` is
+loaded into the Vue host only when the enabled installation has
+`frontend.native`; its module can register components for page IDs already
+declared by this document. The host owns registration, stylesheet,
+failure-isolation, and cleanup lifecycle.
 
-## Future custom frontend sandbox
+## Custom frontend sandbox
 
-See [Custom plugin frontend sandbox design](plugin-ui-sandbox.md). The design keeps arbitrary code out of the core Vue application and retains the authenticated gateway as the only application boundary.
+See [Custom plugin frontend sandbox design](plugin-ui-sandbox.md). The authenticated
+gateway remains the application boundary for both executable modes.

@@ -12,6 +12,11 @@ Sandboxed and native frontends are distinct declarations and a plugin may declar
 
 ## Lifecycle
 
-The runtime verifies package integrity and compatibility before the browser loads custom code. Disabling or uninstalling removes its host navigation contribution immediately. Sandboxed frontends cannot mutate the host DOM or mount themselves into native host extension slots; those slots accept host-rendered declarative pages unless a later stage explicitly activates a trusted native bundle.
+The runtime verifies package integrity and compatibility before the browser loads
+custom code. Disabling, uninstalling, updating, or revoking permission refreshes
+the host contribution registry. Sandboxed frontends cannot mutate the host DOM or
+mount themselves into native host extension slots. A separately declared native
+bundle can fill those slots only after the backend confirms `frontend.native`;
+native activation does not change the iframe sandbox or bridge.
 
 See [Plugin UI Protocol](plugin-ui.md) for the native renderer and [Plugin API v1](plugin-api-v1.md) for the gateway contract.

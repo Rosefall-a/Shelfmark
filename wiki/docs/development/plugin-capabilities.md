@@ -29,6 +29,13 @@ The principal families are:
 
 Existing leaves include `users.read`, `users.profile.read`, `games.read`, `games.write`, `media.read`, `media.write`, `events.subscribe`, `plugin.storage`, and `plugin.settings`. `home.replace` and `app.global` remain host-owned legacy UI extension slots. A plugin can contribute declarative UI to those slots but cannot mutate Vue components or the DOM. External navigation actions must explicitly declare `external_navigation` and are limited to HTTP(S) URLs.
 
+Frontend context leaves are `frontend.context.game`,
+`frontend.context.media`, and `frontend.context.documents`. Context values are
+reconstructed and authorized at the backend action boundary rather than trusted
+from browser-supplied action values. `frontend.native` is the only capability that
+permits a verified bundle to register Vue components or CSS in the host document;
+it remains critical-risk and is not implied by any navigation or page capability.
+
 Only methods present in the gateway dispatch table are callable; presenting a different capability string does not change the method's authorization requirement.
 
 ## Errors and action results

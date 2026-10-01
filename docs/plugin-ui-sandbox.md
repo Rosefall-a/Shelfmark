@@ -1,6 +1,8 @@
 # Custom plugin frontend sandbox design
 
-This is the future extension path for UI that cannot be expressed by Plugin UI v1. It is a design only; v1 plugins must use the native declarative host.
+Plugin UI v1 supports a sandboxed custom frontend for interfaces that cannot be
+expressed by the declarative renderer. This remains the default custom-code mode
+and is separate from the critical-risk native frontend contract.
 
 ## Boundary
 
@@ -8,17 +10,19 @@ Custom frontend code must run in a separately sandboxed frontend execution conte
 
 The custom host still talks to the Plugin Gateway. The gateway remains responsible for plugin identity, installation identity, user/device context, API version negotiation, and capability authorization.
 
-## Proposed transport
+## Transport
 
-1. The plugin advertises a custom-UI capability and a separately versioned custom UI protocol.
+1. The plugin declares `frontend.entry` in its verified package.
 2. The core requests a signed/verified package from the plugin runtime.
 3. The host verifies package integrity and compatibility before execution.
-4. The package is loaded into an isolated browser execution context with a narrow message channel.
+4. The entry is loaded in an iframe with `sandbox="allow-scripts"` and a narrow message channel.
 5. Messages are typed request/response envelopes; arbitrary DOM, network, storage, and parent-window access are not exposed.
 6. Gateway operations are explicit messages and are independently authorized.
 7. The host can terminate the context without affecting the core frontend.
 
-The exact browser isolation primitive remains an implementation decision after the plugin runtime exists. Options must be evaluated against the supported browser matrix before adoption; this document does not authorize iframe, worker, WebAssembly, or another mechanism as a security boundary by itself.
+The bridge accepts settings, write-only secret, declared action, and bounded
+context operations. It does not grant same-origin access, host DOM access, or
+arbitrary network access.
 
 ## Secret handling
 
@@ -30,8 +34,12 @@ Custom UI failure is isolated to the plugin surface. Timeouts, malformed message
 
 ## Compatibility
 
-Custom UI has its own protocol version and compatibility range. It cannot change the meaning of Plugin UI v1 documents. A plugin may ship both native and custom UI; native UI remains the fallback when the custom protocol is unavailable.
+Custom UI has its own protocol version and compatibility range. It cannot change
+the meaning of Plugin UI v1 documents. A plugin may ship `frontend` and
+`native_frontend` together. The iframe remains usable without `frontend.native`;
+denying native permission never promotes iframe code into the host document.
 
 ## Non-goals
 
-This design does not implement arbitrary JavaScript execution, package installation, browser isolation, or a new authorization mechanism. Those belong to the runtime, update/security, and gateway work downstream of #269.
+The sandbox is not a second authorization mechanism. Backend gateway checks remain
+authoritative for every privileged bridge operation.
