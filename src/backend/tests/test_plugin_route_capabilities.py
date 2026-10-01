@@ -138,3 +138,71 @@ async def test_secret_write_requires_storage_grant_and_stays_runtime_private(
         "secret-value",
     )
     assert all("secret-value" not in str(call) for call in grant.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_native_frontend_asset_requires_native_grant(monkeypatch) -> None:
+    user = SimpleNamespace(id=uuid4())
+    runtime = SimpleNamespace(
+        native_frontend_asset=AsyncMock(return_value=b"export default () => {}")
+    )
+    monkeypatch.setattr(plugins, "_client", runtime)
+    monkeypatch.setattr(
+        plugins,
+        "_plugin_and_capabilities",
+        AsyncMock(return_value=({}, frozenset())),
+    )
+
+    with pytest.raises(HTTPException) as denied:
+        await plugins.plugin_native_frontend(
+            "example.plugin",
+            "native/index.js",
+            ANY,
+            user,
+        )
+
+    assert denied.value.status_code == 403
+    runtime.native_frontend_asset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_context_payload_requires_declared_scoped_capability(monkeypatch) -> None:
+    installation_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+    runtime = FakeRuntimeClient(installation_id)
+    runtime.plugin_ui = AsyncMock(
+        return_value={
+            "actions": [
+                {
+                    "id": "revoke-session",
+                    "capability": {"name": "sessions.revoke", "version": 1},
+                }
+            ],
+            "contextual_actions": [
+                {
+                    "id": "game-revoke",
+                    "location": "game",
+                    "action_id": "revoke-session",
+                }
+            ],
+        }
+    )
+    grant = AsyncMock(side_effect=[True, False])
+    monkeypatch.setattr(plugins, "_client", runtime)
+    monkeypatch.setattr(plugins, "has_capability_grant", grant)
+
+    with pytest.raises(HTTPException) as denied:
+        await plugins.plugin_action(
+            "example.plugin",
+            "revoke-session",
+            plugins.PluginActionIn(
+                values={},
+                context=plugins.PluginActionContext(kind="game", resource_id="game-1"),
+            ),
+            ANY,
+            user,
+        )
+
+    assert denied.value.status_code == 403
+    runtime.action.assert_not_awaited()
+    assert grant.await_args_list[-1].kwargs["capability"] == "frontend.context.game"

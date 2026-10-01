@@ -29,7 +29,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,6 +53,7 @@ from src.plugin_api.capabilities import (
 )
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import (
+    Capability,
     CapabilityRef,
     PluginDependency,
     PluginPackageIdentity,
@@ -87,6 +88,20 @@ _client = PluginRuntimeClient()
 
 class PluginSettingsIn(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
+
+
+class PluginActionContext(BaseModel):
+    """Host context accepted from a contribution mount, never arbitrary plugin data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(pattern=r"^(game|media|documents)$")
+    resource_id: str = Field(min_length=1, max_length=128)
+    resource_type: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class PluginActionIn(PluginSettingsIn):
+    context: PluginActionContext | None = None
 
 
 class PluginInstallUrl(BaseModel):
@@ -1107,6 +1122,117 @@ async def plugin_changelog(
             path.unlink(missing_ok=True)
 
 
+async def _plugin_and_capabilities(
+    plugin_id: str,
+    db: AsyncSession,
+    user: User,
+    *,
+    require_enabled: bool = True,
+) -> tuple[dict[str, Any], frozenset[str]]:
+    """Resolve one enabled installation and this user's effective grants."""
+    try:
+        plugins = await _client.plugins()
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    plugin = next((item for item in plugins if item.get("plugin_id") == plugin_id), None)
+    if plugin is None or not plugin.get("installation_id"):
+        raise HTTPException(status_code=404, detail="Plugin installation not found.")
+    if require_enabled and (not plugin.get("enabled") or not plugin.get("compatible", True)):
+        raise HTTPException(
+            status_code=409, detail="Enable the compatible plugin before using its UI."
+        )
+    installation_id = UUID(str(plugin["installation_id"]))
+    rows = await db.execute(
+        select(
+            PluginPermissionGrant.capability,
+            PluginPermissionGrant.capability_version,
+        ).where(
+            PluginPermissionGrant.plugin_id == plugin_id,
+            PluginPermissionGrant.installation_id == installation_id,
+            PluginPermissionGrant.revoked_at.is_(None),
+            or_(
+                PluginPermissionGrant.user_id.is_(None),
+                PluginPermissionGrant.user_id == user.id,
+            ),
+        )
+    )
+    granted = [str(capability) for capability, version in rows if version == 1]
+    return plugin, frozenset(expand_capabilities(granted))
+
+
+def _filter_ui_document(
+    document: PluginUiDocument,
+    effective_capabilities: frozenset[str],
+) -> PluginUiDocument:
+    """Remove host integrations that this installation is not authorized to mount."""
+
+    def permitted(capability: Capability) -> bool:
+        return capability.value in effective_capabilities
+
+    navigation_capabilities = {
+        "main.sidebar": Capability.FRONTEND_NAVIGATION_MAIN,
+        "settings.sidebar": Capability.FRONTEND_NAVIGATION_SETTINGS,
+        "administration": Capability.FRONTEND_NAVIGATION_ADMIN,
+        "game.context": Capability.FRONTEND_CONTEXT_GAME,
+        "media.context": Capability.FRONTEND_CONTEXT_MEDIA,
+    }
+    context_capabilities = {
+        "game": Capability.FRONTEND_CONTEXT_GAME,
+        "media": Capability.FRONTEND_CONTEXT_MEDIA,
+        "documents": Capability.FRONTEND_CONTEXT_DOCUMENTS,
+    }
+    extension_capabilities = {
+        "app.global": Capability.FRONTEND_OVERLAY,
+        "home.replace": Capability.FRONTEND_PAGE_REPLACE_HOME,
+    }
+    authorized_routes = document.routes if permitted(Capability.FRONTEND_ROUTES) else ()
+    authorized_settings = (
+        document.settings_sections if permitted(Capability.FRONTEND_SETTINGS) else ()
+    )
+    authorized_route_ids = {item.id for item in authorized_routes}
+    authorized_settings_ids = {item.id for item in authorized_settings}
+    return document.model_copy(
+        update={
+            "native_frontend": (
+                document.native_frontend if permitted(Capability.FRONTEND_NATIVE) else None
+            ),
+            "navigation": tuple(
+                item
+                for item in document.navigation
+                if permitted(navigation_capabilities[item.location.value])
+                and (item.route_id is None or item.route_id in authorized_route_ids)
+                and (
+                    item.settings_section_id is None
+                    or item.settings_section_id in authorized_settings_ids
+                )
+            ),
+            "settings_sections": authorized_settings,
+            "extensions": tuple(
+                item
+                for item in document.extensions
+                if permitted(
+                    extension_capabilities.get(item.slot.value, Capability.FRONTEND_PAGE_EXTEND)
+                )
+            ),
+            "overlays": (document.overlays if permitted(Capability.FRONTEND_OVERLAY) else ()),
+            "dialog_contributions": (
+                document.dialog_contributions if permitted(Capability.FRONTEND_DIALOG) else ()
+            ),
+            "contextual_actions": tuple(
+                item
+                for item in document.contextual_actions
+                if permitted(context_capabilities[item.location.value])
+            ),
+            "routes": authorized_routes,
+            "page_replacements": tuple(
+                item
+                for item in document.page_replacements
+                if permitted(Capability(f"frontend.page.replace.{item.page.value}"))
+            ),
+        }
+    )
+
+
 @router.get("", response_model=list[dict])
 async def list_plugins(
     db: AsyncSession = Depends(get_db),
@@ -1748,11 +1874,12 @@ async def plugin_logs(
 async def plugin_frontend(
     plugin_id: str,
     asset_path: str,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
-    del user
     if not asset_path or ".." in Path(asset_path).parts:
         raise HTTPException(status_code=404, detail="Plugin frontend asset not found.")
+    await _plugin_and_capabilities(plugin_id, db, user)
     try:
         content = await _client.frontend_asset(quote(plugin_id, safe=""), asset_path)
     except PluginRuntimeRequestError as exc:
@@ -1770,11 +1897,50 @@ async def plugin_frontend(
     )
 
 
+@router.get("/{plugin_id}/native-frontend/{asset_path:path}")
+async def plugin_native_frontend(
+    plugin_id: str,
+    asset_path: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    if not asset_path or ".." in Path(asset_path).parts:
+        raise HTTPException(status_code=404, detail="Plugin native frontend asset not found.")
+    _, capabilities = await _plugin_and_capabilities(plugin_id, db, user)
+    if Capability.FRONTEND_NATIVE.value not in capabilities:
+        raise HTTPException(
+            status_code=403, detail="Permission frontend.native has not been granted."
+        )
+    try:
+        content = await _client.native_frontend_asset(quote(plugin_id, safe=""), asset_path)
+    except PluginRuntimeRequestError as exc:
+        raise HTTPException(
+            status_code=404, detail="Plugin native frontend asset not found."
+        ) from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.get("/{plugin_id}/ui")
-async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> dict:
-    del user
+async def plugin_ui(
+    plugin_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    _, capabilities = await _plugin_and_capabilities(plugin_id, db, user, require_enabled=False)
     try:
         payload = await _client.plugin_ui(quote(plugin_id, safe=""))
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     try:
@@ -1784,7 +1950,7 @@ async def plugin_ui(plugin_id: str, user: User = Depends(get_current_user)) -> d
         raise HTTPException(status_code=422, detail="Plugin UI document is invalid.") from exc
     if document.plugin_id != plugin_id:
         raise HTTPException(status_code=422, detail="Plugin UI document identity is invalid.")
-    return document.model_dump(mode="json")
+    return _filter_ui_document(document, capabilities).model_dump(mode="json")
 
 
 @router.put("/{plugin_id}/secrets/{key}")
@@ -1864,7 +2030,7 @@ async def save_plugin_settings(
 async def plugin_action(
     plugin_id: str,
     action_id: str,
-    payload: PluginSettingsIn,
+    payload: PluginActionIn,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -1898,7 +2064,62 @@ async def plugin_action(
                 status_code=403, detail=f"Permission {capability} has not been granted."
             )
     values = dict(payload.values)
-    values.setdefault("_plugin_context", {"path": f"/plugins/{plugin_id}", "user_id": str(user.id)})
+    values.pop("_plugin_context", None)
+    context: dict[str, str] = {
+        "path": f"/plugins/{plugin_id}",
+        "user_id": str(user.id),
+    }
+    action_context = getattr(payload, "context", None)
+    if action_context is not None:
+        navigation_location = {
+            "game": "game.context",
+            "media": "media.context",
+            "documents": None,
+        }[action_context.kind]
+        contextual_action = next(
+            (
+                item
+                for item in document.get("contextual_actions", [])
+                if item.get("action_id") == action_id
+                and item.get("location") == action_context.kind
+            ),
+            None,
+        )
+        contextual_navigation = next(
+            (
+                item
+                for item in document.get("navigation", [])
+                if item.get("action_id") == action_id
+                and item.get("location") == navigation_location
+            ),
+            None,
+        )
+        if contextual_action is None and contextual_navigation is None:
+            raise HTTPException(
+                status_code=403,
+                detail="The action is not declared for this host context.",
+            )
+        context_capability = f"frontend.context.{action_context.kind}"
+        if not await has_capability_grant(
+            db,
+            plugin_id=plugin_id,
+            installation_id=installation_id,
+            capability=context_capability,
+            user_id=user.id,
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission {context_capability} has not been granted.",
+            )
+        context.update(
+            {
+                "kind": action_context.kind,
+                "resource_id": action_context.resource_id,
+            }
+        )
+        if action_context.resource_type is not None:
+            context["resource_type"] = action_context.resource_type
+    values["_plugin_context"] = context
     try:
         result = await _client.action(quote(plugin_id, safe=""), quote(action_id, safe=""), values)
     except PluginRuntimeRequestError as exc:

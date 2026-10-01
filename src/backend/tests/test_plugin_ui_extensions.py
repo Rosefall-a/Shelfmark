@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from src.plugin_api.contracts import PluginUiDocument
+from src.api.routes.plugins import _filter_ui_document
+from src.plugin_api.contracts import Capability, PluginUiDocument
 
 
 def document_data() -> dict:
@@ -77,4 +78,67 @@ def test_page_replacements_are_page_scoped_and_reference_declared_pages() -> Non
 
     data["page_replacements"][0]["page"] = "everything"
     with pytest.raises(ValidationError):
+        PluginUiDocument.model_validate(data)
+
+
+def test_native_and_host_contributions_are_filtered_by_effective_grants() -> None:
+    data = document_data()
+    data.update(
+        {
+            "frontend": {"entry": "frontend/index.html"},
+            "native_frontend": {
+                "entry": "native/index.js",
+                "styles": ["native/style.css"],
+            },
+            "settings_sections": [
+                {
+                    "id": "sessions",
+                    "label": "Sessions",
+                    "page_id": "dashboard",
+                }
+            ],
+            "overlays": [{"id": "help", "page_id": "dashboard"}],
+        }
+    )
+    document = PluginUiDocument.model_validate(data)
+
+    sandbox_only = _filter_ui_document(document, frozenset())
+    assert sandbox_only.frontend is not None
+    assert sandbox_only.native_frontend is None
+    assert sandbox_only.extensions == ()
+    assert sandbox_only.settings_sections == ()
+    assert sandbox_only.overlays == ()
+
+    privileged = _filter_ui_document(
+        document,
+        frozenset(
+            {
+                Capability.FRONTEND_NATIVE.value,
+                Capability.FRONTEND_PAGE_EXTEND.value,
+                Capability.FRONTEND_SETTINGS.value,
+                Capability.FRONTEND_OVERLAY.value,
+            }
+        ),
+    )
+    assert privileged.native_frontend is not None
+    assert privileged.extensions[0].id == "home-summary"
+    assert privileged.settings_sections[0].id == "sessions"
+    assert privileged.overlays[0].id == "help"
+
+
+def test_navigation_targets_are_explicit_and_reference_declared_contributions() -> None:
+    data = document_data()
+    data["routes"] = [{"id": "sessions-route", "path": "sessions", "page_id": "dashboard"}]
+    data["navigation"] = [
+        {
+            "id": "sessions-nav",
+            "location": "main.sidebar",
+            "label": "Sessions",
+            "route_id": "sessions-route",
+        }
+    ]
+    assert PluginUiDocument.model_validate(data).navigation[0].route_id == "sessions-route"
+
+    data["navigation"][0]["page_id"] = "dashboard"
+    with pytest.raises(ValidationError, match="exactly one"):
         PluginUiDocument.model_validate(data)

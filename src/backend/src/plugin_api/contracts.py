@@ -62,6 +62,7 @@ class Capability(StrEnum):
     FRONTEND_NAVIGATION_ADMIN = "frontend.navigation.admin"
     FRONTEND_CONTEXT_GAME = "frontend.context.game"
     FRONTEND_CONTEXT_MEDIA = "frontend.context.media"
+    FRONTEND_CONTEXT_DOCUMENTS = "frontend.context.documents"
     FRONTEND_SETTINGS = "frontend.settings"
     FRONTEND_OVERLAY = "frontend.overlay"
     FRONTEND_DIALOG = "frontend.dialog"
@@ -465,8 +466,8 @@ class PluginFrontendDeclaration(ContractModel):
 class PluginNativeFrontendDeclaration(ContractModel):
     """Privileged host-native Vue/JavaScript/CSS bundle declaration.
 
-    Loading this bundle is intentionally reserved for the later native frontend
-    implementation. Merely declaring it never grants native execution.
+    Merely declaring this bundle never grants native execution. The host only
+    serves and activates it for an enabled installation with frontend.native.
     """
 
     entry: str = Field(
@@ -475,6 +476,25 @@ class PluginNativeFrontendDeclaration(ContractModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
     )
     styles: tuple[str, ...] = ()
+
+    @field_validator("entry")
+    @classmethod
+    def validate_entry(cls, value: str) -> str:
+        if not value.startswith("native/"):
+            raise ValueError("native frontend entry must be under native/")
+        return value
+
+    @field_validator("styles")
+    @classmethod
+    def validate_styles(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        for value in values:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]*", value):
+                raise ValueError("native frontend styles contain an invalid path")
+            if not value.startswith("native/") or ".." in value.split("/"):
+                raise ValueError("native frontend styles must be under native/")
+        if len(values) != len(set(values)):
+            raise ValueError("native frontend styles cannot contain duplicates")
+        return values
 
 
 class PluginManifest(ContractModel):
@@ -723,6 +743,8 @@ class HostExtensionSlot(StrEnum):
 
     HOME_AFTER_WIDGETS = "home.after-widgets"
     GAME_OVERVIEW_AFTER_HEADER = "game.overview.after-header"
+    GAME_DOCUMENTS_ACTIONS = "game.documents.actions"
+    MEDIA_DETAIL_AFTER_HEADER = "media.detail.after-header"
     APP_GLOBAL = "app.global"
     HOME_REPLACE = "home.replace"
 
@@ -742,6 +764,7 @@ class UiContextLocation(StrEnum):
 
     GAME = "game"
     MEDIA = "media"
+    DOCUMENTS = "documents"
 
 
 class HostPage(StrEnum):
@@ -788,15 +811,33 @@ class UiExtension(ContractModel):
 
 
 class UiNavigationContribution(ContractModel):
-    """A first-class host navigation entry targeting a declared plugin page."""
+    """A first-class host navigation entry with one host-validated target."""
 
     id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     location: UiNavigationLocation
     label: str = Field(min_length=1, max_length=64)
-    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    page_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    route_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    settings_section_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
+    action_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$"
+    )
     icon: str | None = Field(default=None, min_length=1, max_length=64)
     order: int = Field(default=0, ge=-1_000, le=1_000)
     visibility: UiVisibility = UiVisibility()
+
+    @model_validator(mode="after")
+    def require_one_target(self) -> "UiNavigationContribution":
+        targets = (self.page_id, self.route_id, self.settings_section_id, self.action_id)
+        if sum(value is not None for value in targets) != 1:
+            raise ValueError("navigation contribution must target exactly one destination")
+        return self
 
 
 class UiSettingsContribution(ContractModel):
@@ -860,6 +901,7 @@ class PluginUiDocument(ContractModel):
     plugin_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
     title: str = Field(min_length=1, max_length=256)
     frontend: PluginFrontendDeclaration | None = None
+    native_frontend: PluginNativeFrontendDeclaration | None = None
     settings: tuple[UiSettingsSection, ...] = ()
     actions: tuple[UiAction, ...] = ()
     tables: tuple[UiTable, ...] = ()
@@ -928,8 +970,22 @@ class PluginUiDocument(ContractModel):
             if page_id not in page_set:
                 raise ValueError(f"contribution {contribution_id} references an unknown page")
 
+        route_set = {item.id for item in self.routes}
+        settings_contribution_set = {item.id for item in self.settings_sections}
         for navigation in self.navigation:
-            require_page(navigation.id, navigation.page_id)
+            if navigation.page_id is not None:
+                require_page(navigation.id, navigation.page_id)
+            if navigation.route_id is not None and navigation.route_id not in route_set:
+                raise ValueError(f"navigation {navigation.id} references an unknown plugin route")
+            if (
+                navigation.settings_section_id is not None
+                and navigation.settings_section_id not in settings_contribution_set
+            ):
+                raise ValueError(
+                    f"navigation {navigation.id} references an unknown Settings section"
+                )
+            if navigation.action_id is not None and navigation.action_id not in action_set:
+                raise ValueError(f"navigation {navigation.id} references an unknown action")
         for settings_section in self.settings_sections:
             require_page(settings_section.id, settings_section.page_id)
         for overlay in self.overlays:

@@ -1019,6 +1019,50 @@ class PluginRegistry:
                 raise RuntimePolicyError(
                     "plugin frontend entry is missing from the package payload"
                 )
+        native_frontend = manifest.get("native_frontend")
+        if native_frontend is not None:
+            if not isinstance(native_frontend, dict) or not isinstance(
+                native_frontend.get("entry"), str
+            ):
+                raise RuntimePolicyError(
+                    "plugin manifest has an invalid native frontend declaration"
+                )
+            native_styles = native_frontend.get("styles", [])
+            if not isinstance(native_styles, list) or not all(
+                isinstance(value, str) for value in native_styles
+            ):
+                raise RuntimePolicyError(
+                    "plugin manifest has invalid native frontend styles"
+                )
+            capabilities = {
+                item.get("name")
+                for item in manifest.get("capabilities", [])
+                if isinstance(item, dict)
+            }
+            if "frontend.native" not in capabilities:
+                raise RuntimePolicyError(
+                    "plugin native frontend requires frontend.native"
+                )
+            native_paths = [
+                str(native_frontend["entry"]),
+                *native_styles,
+            ]
+            for native_path_value in native_paths:
+                native_path = PurePosixPath(native_path_value)
+                if (
+                    not native_path_value.startswith("native/")
+                    or native_path.is_absolute()
+                    or ".." in native_path.parts
+                    or "." in native_path.parts
+                    or "\\" in native_path_value
+                ):
+                    raise RuntimePolicyError(
+                        "plugin manifest has an invalid native frontend asset"
+                    )
+                if not any(name == native_path_value for name, _ in payload):
+                    raise RuntimePolicyError(
+                        "plugin native frontend asset is missing from the package payload"
+                    )
 
         digest = hashlib.sha256()
         for name, data in sorted(payload):
@@ -1129,10 +1173,21 @@ class PluginRegistry:
                 )
         return result
 
-    def frontend(self, plugin_id: str, relative: str) -> dict[str, Any]:
+    def frontend(
+        self, plugin_id: str, relative: str, *, native: bool = False
+    ) -> dict[str, Any]:
         package, manifest = self.package(plugin_id)
-        entry = str(manifest.get("frontend", {}).get("entry", "frontend/index.html"))
+        declaration_name = "native_frontend" if native else "frontend"
+        required_prefix = "native/" if native else "frontend/"
+        declaration = manifest.get(declaration_name)
+        if not isinstance(declaration, dict) or not declaration.get("entry"):
+            raise KeyError(relative)
+        entry = str(declaration["entry"])
         relative = relative or entry
+        if not relative.startswith(required_prefix):
+            raise RuntimePolicyError(
+                "plugin frontend asset is outside its declared root"
+            )
         path = package / Path(relative)
         try:
             path.resolve(strict=True).relative_to(package.resolve())
@@ -1151,7 +1206,7 @@ class PluginRegistry:
         package, manifest = self.package(plugin_id)
         ui_path = package / "ui.json"
         if not ui_path.is_file():
-            return {
+            document = {
                 "schema_version": "v1",
                 "plugin_id": plugin_id,
                 "title": manifest.get("name", plugin_id),
@@ -1162,15 +1217,22 @@ class PluginRegistry:
                 "menus": [],
                 "pages": [],
             }
-        try:
-            document = json.loads(ui_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise RuntimePolicyError("plugin UI document is invalid JSON") from exc
+        else:
+            try:
+                document = json.loads(ui_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise RuntimePolicyError("plugin UI document is invalid JSON") from exc
         if document.get("plugin_id") != plugin_id:
             raise RuntimePolicyError("plugin UI document has the wrong plugin_id")
         frontend = manifest.get("frontend")
         if isinstance(frontend, dict) and frontend.get("entry"):
             document["frontend"] = {"entry": str(frontend["entry"])}
+        native_frontend = manifest.get("native_frontend")
+        if isinstance(native_frontend, dict) and native_frontend.get("entry"):
+            document["native_frontend"] = {
+                "entry": str(native_frontend["entry"]),
+                "styles": [str(value) for value in native_frontend.get("styles", [])],
+            }
         return document
 
     def _command(self, manifest: dict[str, Any]) -> tuple[str, ...]:
@@ -1460,6 +1522,16 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
                 relative = "/".join(parts[3:])
                 self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]
+            elif (
+                len(parts) >= 3
+                and parts[0] == "plugins"
+                and parts[2] == "native-frontend"
+            ):
+                relative = "/".join(parts[3:])
+                self._json(  # type: ignore[attr-defined]
+                    200,
+                    self.server.registry.frontend(parts[1], relative, native=True),
+                )
             else:
                 self._json(404, {"detail": "not found"})
         except KeyError:

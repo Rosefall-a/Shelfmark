@@ -63,6 +63,7 @@ _PARENTS: dict[Capability, Capability] = {
     Capability.FRONTEND_NAVIGATION_ADMIN: Capability.FRONTEND_NAVIGATION,
     Capability.FRONTEND_CONTEXT_GAME: Capability.FRONTEND_NAVIGATION,
     Capability.FRONTEND_CONTEXT_MEDIA: Capability.FRONTEND_NAVIGATION,
+    Capability.FRONTEND_CONTEXT_DOCUMENTS: Capability.FRONTEND_NAVIGATION,
     Capability.BACKEND_ROUTES_PLUGIN: Capability.BACKEND_ROUTES,
     Capability.BACKEND_ROUTES_HOST: Capability.BACKEND_ROUTES,
 }
@@ -138,6 +139,7 @@ _LOW = frozenset(
         Capability.FRONTEND_NAVIGATION_ADMIN,
         Capability.FRONTEND_CONTEXT_GAME,
         Capability.FRONTEND_CONTEXT_MEDIA,
+        Capability.FRONTEND_CONTEXT_DOCUMENTS,
         Capability.FRONTEND_SETTINGS,
         Capability.FRONTEND_PAGE_EXTEND,
         Capability.FRONTEND_ROUTES,

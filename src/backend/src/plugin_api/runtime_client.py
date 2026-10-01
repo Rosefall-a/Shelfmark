@@ -68,6 +68,10 @@ class PluginRuntimeClient:
         data = await self._request("GET", f"/plugins/{plugin_id}/frontend/{path}")
         return base64.b64decode(str(data["content"]))
 
+    async def native_frontend_asset(self, plugin_id: str, path: str) -> bytes:
+        data = await self._request("GET", f"/plugins/{plugin_id}/native-frontend/{path}")
+        return base64.b64decode(str(data["content"]))
+
     async def start(self, plugin_id: str, user_id: str | None = None) -> None:
         payload = {"user_id": user_id} if user_id is not None else None
         await self._request("POST", f"/plugins/{plugin_id}/start", json=payload)

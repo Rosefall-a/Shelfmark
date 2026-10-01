@@ -127,13 +127,20 @@ def test_nonbubble_flag_is_off_by_default(monkeypatch) -> None:
     assert PluginSupervisor._nonbubble_enabled() is False
 
 
-def _package_bytes(plugin_id: str = "example.upload", frontend: bool = False) -> bytes:
+def _package_bytes(
+    plugin_id: str = "example.upload",
+    frontend: bool = False,
+    native_frontend: bool = False,
+) -> bytes:
     files = {
         "plugin.py": b"def main():\n    return None\n",
         "sdk/plugin_protocol.py": b"API_VERSION = 1\n",
     }
     if frontend:
         files["frontend/index.html"] = b"<!doctype html><html><body>ok</body></html>"
+    if native_frontend:
+        files["native/index.js"] = b"export default () => {};"
+        files["native/style.css"] = b":root { --plugin-accent: orange; }"
     digest = hashlib.sha256()
     for name, data in sorted(files.items()):
         digest.update(name.encode("utf-8"))
@@ -155,6 +162,12 @@ def _package_bytes(plugin_id: str = "example.upload", frontend: bool = False) ->
     }
     if frontend:
         manifest["frontend"] = {"entry": "frontend/index.html"}
+    if native_frontend:
+        manifest["capabilities"] = [{"name": "frontend.native", "version": 1}]
+        manifest["native_frontend"] = {
+            "entry": "native/index.js",
+            "styles": ["native/style.css"],
+        }
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:
         archive.writestr("manifest.json", json.dumps(manifest))
@@ -191,6 +204,29 @@ def test_runtime_installs_and_serves_declared_frontend(tmp_path):
     asset = registry.frontend("example.upload", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
+
+
+def test_runtime_installs_and_serves_native_frontend_from_separate_root(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    registry.install_package(
+        _package_bytes(native_frontend=True),
+        "native.utp",
+        installation_id=str(uuid.uuid4()),
+    )
+
+    document = registry.ui("example.upload")
+    assert document["native_frontend"]["entry"] == "native/index.js"
+    assert (
+        registry.frontend("example.upload", "native/index.js", native=True)["path"]
+        == "native/index.js"
+    )
+    with pytest.raises(RuntimePolicyError, match="outside"):
+        registry.frontend("example.upload", "plugin.py", native=True)
 
 
 def test_runtime_rejects_missing_declared_frontend(tmp_path):
