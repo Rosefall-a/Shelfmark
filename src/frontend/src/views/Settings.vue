@@ -25,10 +25,12 @@ import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
-import PluginUiHost from "../components/plugins/PluginUiHost.vue";
-import type { UiAction, UiValues } from "../services/pluginUi";
+import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
 import {
   pluginSettingsSections,
+  pluginNavigation,
+  pageReplacement,
+  pageReplacementConflicts,
   refreshPluginExtensions,
 } from "../state/pluginExtensions";
 
@@ -37,60 +39,81 @@ const route = useRoute();
 const activeSection = ref((route.query.section as string) || "profile");
 onMounted(() => void refreshPluginExtensions());
 
-const visiblePluginSettings = computed(() =>
-  pluginSettingsSections.value.filter(
-    (item) => !item.adminOnly || currentUser.value?.is_admin,
-  ),
-);
+const coreSectionIds = new Set([
+  "profile",
+  "interface",
+  "appearance",
+  "api-keys",
+  "calendar-notifications",
+  "upload",
+  "library",
+  "media-prefs",
+  "media-trash",
+  "scan",
+  "sources",
+  "media-refresh",
+  "export",
+  "oidc",
+  "server-integrations",
+  "users",
+  "plugins",
+  "stats",
+  "tasks",
+  "logs",
+]);
+const visiblePluginSettings = computed(() => {
+  const seen = new Set<string>();
+  return pluginSettingsSections.value.filter((item) => {
+    if (item.adminOnly && !currentUser.value?.is_admin) return false;
+    if (
+      coreSectionIds.has(item.contributionId) ||
+      seen.has(item.contributionId)
+    )
+      return false;
+    seen.add(item.contributionId);
+    return true;
+  });
+});
 
-function pluginSettingsId(pluginId: string, contributionId: string): string {
-  return `plugin:${pluginId}:${contributionId}`;
+function pluginSettingsId(contributionId: string): string {
+  return contributionId;
 }
+
+const settingsReplacement = computed(() => pageReplacement("settings"));
+const settingsReplacementConflicts = computed(() =>
+  pageReplacementConflicts("settings"),
+);
+const showHostSettings = computed(
+  () => currentUser.value?.is_admin && route.query.host === "1",
+);
 
 const activePluginSettings = computed(() =>
   visiblePluginSettings.value.find(
-    (item) =>
-      pluginSettingsId(item.pluginId, item.contributionId) ===
-      activeSection.value,
+    (item) => pluginSettingsId(item.contributionId) === activeSection.value,
+  ),
+);
+const visiblePluginSettingsNavigation = computed(() => {
+  const seen = new Set(
+    visiblePluginSettings.value.map((item) => item.contributionId),
+  );
+  return pluginNavigation.value.filter((item) => {
+    if (item.location !== "settings.sidebar" || !item.pageId) return false;
+    if (item.adminOnly && !currentUser.value?.is_admin) return false;
+    if (
+      coreSectionIds.has(item.contributionId) ||
+      seen.has(item.contributionId)
+    )
+      return false;
+    seen.add(item.contributionId);
+    return true;
+  });
+});
+const activePluginSettingsNavigation = computed(() =>
+  visiblePluginSettingsNavigation.value.find(
+    (item) => item.contributionId === activeSection.value,
   ),
 );
 
-async function savePluginSettings(pluginId: string, values: UiValues) {
-  await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/settings`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(values),
-  });
-}
-
-async function runPluginAction(
-  pluginId: string,
-  action: UiAction,
-  values: UiValues,
-) {
-  const response = await fetch(
-    `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(action.id)}`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values }),
-    },
-  );
-  if (!response.ok) throw new Error("Plugin action could not be completed.");
-}
-
-async function saveActivePluginSettings(values: UiValues) {
-  const contribution = activePluginSettings.value;
-  if (contribution) await savePluginSettings(contribution.pluginId, values);
-}
-
-async function runActivePluginAction(action: UiAction, values: UiValues) {
-  const contribution = activePluginSettings.value;
-  if (contribution)
-    await runPluginAction(contribution.pluginId, action, values);
-}
 function goBack() {
   if (window.history.length > 1) router.back();
   else router.push("/");
@@ -147,13 +170,22 @@ const groups = computed<SettingsGroup[]>(() => {
       : []),
   ];
   result.push({ label: "System", sections: systemSections });
-  if (visiblePluginSettings.value.length) {
+  if (
+    visiblePluginSettings.value.length ||
+    visiblePluginSettingsNavigation.value.length
+  ) {
     result.push({
       label: "Plugin sections",
-      sections: visiblePluginSettings.value.map((item) => ({
-        id: pluginSettingsId(item.pluginId, item.contributionId),
-        label: item.label,
-      })),
+      sections: [
+        ...visiblePluginSettings.value.map((item) => ({
+          id: pluginSettingsId(item.contributionId),
+          label: item.label,
+        })),
+        ...visiblePluginSettingsNavigation.value.map((item) => ({
+          id: item.contributionId,
+          label: item.label,
+        })),
+      ],
     });
   }
   return result;
@@ -182,7 +214,31 @@ watch(activeSection, async () => {
 </script>
 
 <template>
-  <main class="settings-page">
+  <main
+    v-if="settingsReplacement && !showHostSettings"
+    class="settings-page plugin-settings-replacement"
+  >
+    <p v-if="currentUser?.is_admin" class="replacement-notice" role="status">
+      <template v-if="settingsReplacementConflicts.length > 1">
+        Multiple plugins requested Settings replacement. The deterministic order
+        selected {{ settingsReplacement.pluginId }}.
+      </template>
+      <template v-else>
+        Settings is replaced by {{ settingsReplacement.pluginId }}.
+      </template>
+      <router-link :to="{ path: '/settings', query: { host: '1' } }">
+        Open host Settings
+      </router-link>
+    </p>
+    <PluginContributionHost
+      :plugin-id="settingsReplacement.pluginId"
+      :document="settingsReplacement.document"
+      :page-id="settingsReplacement.page.id"
+      :context="{ host_page: 'settings' }"
+      embedded
+    />
+  </main>
+  <main v-else class="settings-page">
     <button
       type="button"
       class="back-arrow-button"
@@ -256,13 +312,20 @@ watch(activeSection, async () => {
               'Restore a previous value',
             ]"
           />
-          <PluginUiHost
+          <PluginContributionHost
             v-else-if="activePluginSettings"
+            :plugin-id="activePluginSettings.pluginId"
             :document="activePluginSettings.document"
             :page-id="activePluginSettings.pageId"
             embedded
-            @save="saveActivePluginSettings"
-            @action="runActivePluginAction"
+          />
+          <PluginContributionHost
+            v-else-if="activePluginSettingsNavigation?.pageId"
+            :plugin-id="activePluginSettingsNavigation.pluginId"
+            :document="activePluginSettingsNavigation.document"
+            :page-id="activePluginSettingsNavigation.pageId"
+            :context="{ host_page: 'settings' }"
+            embedded
           />
         </div>
       </div>
@@ -277,6 +340,14 @@ watch(activeSection, async () => {
   padding: 84px 40px 40px;
   background: var(--ui-bg);
   font-family: system-ui, sans-serif;
+}
+.replacement-notice {
+  margin: 0 0 16px;
+  color: #d8a15e;
+}
+.replacement-notice a {
+  margin-left: 8px;
+  color: inherit;
 }
 .back-arrow-button {
   position: fixed;

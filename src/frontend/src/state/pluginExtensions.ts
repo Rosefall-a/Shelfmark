@@ -9,16 +9,21 @@ import {
   type UiNavigationLocation,
   type UiPage,
 } from "../services/pluginUi";
+import { reconcileNativePlugins } from "./pluginNative";
 
 export interface PluginNavigationContribution {
   pluginId: string;
   contributionId: string;
   location: UiNavigationLocation;
-  pageId: string;
+  pageId?: string;
+  routePath?: string;
+  settingsSectionId?: string;
+  action?: UiAction;
   label: string;
   icon?: string;
   order: number;
   adminOnly: boolean;
+  document: PluginUiDocument;
 }
 
 export interface PluginSettingsContribution {
@@ -59,7 +64,7 @@ export interface PluginDialogContribution {
 export interface PluginContextualActionContribution {
   pluginId: string;
   contributionId: string;
-  location: "game" | "media";
+  location: "game" | "media" | "documents";
   label: string;
   action: UiAction;
   icon?: string;
@@ -148,6 +153,7 @@ export function derivePluginContributions(
           label: page.navigation?.label ?? page.title,
           order: page.navigation?.order ?? 0,
           adminOnly: false,
+          document,
         }))
     : [];
   const navigation = [
@@ -161,10 +167,15 @@ export function derivePluginContributions(
         contributionId: item.id,
         location: item.location,
         pageId: item.page_id,
+        routePath: document.routes?.find((route) => route.id === item.route_id)
+          ?.path,
+        settingsSectionId: item.settings_section_id,
+        action: document.actions.find((action) => action.id === item.action_id),
         label: item.label,
         icon: item.icon,
         order: item.order,
         adminOnly: item.visibility.admin_only,
+        document,
       })),
   ];
   const settings = hasCapability(plugin, "frontend.settings")
@@ -232,10 +243,11 @@ export function derivePluginContributions(
     : [];
   const contextualActions = (document.contextual_actions ?? []).flatMap(
     (item) => {
-      const capability =
-        item.location === "game"
-          ? "frontend.context.game"
-          : "frontend.context.media";
+      const capability = {
+        game: "frontend.context.game",
+        media: "frontend.context.media",
+        documents: "frontend.context.documents",
+      }[item.location];
       const action = document.actions.find(
         (candidate) => candidate.id === item.action_id,
       );
@@ -322,12 +334,13 @@ export const pluginContextualActions = shallowReadonly(contextualActionState);
 export const pluginRoutes = shallowReadonly(routeState);
 export const pluginPageReplacements = shallowReadonly(replacementState);
 
-function byOrderAndId(
-  first: { order: number; contributionId: string },
-  second: { order: number; contributionId: string },
+export function comparePluginContributions(
+  first: { order: number; pluginId: string; contributionId: string },
+  second: { order: number; pluginId: string; contributionId: string },
 ): number {
   return (
     first.order - second.order ||
+    first.pluginId.localeCompare(second.pluginId) ||
     first.contributionId.localeCompare(second.contributionId)
   );
 }
@@ -339,24 +352,43 @@ export function refreshPluginExtensions(): Promise<void> {
     const enabled = plugins.filter(
       (plugin) => plugin.enabled && plugin.compatible,
     );
-    const contributions = await Promise.all(
+    const loaded = await Promise.all(
       enabled.map(async (plugin) => {
         try {
-          return derivePluginContributions(
-            plugin,
-            await fetchPluginUi(plugin.plugin_id),
-          );
+          const document = await fetchPluginUi(plugin.plugin_id);
+          return {
+            document,
+            contributions: derivePluginContributions(plugin, document),
+          };
         } catch {
-          return emptyContributions();
+          return { document: undefined, contributions: emptyContributions() };
         }
+      }),
+    );
+    const contributions = loaded.map((item) => item.contributions);
+    await reconcileNativePlugins(
+      enabled.flatMap((plugin, index) => {
+        const document = loaded[index]?.document;
+        const nativeFrontend = document?.native_frontend;
+        return nativeFrontend && hasCapability(plugin, "frontend.native")
+          ? [
+              {
+                pluginId: plugin.plugin_id,
+                version: plugin.version,
+                entry: nativeFrontend.entry,
+                styles: nativeFrontend.styles,
+                pageIds: document.pages.map((page) => page.id),
+              },
+            ]
+          : [];
       }),
     );
     navigationState.value = contributions
       .flatMap((item) => item.navigation)
-      .sort(byOrderAndId);
+      .sort(comparePluginContributions);
     settingsState.value = contributions
       .flatMap((item) => item.settings)
-      .sort(byOrderAndId);
+      .sort(comparePluginContributions);
     const replacementSlots = contributions
       .flatMap((item) => item.replacements)
       .filter((item) => item.hostPage === "home")
@@ -372,21 +404,64 @@ export function refreshPluginExtensions(): Promise<void> {
       ...contributions.flatMap((item) => item.slots),
       ...replacementSlots,
     ].sort(
-      (a, b) => a.order - b.order || a.extensionId.localeCompare(b.extensionId),
+      (a, b) =>
+        a.order - b.order ||
+        a.pluginId.localeCompare(b.pluginId) ||
+        a.extensionId.localeCompare(b.extensionId),
     );
     overlayState.value = contributions
       .flatMap((item) => item.overlays)
-      .sort(byOrderAndId);
+      .sort(comparePluginContributions);
     dialogState.value = contributions.flatMap((item) => item.dialogs);
+    if (
+      activeDialogState.value &&
+      !dialogState.value.some(
+        (item) =>
+          item.pluginId === activeDialogState.value?.pluginId &&
+          item.contributionId === activeDialogState.value?.contributionId,
+      )
+    )
+      activeDialogState.value = null;
     contextualActionState.value = contributions
       .flatMap((item) => item.contextualActions)
-      .sort(byOrderAndId);
+      .sort(comparePluginContributions);
     routeState.value = contributions.flatMap((item) => item.routes);
     replacementState.value = contributions
       .flatMap((item) => item.replacements)
-      .sort(byOrderAndId);
+      .sort(comparePluginContributions);
   })().finally(() => {
     loading = null;
   });
   return loading;
+}
+
+const activeDialogState = ref<PluginDialogContribution | null>(null);
+export const activePluginDialog = shallowReadonly(activeDialogState);
+
+export function openPluginDialog(
+  pluginId: string,
+  contributionId: string,
+): boolean {
+  const contribution = dialogState.value.find(
+    (item) =>
+      item.pluginId === pluginId && item.contributionId === contributionId,
+  );
+  activeDialogState.value = contribution ?? null;
+  return contribution !== undefined;
+}
+
+export function closePluginDialog(): void {
+  activeDialogState.value = null;
+}
+
+export function pageReplacement(
+  hostPage: "home" | "settings",
+): PluginPageReplacementContribution | undefined {
+  return replacementState.value.find((item) => item.hostPage === hostPage);
+}
+
+export function pageReplacementConflicts(
+  hostPage: "home" | "settings",
+): PluginPageReplacementContribution[] {
+  return replacementState.value.filter((item) => item.hostPage === hostPage);
 }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, type PropType } from "vue";
-import type { UiAction, UiValues } from "../../services/pluginUi";
+import type { PluginActionContext } from "../../services/pluginUi";
 import {
   pluginSlots,
   refreshPluginExtensions,
 } from "../../state/pluginExtensions";
-import PluginUiHost from "./PluginUiHost.vue";
+import PluginContributionHost from "./PluginContributionHost.vue";
+import { currentUser } from "../../state/auth";
 
 const props = defineProps({
   slotId: { type: String, required: true },
@@ -26,55 +27,51 @@ const hasReplacementConflict = computed(
   () =>
     props.slotId.endsWith(".replace") && matchingContributions.value.length > 1,
 );
-
-async function save(pluginId: string, values: UiValues) {
-  await fetch(`/api/plugins/${encodeURIComponent(pluginId)}/settings`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(values),
-  });
-}
-
-async function run(pluginId: string, action: UiAction, values: UiValues) {
-  const response = await fetch(
-    `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(action.id)}`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values }),
-    },
-  );
-  if (!response.ok) throw new Error("Plugin action could not be completed.");
-  const result = (await response.json()) as { redirect_url?: unknown };
-  if (
-    action.external_navigation &&
-    typeof result.redirect_url === "string" &&
-    /^https?:\/\//.test(result.redirect_url)
-  ) {
-    window.location.assign(result.redirect_url);
-  }
-}
+const actionContext = computed<PluginActionContext | undefined>(() => {
+  const resourceId =
+    props.context.game_id ??
+    props.context.media_id ??
+    props.context.document_id;
+  if (resourceId === undefined) return undefined;
+  if (props.slotId.startsWith("game.documents"))
+    return {
+      kind: "documents",
+      resource_id: String(resourceId),
+      resource_type: "game",
+    };
+  if (props.slotId.startsWith("game."))
+    return { kind: "game", resource_id: String(resourceId) };
+  if (props.slotId.startsWith("media."))
+    return {
+      kind: "media",
+      resource_id: String(resourceId),
+      resource_type: String(props.context.media_type ?? "media"),
+    };
+  return undefined;
+});
 
 onMounted(() => void refreshPluginExtensions());
 </script>
 
 <template>
   <section v-if="contributions.length" class="plugin-extension-slot">
-    <p v-if="hasReplacementConflict" class="plugin-conflict" role="status">
-      Multiple plugins requested this page replacement. The first configured
-      contribution is active.
+    <p
+      v-if="hasReplacementConflict && currentUser?.is_admin"
+      class="plugin-conflict"
+      role="status"
+    >
+      Multiple plugins requested this page replacement. The deterministic order
+      selected {{ contributions[0]?.pluginId }}.
     </p>
-    <PluginUiHost
+    <PluginContributionHost
       v-for="contribution in contributions"
       :key="`${contribution.pluginId}:${contribution.extensionId}`"
       :document="contribution.document"
+      :plugin-id="contribution.pluginId"
       :page-id="contribution.page.id"
       :context="context"
+      :action-context="actionContext"
       embedded
-      @save="save(contribution.pluginId, $event)"
-      @action="(action, values) => run(contribution.pluginId, action, values)"
     />
   </section>
 </template>

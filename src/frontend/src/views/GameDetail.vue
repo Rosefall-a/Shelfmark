@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
+import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -2292,6 +2293,9 @@ function formatPlaytime(minutes: number) {
       slot-id="game.overview.after-header"
       :context="{ host_page: 'game.overview', game_id: game.id }"
     />
+    <PluginContextualActions
+      :context="{ kind: 'game', resource_id: game.id }"
+    />
 
     <section v-if="activeTab === 'Overview'" class="overview">
       <div class="overview-main">
@@ -3654,6 +3658,17 @@ function formatPlaytime(minutes: number) {
 
     <section v-else-if="activeTab === 'Docs'" class="files-panel">
       <h2>Docs</h2>
+      <PluginExtensionSlot
+        slot-id="game.documents.actions"
+        :context="{ host_page: 'game.documents', game_id: game.id }"
+      />
+      <PluginContextualActions
+        :context="{
+          kind: 'documents',
+          resource_id: game.id,
+          resource_type: 'game',
+        }"
+      />
       <div class="panel-body">
         <ViewUploadSidebar v-model="panelMode" />
         <div class="panel-content">

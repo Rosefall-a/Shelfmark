@@ -4,6 +4,8 @@ import {
   buildInitialValues,
   validateDocument,
   validateField,
+  pluginPathForPage,
+  resolvePluginPageId,
   type PluginUiDocument,
 } from "../services/pluginUi";
 
@@ -134,5 +136,25 @@ describe("plugin UI host contract", () => {
         ],
       }),
     ).toContain("Extension missing-page references an unknown page.");
+  });
+
+  it("keeps plugin routes distinct from host Settings sections", () => {
+    const routed: PluginUiDocument = {
+      ...document,
+      routes: [{ id: "sessions-route", path: "sessions", page_id: "settings" }],
+      settings_sections: [
+        {
+          id: "sessions",
+          label: "Sessions",
+          page_id: "settings",
+          order: 0,
+          visibility: { admin_only: false },
+        },
+      ],
+    };
+
+    expect(resolvePluginPageId(routed, "sessions")).toBe("settings");
+    expect(pluginPathForPage(routed, "settings")).toBe("sessions");
+    expect(routed.settings_sections?.[0].id).toBe("sessions");
   });
 });

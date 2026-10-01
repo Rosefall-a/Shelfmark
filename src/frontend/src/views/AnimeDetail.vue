@@ -38,6 +38,8 @@ import MediaExtrasPanel from "../components/MediaExtrasPanel.vue";
 import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import RatingPicker from "../components/RatingPicker.vue";
+import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
+import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import {
   STATUS_BUCKETS,
   statusBucket,
@@ -890,6 +892,21 @@ async function onRatingChange(value: number | null) {
 
   <main v-else-if="show" class="detail">
     <MediaTopBar active="anime" />
+    <PluginExtensionSlot
+      slot-id="media.detail.after-header"
+      :context="{
+        host_page: 'media.detail',
+        media_id: show.id,
+        media_type: 'anime',
+      }"
+    />
+    <PluginContextualActions
+      :context="{
+        kind: 'media',
+        resource_id: String(show.id),
+        resource_type: 'anime',
+      }"
+    />
 
     <BackButton class="back-spot" @click="goBack" />
 

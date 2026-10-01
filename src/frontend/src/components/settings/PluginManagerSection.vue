@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { refreshPluginExtensions } from "../../state/pluginExtensions";
 import PluginInstallConsentDialog from "../plugins/PluginInstallConsentDialog.vue";
 import PluginSettingsDialog from "../plugins/PluginSettingsDialog.vue";
 import {
@@ -168,6 +169,7 @@ async function run(id: string, operation: (id: string) => Promise<void>) {
   try {
     await operation(id);
     await load();
+    await refreshPluginExtensions();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Plugin action failed.";
   } finally {
@@ -299,6 +301,7 @@ async function confirmInstall(confirmation: PluginInstallConfirmation) {
     updateUrl.value = null;
     updateSource.value = {};
     await load();
+    await refreshPluginExtensions();
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Plugin installation failed.";
@@ -359,6 +362,7 @@ async function revokeGrant(grantId: string) {
   try {
     await revokePluginPermission(grantId);
     await refreshPlugin();
+    await refreshPluginExtensions();
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Permission revocation failed.";
@@ -494,6 +498,7 @@ async function removePlugin(plugin: PluginSummary) {
     await deletePlugin(plugin.plugin_id);
     if (selected.value?.plugin_id === plugin.plugin_id) closePlugin();
     await load();
+    await refreshPluginExtensions();
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Plugin deletion failed.";

@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import {
+  RouterLink,
+  useRoute,
+  useRouter,
+  type RouteLocationRaw,
+} from "vue-router";
 import { logout } from "../services/auth";
 import {
   pluginNavigation,
   refreshPluginExtensions,
 } from "../state/pluginExtensions";
 import { currentUser } from "../state/auth";
+import {
+  approvePluginAction,
+  dispatchPluginAction,
+} from "../services/pluginUi";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
 import {
   notifications,
@@ -69,10 +78,36 @@ const router = useRouter();
 const mainPluginNavigation = computed(() =>
   pluginNavigation.value.filter(
     (item) =>
-      item.location === "main.sidebar" &&
+      (item.location === "main.sidebar" ||
+        (item.location === "administration" && currentUser.value?.is_admin)) &&
       (!item.adminOnly || currentUser.value?.is_admin),
   ),
 );
+
+function pluginNavigationTarget(
+  item: (typeof mainPluginNavigation.value)[number],
+): RouteLocationRaw {
+  if (item.settingsSectionId)
+    return { path: "/settings", query: { section: item.settingsSectionId } };
+  if (item.routePath)
+    return {
+      name: "plugin-route",
+      params: { pluginId: item.pluginId, pluginPath: item.routePath },
+    };
+  return {
+    name: "plugin-route",
+    params: { pluginId: item.pluginId, pluginPath: item.pageId },
+  };
+}
+
+async function activatePluginNavigation(
+  item: (typeof mainPluginNavigation.value)[number],
+) {
+  if (!item.action) return;
+  if (!approvePluginAction(item.action, window.confirm)) return;
+  await dispatchPluginAction(item.pluginId, item.action.id);
+  close();
+}
 
 async function handleLogout() {
   await logout();
@@ -689,18 +724,25 @@ async function handleLogout() {
         <span>Statistics</span>
       </router-link>
 
-      <router-link
+      <component
+        :is="item.action ? 'button' : RouterLink"
         v-for="item in mainPluginNavigation"
-        :key="`${item.pluginId}:${item.pageId}`"
-        :to="{
-          name: 'plugin-host',
-          params: { pluginId: item.pluginId, pageId: item.pageId },
-        }"
+        :key="`${item.pluginId}:${item.contributionId}`"
+        :to="item.action ? undefined : pluginNavigationTarget(item)"
+        :type="item.action ? 'button' : undefined"
         class="sidebar-item plugin-sidebar-item"
         :class="{ active: isActive(`/plugins/${item.pluginId}`) }"
-        @click="close"
+        @click="item.action ? activatePluginNavigation(item) : close()"
       >
+        <span
+          v-if="item.icon"
+          class="plugin-navigation-icon"
+          aria-hidden="true"
+        >
+          {{ item.icon }}
+        </span>
         <svg
+          v-else
           viewBox="0 0 24 24"
           width="18"
           height="18"
@@ -714,7 +756,7 @@ async function handleLogout() {
           <rect x="8" y="8" width="8" height="8" rx="2" />
         </svg>
         <span>{{ item.label }}</span>
-      </router-link>
+      </component>
 
       <div class="sidebar-spacer"></div>
 

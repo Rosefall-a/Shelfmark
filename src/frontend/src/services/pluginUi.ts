@@ -92,7 +92,10 @@ export interface UiNavigationContribution {
   id: string;
   location: UiNavigationLocation;
   label: string;
-  page_id: string;
+  page_id?: string;
+  route_id?: string;
+  settings_section_id?: string;
+  action_id?: string;
   icon?: string;
   order: number;
   visibility: UiVisibility;
@@ -116,7 +119,7 @@ export interface UiDialogContribution {
 }
 export interface UiContextualAction {
   id: string;
-  location: "game" | "media";
+  location: "game" | "media" | "documents";
   label: string;
   action_id: string;
   icon?: string;
@@ -136,6 +139,8 @@ export interface UiPageReplacement {
 export const HOST_EXTENSION_SLOTS = [
   "home.after-widgets",
   "game.overview.after-header",
+  "game.documents.actions",
+  "media.detail.after-header",
   "app.global",
   "home.replace",
 ] as const;
@@ -149,6 +154,7 @@ export interface UiExtension {
 export interface PluginUiDocument {
   schema_version: "v1";
   frontend?: { entry: string };
+  native_frontend?: { entry: string; styles: string[] };
   plugin_id: string;
   title: string;
   settings: UiSettingsSection[];
@@ -169,6 +175,30 @@ export interface PluginUiDocument {
 
 export type UiValue = string | number | boolean | string[];
 export type UiValues = Record<string, UiValue>;
+export interface PluginActionContext {
+  kind: "game" | "media" | "documents";
+  resource_id: string;
+  resource_type?: string;
+}
+
+export async function dispatchPluginAction(
+  pluginId: string,
+  actionId: string,
+  values: Record<string, unknown> = {},
+  context?: PluginActionContext,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `/api/plugins/${encodeURIComponent(pluginId)}/actions/${encodeURIComponent(actionId)}`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values, context }),
+    },
+  );
+  if (!response.ok) throw new Error("Plugin action could not be completed.");
+  return (await response.json()) as Record<string, unknown>;
+}
 
 export function approvePluginAction(
   action: UiAction,
@@ -308,7 +338,6 @@ export function validateDocument(document: PluginUiDocument): string[] {
       errors.push(`Extension ${extension.id} has an invalid order.`);
   }
   for (const contribution of [
-    ...navigation,
     ...settingsSections,
     ...overlays,
     ...routes,
@@ -322,6 +351,42 @@ export function validateDocument(document: PluginUiDocument): string[] {
     if (!pages.has(contribution.page_id))
       errors.push(
         `Contribution ${contribution.id} references an unknown page.`,
+      );
+  }
+  const routeIds = new Set(routes.map((item) => item.id));
+  const settingsSectionIds = new Set(settingsSections.map((item) => item.id));
+  for (const contribution of navigation) {
+    if (contributionIds.has(contribution.id))
+      errors.push(
+        `Contribution ${contribution.id} is declared more than once.`,
+      );
+    contributionIds.add(contribution.id);
+    const targets = [
+      contribution.page_id,
+      contribution.route_id,
+      contribution.settings_section_id,
+      contribution.action_id,
+    ].filter(Boolean);
+    if (targets.length !== 1)
+      errors.push(
+        `Navigation ${contribution.id} must target exactly one destination.`,
+      );
+    if (contribution.page_id && !pages.has(contribution.page_id))
+      errors.push(`Navigation ${contribution.id} references an unknown page.`);
+    if (contribution.route_id && !routeIds.has(contribution.route_id))
+      errors.push(
+        `Navigation ${contribution.id} references an unknown plugin route.`,
+      );
+    if (
+      contribution.settings_section_id &&
+      !settingsSectionIds.has(contribution.settings_section_id)
+    )
+      errors.push(
+        `Navigation ${contribution.id} references an unknown Settings section.`,
+      );
+    if (contribution.action_id && !actions.has(contribution.action_id))
+      errors.push(
+        `Navigation ${contribution.id} references an unknown action.`,
       );
   }
   for (const contribution of dialogContributions) {
@@ -353,6 +418,29 @@ export async function fetchPluginUi(
   if (errors.length)
     throw new Error("Plugin UI document is invalid: " + errors.join(" "));
   return document;
+}
+
+export function resolvePluginPageId(
+  document: PluginUiDocument,
+  requestedPath?: string,
+): string | undefined {
+  if (!requestedPath) return document.pages[0]?.id;
+  const declaredRoute = document.routes?.find(
+    (route) => route.path === requestedPath,
+  );
+  if (declaredRoute) return declaredRoute.page_id;
+  return document.pages.some((page) => page.id === requestedPath)
+    ? requestedPath
+    : undefined;
+}
+
+export function pluginPathForPage(
+  document: PluginUiDocument,
+  pageId: string,
+): string {
+  return (
+    document.routes?.find((route) => route.page_id === pageId)?.path ?? pageId
+  );
 }
 
 export function buildInitialValues(document: PluginUiDocument): UiValues {
