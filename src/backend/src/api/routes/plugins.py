@@ -38,7 +38,6 @@ from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
-from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.user import User
 from src.database.session import get_db
@@ -49,11 +48,9 @@ from src.plugin_api.backend_routes import (
     validate_host_route_ownership,
 )
 from src.plugin_api.capabilities import (
-    calculate_permission_delta,
     capability_children,
     capability_definition,
     expand_capabilities,
-    package_identity_can_retain_grants,
 )
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import (
@@ -62,7 +59,6 @@ from src.plugin_api.contracts import (
     Capability,
     CapabilityRef,
     PluginDependency,
-    PluginPackageIdentity,
     PluginUiDocument,
     parse_semver,
 )
@@ -71,7 +67,9 @@ from src.plugin_api.grants import has_capability_grant, installation_is_executab
 from src.plugin_api.installer import (
     DependencyPlan,
     InspectedPackage,
-    PackageTrustStatus,
+    InstallationConsent,
+    InstallationError,
+    PluginInstaller,
     inspect_package,
     plan_dependencies,
 )
@@ -478,73 +476,6 @@ async def _plan_candidate_dependencies(
     return plan_dependencies(manifest, installed, available or ())
 
 
-async def _validate_backend_route_candidate(manifest: Any) -> None:
-    """Ensure one package cannot take over an existing plugin-owned host URL."""
-
-    if not any(route.scope is BackendRouteScope.HOST for route in manifest.backend_routes):
-        return
-    try:
-        validate_host_route_ownership(
-            await _client.plugins(),
-            candidate_plugin_id=manifest.plugin_id,
-            candidate_routes=manifest.backend_routes,
-        )
-    except BackendRouteConflictError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "plugin_route_conflict", "message": str(exc)},
-        ) from exc
-
-
-def _dangerous_approved_permissions(
-    inspected: InspectedPackage, approved_keys: set[str]
-) -> list[str]:
-    if inspected.trust.is_verified:
-        return []
-    return [
-        _permission_key(permission.capability.name.value, permission.capability.version)
-        for permission in inspected.package.manifest.permissions
-        if _permission_key(permission.capability.name.value, permission.capability.version)
-        in approved_keys
-        and capability_definition(permission.capability.name).highly_privileged
-    ]
-
-
-def _require_dangerous_reauthentication(
-    inspected: InspectedPackage,
-    approved_keys: set[str],
-    *,
-    admin: User,
-    admin_password: str | None,
-    confirm_dangerous: bool,
-) -> list[str]:
-    dangerous = _dangerous_approved_permissions(inspected, approved_keys)
-    if not dangerous:
-        return []
-    if not confirm_dangerous:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "dangerous_permissions_confirmation_required",
-                "message": (
-                    "Explicit confirmation is required for dangerous unverified permissions."
-                ),
-                "permissions": dangerous,
-            },
-        )
-    password_hash = getattr(admin, "password_hash", "")
-    if not admin_password or not verify_password(admin_password, password_hash):
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "code": "administrator_reauthentication_failed",
-                "message": "Administrator password re-entry is required for these permissions.",
-                "permissions": dangerous,
-            },
-        )
-    return dangerous
-
-
 async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> StarletteUploadFile:
     """Resolve HTTP uploads while remaining compatible with direct route tests."""
     if isinstance(request, StarletteUploadFile):
@@ -616,18 +547,6 @@ async def install_plugin_url(
     upload: UploadFile | None = None
     try:
         path, filename, _ = await _download_remote_file(request.url)
-        inspected = _inspect_install_candidate(path)
-        if (
-            request.expected_digest
-            and inspected.package.manifest.integrity.sha256.lower()
-            != request.expected_digest.lower()
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "The remote plugin changed after preview; review it again before installing."
-                ),
-            )
         upload = UploadFile(path.open("rb"), filename=filename)
         return await _install_plugin_package(
             upload,
@@ -635,6 +554,7 @@ async def install_plugin_url(
             approved_permissions=approved_permissions,
             admin_password=request.admin_password,
             confirm_dangerous=request.confirm_dangerous,
+            expected_digest=request.expected_digest,
             source_metadata={
                 "type": request.source_type,
                 "url": request.url,
@@ -706,6 +626,71 @@ async def install_plugin(
     )
 
 
+def _plugin_installer() -> PluginInstaller:
+    return PluginInstaller(_client, _plugin_package_verifier(), verify_password)
+
+
+async def _commit_plugin_upload(
+    file: UploadFile,
+    *,
+    consent: InstallationConsent,
+    source_metadata: dict[str, Any] | None,
+    admin: User,
+    db: AsyncSession,
+    plugin_id: str | None = None,
+) -> dict[str, Any]:
+    """HTTP acquisition adapter; all policy and lifecycle decisions belong to the installer."""
+    temporary_path: Path | None = None
+    try:
+        temporary_path, _, _ = await _store_plugin_upload(file, "plugin-candidate-")
+        return await _plugin_installer().install(
+            temporary_path.read_bytes(),
+            consent=consent,
+            admin=admin,
+            db=db,
+            source=source_metadata,
+            update_plugin_id=plugin_id,
+        )
+    except InstallationError as exc:
+        detail = exc.detail
+        if isinstance(detail, dict):
+            if exc.plan is not None:
+                plan = exc.plan
+                preview = (
+                    _update_preview(
+                        plan.inspected,
+                        plan.installed,
+                        plan.permissions,
+                        plan.dependencies,
+                        can_retain_grants=plan.can_retain_grants,
+                        source=source_metadata,
+                    )
+                    if plan.installed is not None
+                    else _install_preview(plan.inspected, plan.dependencies, source=source_metadata)
+                )
+                detail = {**preview, **detail}
+            elif exc.inspected is not None:
+                detail = {**_install_preview(exc.inspected), **detail}
+        raise HTTPException(status_code=exc.status_code, detail=detail) from exc
+    except (PackageFormatError, PackageVerificationError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_package",
+                "trust_status": "invalid_package",
+                "message": str(exc),
+            },
+        ) from exc
+    except PluginRuntimeRequestError as exc:
+        raise _runtime_request_error(exc) from exc
+    except PluginRuntimeUnavailable as exc:
+        raise _runtime_error(exc) from exc
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        await file.close()
+
+
 async def _install_plugin_package(
     file: UploadFile,
     *,
@@ -716,175 +701,23 @@ async def _install_plugin_package(
     source_metadata: dict[str, Any],
     admin: User,
     db: AsyncSession,
+    expected_digest: str | None = None,
 ) -> dict[str, Any]:
-    """Commit a previewed package and the administrator's explicit permission decisions."""
-    temporary_path: Path | None = None
-    try:
-        temporary_path, _, total = await _store_plugin_upload(file, "plugin-upload-")
-        inspected = _inspect_install_candidate(temporary_path)
-        verified = inspected.package
-        trust = inspected.trust
-        await _validate_backend_route_candidate(verified.manifest)
-        if not trust.installable:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "invalid_signature",
-                    "message": trust.warning,
-                    **_install_preview(inspected),
-                },
-            )
-        if not trust.is_verified and not allow_untrusted:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "untrusted_plugin",
-                    "message": (
-                        "The plugin publisher is not verified. "
-                        "Explicit untrusted consent is required."
-                    ),
-                    **_install_preview(inspected),
-                },
-            )
-
-        dependency_plan = await _plan_candidate_dependencies(verified.manifest)
-        if not dependency_plan.ready:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "dependency_resolution_failed",
-                    "message": "Required plugin dependencies must be installed compatibly first.",
-                    **_install_preview(inspected, dependency_plan, source=source_metadata),
-                },
-            )
-
-        package = temporary_path.read_bytes()
-        installation_id = uuid4()
-        declared_keys = {
-            _permission_key(permission.capability.name.value, permission.capability.version)
-            for permission in verified.manifest.permissions
-        }
-        approved_keys = set(approved_permissions if isinstance(approved_permissions, list) else ())
-        if not approved_keys.issubset(declared_keys):
-            raise HTTPException(
-                status_code=400, detail="Consent contains an undeclared permission."
-            )
-        dangerous_permissions = _require_dangerous_reauthentication(
-            inspected,
-            approved_keys,
-            admin=admin,
+    return await _commit_plugin_upload(
+        file,
+        consent=InstallationConsent(
+            allow_untrusted=allow_untrusted,
+            approved_permissions=tuple(approved_permissions)
+            if isinstance(approved_permissions, list)
+            else (),
             admin_password=admin_password,
             confirm_dangerous=confirm_dangerous,
-        )
-        resolved_at = int(time.time())
-        permission_requests: list[PluginPermissionRequest] = []
-        permission_grants: list[PluginPermissionGrant] = []
-        permission_audits: list[PluginPermissionAudit] = []
-        for permission in verified.manifest.permissions:
-            capability = permission.capability.name.value
-            version = permission.capability.version
-            approved = _permission_key(capability, version) in approved_keys
-            permission_requests.append(
-                PluginPermissionRequest(
-                    plugin_id=verified.manifest.plugin_id,
-                    installation_id=installation_id,
-                    capability=capability,
-                    capability_version=version,
-                    rationale=permission.rationale,
-                    status="approved" if approved else "denied",
-                    resolved_at=resolved_at,
-                    resolved_by=getattr(admin, "id", None),
-                )
-            )
-            if approved:
-                permission_grants.append(
-                    PluginPermissionGrant(
-                        plugin_id=verified.manifest.plugin_id,
-                        installation_id=installation_id,
-                        capability=capability,
-                        capability_version=version,
-                    )
-                )
-            permission_audits.append(
-                PluginPermissionAudit(
-                    plugin_id=verified.manifest.plugin_id,
-                    installation_id=installation_id,
-                    capability=capability,
-                    capability_version=version,
-                    user_id=getattr(admin, "id", None),
-                    decision="allowed" if approved else "denied",
-                    reason="administrator install consent",
-                )
-            )
-        db.add_all([*permission_requests, *permission_grants, *permission_audits])
-        try:
-            result = await _client.install_package(
-                package,
-                f"{verified.manifest.plugin_id}-{verified.manifest.version}.utp",
-                installation_id=str(installation_id),
-                source_metadata=source_metadata,
-                trust_metadata={
-                    "status": trust.status.value,
-                    "signature_present": trust.signature_present,
-                    "signature_verified": trust.signature_verified,
-                    "publisher_key_id": trust.publisher_key_id,
-                    "publisher_identity": trust.publisher_identity,
-                },
-            )
-        except PluginRuntimeRequestError as exc:
-            await db.rollback()
-            raise _runtime_request_error(exc) from exc
-        except PluginRuntimeUnavailable as exc:
-            await db.rollback()
-            raise _runtime_error(exc) from exc
-        await db.commit()
-        activation_status = "installed"
-        healthy = False
-        try:
-            await _client.start(
-                quote(verified.manifest.plugin_id, safe=""),
-                user_id=str(getattr(admin, "id", "")) or None,
-            )
-            healthy = await _client.plugin_health(quote(verified.manifest.plugin_id, safe=""))
-            activation_status = "running" if healthy else "unhealthy"
-        except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
-            logger.warning(
-                "Plugin installed but activation failed: plugin_id=%s error=%s",
-                verified.manifest.plugin_id,
-                exc,
-            )
-            activation_status = "failed_activation"
-        logger.info(
-            "Plugin install committed: plugin_id=%s installation_id=%s bytes=%d "
-            "granted=%d denied=%d trust=%s",
-            verified.manifest.plugin_id,
-            installation_id,
-            total,
-            len(permission_grants),
-            len(permission_requests) - len(permission_grants),
-            trust.status.value,
-        )
-        return {
-            "plugin_id": verified.manifest.plugin_id,
-            "version": verified.manifest.version,
-            "name": verified.manifest.name,
-            "publisher": trust.publisher_identity,
-            "publisher_key_id": trust.publisher_key_id,
-            "installation_id": str(installation_id),
-            "permissions_requested": len(permission_requests),
-            "permissions_granted": len(permission_grants),
-            "permissions_denied": len(permission_requests) - len(permission_grants),
-            "trust_status": trust.status.value,
-            "trust_warning": trust.warning,
-            "dangerous_permissions_reauthenticated": dangerous_permissions,
-            "install_status": result.get("status", "installed"),
-            "status": activation_status,
-            "healthy": healthy,
-        }
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
-        await file.close()
+            expected_digest=expected_digest,
+        ),
+        source_metadata=source_metadata,
+        admin=admin,
+        db=db,
+    )
 
 
 @router.get("/catalogues")
@@ -1400,81 +1233,18 @@ async def _update_context(
     inspected: InspectedPackage,
     db: AsyncSession,
 ) -> tuple[dict[str, Any], UUID, Any, DependencyPlan, bool]:
-    manifest = inspected.package.manifest
-    if manifest.plugin_id != plugin_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Updated package plugin ID does not match the installed plugin.",
-        )
-    installed_plugins = await _client.plugins()
-    installed = next(
-        (item for item in installed_plugins if item.get("plugin_id") == plugin_id),
-        None,
+    try:
+        plan = await _plugin_installer().plan_update(plugin_id, inspected, db)
+    except InstallationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    assert plan.installed is not None
+    return (
+        plan.installed,
+        plan.installation_id,
+        plan.permissions,
+        plan.dependencies,
+        plan.can_retain_grants,
     )
-    if installed is None or not installed.get("installation_id"):
-        raise HTTPException(status_code=409, detail="Plugin installation identity is missing.")
-    if parse_semver(manifest.version) <= parse_semver(str(installed.get("version", "0.0.0"))):
-        raise HTTPException(status_code=409, detail="Plugin update version must be newer.")
-    installation_id = UUID(str(installed["installation_id"]))
-    installed_trust_value = installed.get("trust")
-    installed_trust: dict[str, Any] = (
-        installed_trust_value if isinstance(installed_trust_value, dict) else {}
-    )
-    previous_identity = PluginPackageIdentity(
-        plugin_id=plugin_id,
-        publisher_key_id=installed_trust.get("publisher_key_id") or installed.get("publisher"),
-    )
-    candidate_identity = PluginPackageIdentity(
-        plugin_id=manifest.plugin_id,
-        publisher_key_id=(
-            manifest.integrity.key_id if manifest.integrity.signature is not None else None
-        ),
-    )
-    can_retain_grants = inspected.trust.is_verified and package_identity_can_retain_grants(
-        previous_identity,
-        candidate_identity,
-    )
-    if installed_trust.get("status") == PackageTrustStatus.TRUSTED.value and not can_retain_grants:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "The verified update publisher does not match the installed package. "
-                "Install it as a new lifecycle instance and review permissions again."
-            ),
-        )
-    grant_rows = (
-        await db.execute(
-            select(
-                PluginPermissionGrant.capability,
-                PluginPermissionGrant.capability_version,
-            ).where(
-                PluginPermissionGrant.plugin_id == plugin_id,
-                PluginPermissionGrant.installation_id == installation_id,
-                PluginPermissionGrant.revoked_at.is_(None),
-            )
-        )
-    ).all()
-    existing_grants = tuple(
-        CapabilityRef(name=capability, version=version) for capability, version in grant_rows
-    )
-    previous_requested = (
-        tuple(
-            CapabilityRef.model_validate(reference)
-            for reference in installed.get("permission_refs", [])
-        )
-        if can_retain_grants
-        else ()
-    )
-    permission_delta = calculate_permission_delta(
-        previous_requested,
-        tuple(permission.capability for permission in manifest.permissions),
-        existing_grants if can_retain_grants else (),
-    )
-    dependencies = plan_dependencies(
-        manifest,
-        (item for item in installed_plugins if item.get("plugin_id") != plugin_id),
-    )
-    return installed, installation_id, permission_delta, dependencies, can_retain_grants
 
 
 def _update_preview(
@@ -1615,16 +1385,6 @@ async def update_plugin_url(
     upload: UploadFile | None = None
     try:
         temporary_path, filename, _ = await _download_remote_file(request.url)
-        inspected = _inspect_install_candidate(temporary_path)
-        if (
-            request.expected_digest
-            and inspected.package.manifest.integrity.sha256.lower()
-            != request.expected_digest.lower()
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="The remote plugin changed after preview; review it again before updating.",
-            )
         upload = UploadFile(temporary_path.open("rb"), filename=filename)
         return await _update_plugin_package(
             plugin_id,
@@ -1633,6 +1393,7 @@ async def update_plugin_url(
             approved_permissions=approved_permissions,
             admin_password=request.admin_password,
             confirm_dangerous=request.confirm_dangerous,
+            expected_digest=request.expected_digest,
             source_metadata={
                 "type": request.source_type,
                 "url": request.url,
@@ -1685,178 +1446,24 @@ async def _update_plugin_package(
     source_metadata: dict[str, Any] | None,
     admin: User,
     db: AsyncSession,
+    expected_digest: str | None = None,
 ) -> dict[str, Any]:
-    temporary_path: Path | None = None
-    try:
-        temporary_path, _, _ = await _store_plugin_upload(file, "plugin-update-")
-        inspected = _inspect_install_candidate(temporary_path)
-        await _validate_backend_route_candidate(inspected.package.manifest)
-        if not inspected.trust.installable:
-            raise HTTPException(status_code=400, detail="Plugin package signature is invalid.")
-        if not inspected.trust.is_verified and not allow_untrusted:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "untrusted_plugin",
-                    "message": "Explicit unverified update consent is required.",
-                    **_install_preview(inspected),
-                },
-            )
-        (
-            installed,
-            installation_id,
-            permission_delta,
-            dependencies,
-            can_retain_grants,
-        ) = await _update_context(plugin_id, inspected, db)
-        if not dependencies.ready:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "dependency_resolution_failed",
-                    **_update_preview(
-                        inspected,
-                        installed,
-                        permission_delta,
-                        dependencies,
-                        can_retain_grants=can_retain_grants,
-                        source=source_metadata,
-                    ),
-                },
-            )
-        new_keys = {
-            _permission_key(item.name.value, item.version)
-            for item in permission_delta.newly_requested_grants
-        }
-        approved_keys = set(approved_permissions or ())
-        if not approved_keys.issubset(new_keys):
-            raise HTTPException(
-                status_code=400, detail="Update consent contains an invalid permission."
-            )
-        dangerous = _require_dangerous_reauthentication(
-            inspected,
-            approved_keys,
-            admin=admin,
+    return await _commit_plugin_upload(
+        file,
+        consent=InstallationConsent(
+            allow_untrusted=allow_untrusted,
+            approved_permissions=tuple(approved_permissions)
+            if isinstance(approved_permissions, list)
+            else (),
             admin_password=admin_password,
             confirm_dangerous=confirm_dangerous,
-        )
-        now = int(time.time())
-        if not can_retain_grants:
-            await db.execute(
-                sql_update(PluginPermissionGrant)
-                .where(
-                    PluginPermissionGrant.plugin_id == plugin_id,
-                    PluginPermissionGrant.installation_id == installation_id,
-                    PluginPermissionGrant.revoked_at.is_(None),
-                )
-                .values(revoked_at=now)
-            )
-        rows: list[Any] = []
-        for capability in permission_delta.newly_requested_grants:
-            key = _permission_key(capability.name.value, capability.version)
-            approved = key in approved_keys
-            rationale = next(
-                permission.rationale
-                for permission in inspected.package.manifest.permissions
-                if permission.capability == capability
-            )
-            rows.append(
-                PluginPermissionRequest(
-                    plugin_id=plugin_id,
-                    installation_id=installation_id,
-                    capability=capability.name.value,
-                    capability_version=capability.version,
-                    rationale=rationale,
-                    status="approved" if approved else "denied",
-                    resolved_at=now,
-                    resolved_by=getattr(admin, "id", None),
-                )
-            )
-            if approved:
-                rows.append(
-                    PluginPermissionGrant(
-                        plugin_id=plugin_id,
-                        installation_id=installation_id,
-                        capability=capability.name.value,
-                        capability_version=capability.version,
-                    )
-                )
-            rows.append(
-                PluginPermissionAudit(
-                    plugin_id=plugin_id,
-                    installation_id=installation_id,
-                    capability=capability.name.value,
-                    capability_version=capability.version,
-                    user_id=getattr(admin, "id", None),
-                    decision="allowed" if approved else "denied",
-                    reason="administrator update consent",
-                )
-            )
-        db.add_all(rows)
-        try:
-            result = await _client.install_package(
-                temporary_path.read_bytes(),
-                f"{plugin_id}-{inspected.package.manifest.version}.utp",
-                installation_id=str(installation_id),
-                replace=True,
-                source_metadata=source_metadata,
-                trust_metadata={
-                    "status": inspected.trust.status.value,
-                    "signature_present": inspected.trust.signature_present,
-                    "signature_verified": inspected.trust.signature_verified,
-                    "publisher_key_id": inspected.trust.publisher_key_id,
-                    "publisher_identity": inspected.trust.publisher_identity,
-                },
-            )
-        except PluginRuntimeRequestError as exc:
-            await db.rollback()
-            raise _runtime_request_error(exc) from exc
-        except PluginRuntimeUnavailable as exc:
-            await db.rollback()
-            raise _runtime_error(exc) from exc
-        if can_retain_grants:
-            removed_keys = {
-                (capability.name.value, capability.version)
-                for capability in permission_delta.removed
-            }
-            for grant in await db.scalars(
-                select(PluginPermissionGrant).where(
-                    PluginPermissionGrant.plugin_id == plugin_id,
-                    PluginPermissionGrant.installation_id == installation_id,
-                    PluginPermissionGrant.revoked_at.is_(None),
-                )
-            ):
-                if (grant.capability, grant.capability_version) in removed_keys:
-                    grant.revoked_at = now
-        await db.commit()
-        activation_status = result.get("status", "updated")
-        healthy = False
-        if installed.get("enabled"):
-            try:
-                await _client.start(quote(plugin_id, safe=""), user_id=str(admin.id))
-                healthy = await _client.plugin_health(quote(plugin_id, safe=""))
-                activation_status = "running" if healthy else "unhealthy"
-            except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
-                logger.warning(
-                    "Plugin update activation failed: plugin_id=%s error=%s", plugin_id, exc
-                )
-                activation_status = "failed_activation"
-        return {
-            "plugin_id": plugin_id,
-            "version": inspected.package.manifest.version,
-            "permissions_requested": len(permission_delta.newly_requested_grants),
-            "permissions_granted": len(approved_keys),
-            "permission_delta": permission_delta.model_dump(mode="json"),
-            "dangerous_permissions_reauthenticated": dangerous,
-            "trust_status": inspected.trust.status.value,
-            "install_status": result.get("status", "updated"),
-            "status": activation_status,
-            "healthy": healthy,
-        }
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
-        await file.close()
+            expected_digest=expected_digest,
+        ),
+        source_metadata=source_metadata,
+        admin=admin,
+        db=db,
+        plugin_id=plugin_id,
+    )
 
 
 @router.post("/{plugin_id}/retry")
@@ -2393,9 +2000,7 @@ async def _resolve_plugin_backend_route(
     return resolved
 
 
-def _route_installation(
-    resolved: ResolvedBackendRoute, request_id: UUID
-) -> tuple[str, UUID]:
+def _route_installation(resolved: ResolvedBackendRoute, request_id: UUID) -> tuple[str, UUID]:
     """Validate live installation identity and lifecycle state."""
 
     plugin = resolved.plugin
@@ -2492,9 +2097,7 @@ async def _execute_plugin_backend_route(
 ) -> PluginBackendRouteResponse:
     """Execute one bounded runtime handler and validate its JSON response."""
 
-    route_request = await _backend_route_request(
-        request, resolved.path_parameters, request_id
-    )
+    route_request = await _backend_route_request(request, resolved.path_parameters, request_id)
     route_request["user"] = {
         "id": str(user.id),
         "username": str(getattr(user, "username", "")),

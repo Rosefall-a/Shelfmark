@@ -96,16 +96,20 @@ class PluginRuntimeClient:
         replace: bool = False,
         source_metadata: dict[str, Any] | None = None,
         trust_metadata: dict[str, Any] | None = None,
+        operation_id: str | None = None,
+        expected_version: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "PUT",
-            "/plugins/install",
+            "/plugins/install/prepare" if operation_id else "/plugins/install",
             content=package,
             headers={
                 "Content-Type": "application/octet-stream",
                 "X-Plugin-Package-Name": filename,
                 "X-Plugin-Installation-ID": installation_id,
                 "X-Plugin-Replace": "true" if replace else "false",
+                "X-Plugin-Operation-ID": operation_id or "",
+                "X-Plugin-Expected-Version": expected_version or "",
                 "X-Plugin-Source": base64.urlsafe_b64encode(
                     json.dumps(source_metadata or {}, separators=(",", ":")).encode("utf-8")
                 ).decode("ascii"),
@@ -113,6 +117,14 @@ class PluginRuntimeClient:
                     json.dumps(trust_metadata or {}, separators=(",", ":")).encode("utf-8")
                 ).decode("ascii"),
             },
+        )
+
+    async def finish_installation(self, plugin_id: str, operation_id: str, *, commit: bool) -> None:
+        """Publish a prepared package after grants commit, or restore its predecessor."""
+        await self._request(
+            "PUT",
+            f"/plugins/{quote(plugin_id, safe='')}/installation",
+            json={"operation_id": operation_id, "commit": commit},
         )
 
     async def plugin_health(self, plugin_id: str) -> bool:

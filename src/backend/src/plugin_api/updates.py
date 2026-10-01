@@ -18,6 +18,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Protocol
@@ -174,7 +175,7 @@ class PluginPackageVerifier:
         if (
             not name
             or path.is_absolute()
-            or any(not part or part in {".", ".."} or part.endswith(":") for part in raw_parts)
+            or any(not part or part in {".", ".."} or ":" in part for part in raw_parts)
             or any(ord(character) < 32 for character in name)
         ):
             raise PackageFormatError("package contains an unsafe path")
@@ -236,7 +237,7 @@ class PluginPackageVerifier:
                             raise PackageFormatError("package contains an unsupported directory")
                         continue
                     if info.filename == self.MANIFEST:
-                        manifest_data = archive.read(info)
+                        manifest_data = self._read_bounded(archive, info)
                     elif info.filename.startswith(self.PAYLOAD_PREFIX):
                         relative = info.filename[len(self.PAYLOAD_PREFIX) :]
                         if not relative:
@@ -244,7 +245,14 @@ class PluginPackageVerifier:
                         payload.append((relative, self._read_bounded(archive, info)))
                     else:
                         raise PackageFormatError("package contains an unexpected file")
-        except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
+        except (
+            OSError,
+            zipfile.BadZipFile,
+            RuntimeError,
+            EOFError,
+            UnicodeError,
+            zlib.error,
+        ) as exc:
             raise PackageFormatError("invalid plugin package archive") from exc
 
         if manifest_data is None:
@@ -310,7 +318,7 @@ class PluginPackageVerifier:
                     with archive.open(info) as source, target.open("wb") as output:
                         shutil.copyfileobj(source, output)
                     target.chmod(0o700)
-        except (OSError, zipfile.BadZipFile) as exc:
+        except (OSError, zipfile.BadZipFile, UnicodeError) as exc:
             shutil.rmtree(destination, ignore_errors=True)
             raise PackageFormatError("failed to extract plugin package") from exc
         return destination

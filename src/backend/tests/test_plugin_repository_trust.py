@@ -10,8 +10,8 @@ import asyncio
 import io
 import json
 import os
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -72,6 +72,7 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     from fastapi import UploadFile
 
     from src.api.routes import plugins
+    from src.database.models import achievement as _achievement  # noqa: F401
 
     plugin_repository = _plugin_repository()
     package = next((plugin_repository / "dist").glob("*.utp"))
@@ -82,13 +83,32 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     class RuntimeClient:
         package_bytes: bytes | None = None
 
+        async def plugins(self):
+            return []
+
         async def install_package(
-            self, package_bytes: bytes, filename: str, *, installation_id: str
+            self,
+            package_bytes: bytes,
+            filename: str,
+            *,
+            installation_id: str,
+            operation_id: str,
+            source_metadata=None,
+            trust_metadata=None,
         ) -> dict[str, str]:
             del installation_id
             self.package_bytes = package_bytes
             assert filename.endswith(".utp")
-            return {"status": "installed"}
+            return {"status": "installed", "operation_id": operation_id}
+
+        async def finish_installation(self, plugin_id, operation_id, *, commit):
+            assert commit is True
+
+        async def start(self, plugin_id, user_id=None):
+            self.started = plugin_id
+
+        async def plugin_health(self, plugin_id):
+            return self.started == plugin_id
 
     class FakeDb:
         def add_all(self, rows):
@@ -107,7 +127,7 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
     source = package.read_bytes()
     upload = UploadFile(file=io.BytesIO(source), filename=package.name)
     result = asyncio.run(plugins.install_plugin(upload, admin=object(), db=FakeDb()))
-    assert result["status"] == "installed"
+    assert result["status"] == "running"
     assert runtime_client.package_bytes == source
 
     tampered = tmp_path / "tampered.utp"

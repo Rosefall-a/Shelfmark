@@ -2,7 +2,7 @@
 
 Audit base: `plugin-manager` at `08f93511`. This audit changes host/runtime infrastructure and contract tests only; it does not implement reference plugins or advance stages 5–7.
 
-Publication integrates the subsequent authorization fixes on `plugin-manager` at `51f3ef50`, preserving user, registration and live capability checks. Both backend execution helpers delegate to the same lifecycle predicate.
+Publication integrates the subsequent authorization fixes at `51f3ef50` and installation transaction fixes at `5a289118` on `plugin-manager`, preserving user, registration, live capability and pending-installation checks. Both backend execution helpers delegate to the same lifecycle predicate. Installation transactions and process transitions share the same mutation lock; prepared packages cannot start before their permission commit.
 
 ## Activation rule
 
@@ -52,8 +52,8 @@ The HTTP and registry regressions do not substitute for a production Linux/conta
 
 Validated on the Windows development host:
 
-* Backend plugin suite after integration: 214 passed, 2 skipped (external plugin repository not configured), 150 unrelated tests deselected.
-* Runtime suite after integration: 50 passed; the 2 existing Unix-only failures were reproduced on the unchanged `plugin-manager` baseline and excluded from the Windows run.
+* Backend plugin suite after integration: 219 passed, 2 skipped (external plugin repository not configured), 150 unrelated tests deselected. The newly integrated `test_plugin_install_sources.py` requires PostgreSQL and was excluded after connection failures on this host; its database integration remains unverified here.
+* Runtime suite after integration: 58 passed; the 2 existing Unix-only failures were reproduced on the unchanged `plugin-manager` baseline and excluded from the Windows run.
 * Frontend: 58 tests passed; TypeScript, ESLint, formatting and production build checks passed.
 * Backend mypy: all 186 source files passed. Focused Ruff checks passed; broader Ruff still reports existing FastAPI argument-default and lifecycle duplicate-helper import findings. Pylint on touched backend modules reported no errors/fatal findings; the repository still has existing convention/refactor/warning findings.
 
