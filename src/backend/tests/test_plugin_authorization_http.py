@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from src.api.routes import auth, plugin_permissions, plugins
 from src.core.auth import hash_token
-from src.core.geoip import GeoLocation
+from src.core.geoip import GeoLocation, geoip
 from src.database.models.achievement import Achievement  # noqa: F401
 from src.database.models.auth import UserSession
 from src.database.models.notification import Notification
@@ -402,7 +402,11 @@ async def test_session_pagination_does_not_truncate_at_two_hundred(boundary):
 
 
 @pytest.mark.asyncio
-async def test_geoip_upload_requires_active_plugin_admin_grant_and_confirmation(boundary):
+async def test_geoip_upload_requires_active_plugin_admin_grant_and_confirmation(boundary, tmp_path, monkeypatch):
+    # Keep the HTTP authorization test hermetic: the real GeoIP upload handler
+    # writes atomically to its configured database path, which is /data in the
+    # application container and is not writable in the CI test runner.
+    monkeypatch.setattr(geoip, "path", tmp_path / "GeoLite2-City.mmdb")
     async def upload(**params):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=boundary.app),
