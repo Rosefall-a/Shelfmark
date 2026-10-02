@@ -34,9 +34,12 @@ The stable runtime API is byte-oriented:
 - backup() / restore() — namespace-scoped backup and restore;
 - uninstall() — delete only the plugin namespace.
 
-The implementation is transport-neutral so the authenticated gateway can
-expose the same contract without coupling it to SQLAlchemy or filesystem
-paths.
+These are runtime library operations. The deployed SDK exposes `storage.put`,
+`storage.get`, `storage.delete` and `storage.keys` with UTF-8 string values.
+`plugin.storage` must be granted; the runtime rechecks host authorization before
+each operation. Library metadata and backup/restore methods are not currently
+separate public gateway methods. The SDK does not receive SQLAlchemy objects or
+filesystem paths. Sandboxed workers cannot directly read the broker's namespace.
 
 ## Quotas and security
 

@@ -10,6 +10,9 @@ The implemented lifecycle is documented in the repository wiki:
 - [Remote management tokens and scopes](../wiki/docs/development/plugin-management-api.md)
 - [Plugin application pages and UI contract](../wiki/docs/development/plugin-ui.md)
 - [Validation with external plugin packages](../wiki/docs/development/plugin-validation.md)
+- [Deployed gateway and runtime transport](../wiki/docs/development/plugin-platform.md)
+- [Third-party development](../wiki/docs/development/plugin-development.md)
+- [Reusable installed-plugin conformance](../wiki/docs/development/plugin-conformance.md)
 
 The backend owns installation identity, metadata, staged releases and update policy;
 PostgreSQL owns grants and lifecycle commit receipts. The isolated runtime owns

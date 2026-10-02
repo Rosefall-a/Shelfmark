@@ -22,7 +22,12 @@ The contract layer must not expose ORM models, database sessions, environment va
 
 ## Versioning
 
-The current API version is v1. Callers advertise supported versions with VersionNegotiationRequest and the gateway responds with VersionNegotiationResponse.
+The current API version is v1. The contract library provides VersionNegotiationRequest
+and VersionNegotiationResponse. Deployed workers send an optional `api_version`
+through the existing JSON-line bridge; omission defaults to v1 for older SDKs.
+The runtime rejects incompatible versions and advertises supported versions in
+health. Success and structured failure responses retain correlation. See the
+[deployed platform boundary](plugin-platform.md) for the wire format and limits.
 
 Breaking changes require a new major API version. Additive changes require compatibility review. Event versions are independent of API versions. Capability semantic changes require a capability-version change.
 

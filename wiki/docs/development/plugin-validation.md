@@ -2,6 +2,10 @@
 
 Validation is split between the host repository and the independent plugin repository so neither side imports the other's private implementation.
 
+For reusable checks of an installed plugin and the full real-worker runner, see
+[Installed-plugin conformance](plugin-conformance.md). That page lists the exercised
+lifecycle/permission cases, source-revision evidence, browser screenshots and limits.
+
 ## Host coverage
 
 The application tests:

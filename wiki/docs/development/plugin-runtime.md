@@ -7,20 +7,22 @@ runtime supervisor.
 
 ## Topology
 
-Production Compose keeps the Plugin Runtime on a dedicated Docker network
-marked internal. The host application is the only core service that also joins
-that network:
+Production Compose keeps the Plugin Runtime off the core database network and
+connects it to the host through the internal `plugin_gateway` network. The runtime
+also has a separate `plugin_egress` network for approved broker operations:
 
     application + PostgreSQL --- core network
           |
           +--- plugin_gateway (internal Docker network) --- Plugin Runtime
                                                             |
                                                             +-- per-plugin bubblewrap sandbox
+                                                            +-- plugin_egress (runtime broker)
 
-Docker's internal network has no default route to external networks, and the
-runtime is not attached to the core database network. This prevents Docker
-service discovery from becoming an accidental database access path while
-allowing the authenticated host-to-runtime transport.
+The internal network itself has no external default route. The separate egress
+attachment does not grant sandboxed workers network access: Bubblewrap creates a
+private network namespace for each worker. Runtime HTTP is an implementation
+adapter; configured URLs can use local processes or container service names
+without changing the packaged SDK. See [gateway and transport](plugin-platform.md).
 
 The repository-root development Compose file supplies a development-only
 fallback runtime token. Set `PLUGIN_RUNTIME_DEV_TOKEN` to test a specific
@@ -90,13 +92,15 @@ contract owned by #268.
 
 Outbound access is default-deny.
 
-Plugin API v1 does not expose a general-purpose outbound-network capability.
-Declaring a hostname in plugin code or package metadata does not create one.
+Plugin API v1 defines the host-controlled `network.outbound` capability, but the
+current gateway does not expose a general-purpose network forwarding method.
+A declaration or approved scope does not create arbitrary socket access in a
+Bubblewrap sandbox.
 
 The sandbox uses an isolated network namespace, which means the plugin cannot
 directly reach PostgreSQL, the core backend, Docker DNS, the host network or
-the public internet. Docker's internal runtime network also has no external
-default gateway.
+the public internet. The runtime broker's separate egress network is not shared
+with that namespace.
 
 Approved external access is implemented through runtime-owned, narrowly
 validated senders rather than direct plugin networking. The current reference
@@ -156,7 +160,10 @@ runtime image, including its bubblewrap dependency.
 
 Plugin package verification enforces bounded compressed package size, entry count, per-file payload size, aggregate uncompressed size, and compression ratio. These limits are configurable on PluginPackageVerifier and apply before plugin execution.
 
-The runtime supervisor redirects plugin stdout and stderr to a non-blocking sink rather than exposing unconsumed subprocess pipes. This prevents noisy plugins from stalling on a full pipe buffer; plugin logs are not treated as an unbounded in-memory queue.
+The supervisor drains stdout through the JSON-line gateway bridge and stderr
+through structured redacted diagnostics. Diagnostic buffers retain the newest
+200 events. Plugin protocol output and stderr are separate streams, not an
+unconsumed output sink.
 
 Lifecycle disable and quarantine operations stop running plugin processes through the RuntimeController boundary. Uninstall has explicit package and plugin-storage cleanup boundaries so executable artifacts and namespaced data are not silently orphaned.
 
@@ -187,8 +194,17 @@ The existing ui.json declarative UI remains supported for lightweight plugins. A
 
 Frontend secrets must not be placed in ordinary settings or browser storage. The host exposes a plugin-scoped secret write operation that requires the plugin.storage permission. The value is written through the runtime's namespaced PluginStorage implementation under secrets/<key>.
 
-Plugin storage is quota-limited, path-confined, persistent across package updates, and owned by the plugin runtime. Metadata and stored values are written with owner-only file permissions. When a plugin process runs under bubblewrap, only that plugin's storage namespace is bound into /plugin-data; the process receives PLUGIN_DATA_DIR pointing at that namespace. Deleting a plugin removes its package and its persistent storage.
+Plugin storage is quota-limited, path-confined, persistent across package updates,
+and owned by the runtime broker. Metadata and stored values have owner-only file
+permissions. In Bubblewrap, `/plugin-data` is an empty private filesystem and the
+package's legacy settings file is masked. Persistent storage and secrets are
+accessible through granted `storage.*`/`settings.get` operations, not a direct
+filesystem mount. Each operation rechecks the host grant so revocation applies
+to subsequent calls. Deleting a plugin removes package, configuration and storage.
 
-The UI Playground demonstrates this contract with a Discord webhook: the Vue frontend writes secrets/discord_webhook, and its action reads that file from PLUGIN_DATA_DIR instead of receiving the webhook as an ordinary action argument.
+The secret-write bridge stores credentials under `secrets/<key>`. Plugins retrieve
+them through the authorized broker; credentials must not be ordinary action
+arguments or browser-local storage. Runtime-mediated Discord delivery performs
+its own grant, URL and message checks.
 
 NONBUBBLE_ENV=true intentionally weakens this filesystem boundary for development troubleshooting, so it must not be used as a production security mode.
