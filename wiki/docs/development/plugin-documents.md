@@ -18,7 +18,7 @@ Success fields:
 
 - `document`: authoritative DTO, with size from the validated bytes and validated MIME.
 - `encoding: base64`, `content`: at most 24 KiB before base64 encoding.
-- `format: pdf | text | html`. HTML is transported with `document.media_type: text/plain`.
+- `format: pdf | text | html | docx | pptx | odt | odp`. HTML is transported with `document.media_type: text/plain`.
 - `offset`, `next_offset`, `complete`: exact byte-range accounting, including empty files.
 - `content_sha256`: SHA-256 of the complete validated file. A continuation without the matching digest returns a changed-document error. Consumers should recheck the assembled digest.
 
@@ -37,3 +37,19 @@ The platform's existing 5 MiB cap also applies to PDF. PR #241 streamed PDFs wit
 ## Verification
 
 `tests/test_plugin_documents.py` exercises real SQL/HTTP ownership and grants, another user's row, unknown/trashed/non-doc rows, unauthorized entrypoints, stored traversal, long Unicode metadata pagination, exact-limit chunk reassembly, replacement and revocation. Format fixtures reproduce PR #241's actual behavior; external `tools/check_document_parity.py` in the plugin repository also compares both actual source implementations. The plugin's browser tests verify sanitization, literal text and sandbox PDF rendering rather than treating byte equivalence as sufficient security evidence.
+
+## Game Docs reader contributions
+
+A UI document may declare `document_readers: [{id: "reader", page_id: "documents", label: "Read", extensions: ["*"], order: 0}]`. Extensions are lowercase suffixes such as `.pdf`, or `*`. Both live `documents.read` and `frontend.context.documents` grants are required. Readers reference an existing page and are selected deterministically by order, plugin ID and contribution ID. Disabled/revoked installations lose their contribution. The host game Docs list supplies an opaque indexed document ID, opens the matching page in a new tab, and retains a separate original download link. Without a reader, existing filename download behavior remains.
+
+`plugin.context` gives the sandbox `document_id` and `game_id` from the page query. Context is a navigation hint, not authorization: every read still performs ownership/grant checks. The optional library page can remain accessible without registering sidebar navigation.
+
+## Original downloads
+
+`plugin.download-document` accepts `{document_id: UUID}`. The parent verifies the authenticated scoped HEAD endpoint before starting a browser download. GET/HEAD `/api/plugins/{plugin_id}/capabilities/documents/{document_id}/download` repeat installation, live `documents.read`, ownership/kind/deletion and safe stored-path checks. The response streams the original with attachment disposition, `application/octet-stream`, `nosniff` and private/no-store. Preview size/format limits do not prevent original download. Credentials and raw download URLs are never sent to the opaque sandbox.
+
+## Office/OpenDocument reading previews
+
+DOCX/PPTX/ODT/ODP are additive supported formats, using authoritative Office MIME types. Before any chunk is disclosed, the host validates the complete ZIP: at most 1,024 entries, 20 MiB expanded total, 2 MiB per XML part, 5 MiB per other part, and 100:1 expansion with a 1 KiB floor. Encryption, macros, ActiveX, embedded objects, symlinks, escaping/duplicate paths, invalid CRC/ZIP/XML, XML DTDs/entities and active script/event content are rejected with 415. UTF-16 XML is decoded before declaration checks. The existing 5 MiB input cap applies.
+
+The official plugin constructs inert text/basic tables and bounded PNG/JPEG images, preserving slide order. It never executes document markup, uploaded styles or external relationships. Complex layout, charts, animations and equations require the downloadable original. Legacy DOC/PPT and macro-enabled Office remain unsupported.

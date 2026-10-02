@@ -4,6 +4,7 @@ import {
   approvePluginAction,
   buildInitialValues,
   dispatchPluginAction,
+  downloadPluginDocument,
   PluginActionError,
   validateField,
   type PluginUiDocument,
@@ -175,6 +176,12 @@ async function handleFrontendMessage(event: MessageEvent) {
         undefined,
         Boolean(action.confirmation),
       );
+    } else if (method === "plugin.download-document") {
+      await downloadPluginDocument(
+        props.document.plugin_id,
+        String(data.document_id ?? ""),
+      );
+      result = { download_started: true };
     } else if (method === "plugin.context") {
       result = {
         plugin_id: props.document.plugin_id,

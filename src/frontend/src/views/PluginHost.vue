@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
 import {
   fetchPluginUi,
@@ -15,6 +15,14 @@ const document = ref<PluginUiDocument | null>(null);
 const loading = ref(true);
 const error = ref("");
 const activePageId = ref<string | undefined>();
+const viewerContext = computed(() => {
+  const context: Record<string, string | number | boolean> = {};
+  for (const key of ["document_id", "game_id"] as const) {
+    const value = route.query[key];
+    if (typeof value === "string") context[key] = value;
+  }
+  return context;
+});
 
 function requestedPluginPath(): string | undefined {
   const value = route.params.pluginPath;
@@ -80,6 +88,8 @@ onMounted(load);
       :plugin-id="document.plugin_id"
       :document="document"
       :page-id="activePageId"
+      :context="viewerContext"
+      :key="route.fullPath"
       @navigate="navigate"
     />
   </main>

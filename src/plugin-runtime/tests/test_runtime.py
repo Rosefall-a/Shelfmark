@@ -130,6 +130,7 @@ def _package_bytes(
     plugin_id: str = "example.upload",
     frontend: bool = False,
     native_frontend: bool = False,
+    inline_assets: object = False,
 ) -> bytes:
     files = {
         "plugin.py": b"def main():\n    return None\n",
@@ -160,7 +161,10 @@ def _package_bytes(
         "integrity": {"sha256": digest.hexdigest()},
     }
     if frontend:
-        manifest["frontend"] = {"entry": "frontend/index.html"}
+        manifest["frontend"] = {
+            "entry": "frontend/index.html",
+            "inline_assets": inline_assets,
+        }
     if native_frontend:
         manifest["capabilities"] = [{"name": "frontend.native", "version": 1}]
         manifest["native_frontend"] = {
@@ -212,7 +216,10 @@ def test_runtime_installs_verified_utp_atomically(tmp_path):
     assert (tmp_path / "plugins" / "example.upload" / "plugin.py").is_file()
 
 
-def test_runtime_installs_and_serves_declared_frontend(tmp_path, activate_registry):
+@pytest.mark.parametrize("inline_assets", [False, True])
+def test_runtime_installs_and_serves_declared_frontend(
+    tmp_path, activate_registry, inline_assets
+):
     from runtime import PluginRegistry, PluginSupervisor
 
     registry = PluginRegistry(
@@ -220,12 +227,32 @@ def test_runtime_installs_and_serves_declared_frontend(tmp_path, activate_regist
         PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
     )
     registry.install_package(
-        _package_bytes(frontend=True), "frontend.utp", installation_id=str(uuid.uuid4())
+        _package_bytes(frontend=True, inline_assets=inline_assets),
+        "frontend.utp",
+        installation_id=str(uuid.uuid4()),
     )
     activate_registry(registry, "example.upload")
     asset = registry.frontend("example.upload", "frontend/index.html")
     assert asset["path"] == "frontend/index.html"
     assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
+    assert (
+        registry.ui("example.upload")["frontend"].get("inline_assets", False)
+        is inline_assets
+    )
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_runtime_rejects_non_boolean_inline_asset_flag(tmp_path, value):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    with pytest.raises(RuntimePolicyError, match="inline_assets must be a boolean"):
+        registry.install_package(
+            _package_bytes(frontend=True, inline_assets=value),
+            "frontend.utp",
+            installation_id=str(uuid.uuid4()),
+        )
+    assert registry.list() == []
 
 
 def test_runtime_installs_and_serves_native_frontend_from_separate_root(

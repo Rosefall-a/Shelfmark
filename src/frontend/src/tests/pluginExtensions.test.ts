@@ -16,6 +16,8 @@ import {
   pluginContextualActions,
   pluginRoutes,
   pluginPageReplacements,
+  pluginDocumentReaders,
+  documentReaderUrl,
 } from "../state/pluginExtensions";
 import { nativePluginComponent } from "../state/pluginNative";
 import type { PluginUiDocument } from "../services/pluginUi";
@@ -164,6 +166,64 @@ const document: PluginUiDocument = {
 };
 
 describe("plugin extension registry", () => {
+  it("registers game document readers only with both grants and removes stale defaults", async () => {
+    const readerDocument: PluginUiDocument = {
+      ...document,
+      native_frontend: undefined,
+      document_readers: [
+        {
+          id: "reader",
+          page_id: "dashboard",
+          label: "Read",
+          extensions: [".pdf"],
+          order: 0,
+        },
+      ],
+    };
+    let current: PluginSummary = {
+      ...plugin,
+      effective_capabilities: ["documents.read", "frontend.context.documents"],
+    };
+    for (const capabilities of [
+      ["documents.read"],
+      ["frontend.context.documents"],
+    ]) {
+      expect(
+        derivePluginContributions(
+          { ...current, effective_capabilities: capabilities },
+          readerDocument,
+        ).documentReaders,
+      ).toEqual([]);
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(url === "/api/plugins" ? [current] : readerDocument),
+          ),
+      ),
+    );
+    await refreshPluginExtensions();
+    expect(pluginDocumentReaders.value).toHaveLength(1);
+    expect(
+      documentReaderUrl("game", { id: "opaque-id", filename: "Manual.PDF" }),
+    ).toBe(
+      "/plugins/example.plugin/dashboard?document_id=opaque-id&game_id=game",
+    );
+    expect(
+      documentReaderUrl("game", { filename: "Manual.pdf" }),
+    ).toBeUndefined();
+    expect(
+      documentReaderUrl("game", { id: "opaque-id", filename: "Archive.zip" }),
+    ).toBeUndefined();
+    current = { ...current, effective_capabilities: [] };
+    await refreshPluginExtensions();
+    expect(pluginDocumentReaders.value).toEqual([]);
+    expect(
+      documentReaderUrl("game", { id: "opaque-id", filename: "Manual.pdf" }),
+    ).toBeUndefined();
+  });
   it("reconciles every contribution and native code across lifecycle transitions through HTTP", async () => {
     let current = plugin;
     vi.stubGlobal(
@@ -350,6 +410,7 @@ describe("plugin extension registry", () => {
       slots: [],
       settings: [],
       replacements: [],
+      documentReaders: [],
     });
     expect(
       derivePluginContributions(plugin, {
@@ -361,6 +422,7 @@ describe("plugin extension registry", () => {
       slots: [],
       settings: [],
       replacements: [],
+      documentReaders: [],
     });
   });
 

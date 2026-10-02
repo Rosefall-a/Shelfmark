@@ -357,6 +357,7 @@ export async function assignInboxMedia(
 export type GameFileKind = "save" | "doc" | "world_save" | "modpack";
 
 export interface GameFile {
+  id?: string;
   filename: string;
   size: number;
   url: string;

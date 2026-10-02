@@ -1,9 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchPluginAction, PluginActionError } from "../services/pluginUi";
+import {
+  dispatchPluginAction,
+  PluginActionError,
+  pluginDocumentDownloadUrl,
+  downloadPluginDocument,
+} from "../services/pluginUi";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("scoped document action transport", () => {
+  it("validates opaque download IDs and rechecks authorization before any download", async () => {
+    expect(() => pluginDocumentDownloadUrl("reader", "../secret")).toThrow();
+    const id = "c9119470-90d5-477e-97c7-3bd8dba11111";
+    expect(pluginDocumentDownloadUrl("reader", id)).toBe(
+      `/api/plugins/reader/capabilities/documents/${id}/download`,
+    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response("denied", { status: 403 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(downloadPluginDocument("reader", id)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/plugins/reader/capabilities/documents/${id}/download`,
+      { method: "HEAD", credentials: "include" },
+    );
+  });
   it.each([401, 403, 404, 413, 415, 500, 502])(
     "preserves HTTP %s for the sandbox bridge without disclosing response bodies",
     async (status) => {
