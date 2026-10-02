@@ -2,7 +2,7 @@
 
 `documents.list` and `documents.read` v1 require the live `documents.read` grant. The host owns the user/installation context, `GameFileItem` lookup, active-game ownership, deleted/kind filtering and filesystem confinement. Plugins receive DTOs and base64 content; they never receive storage paths, cookies or ORM objects.
 
-This additive contract supports the official Scoped Document Viewer implementation of PR #241. The original unchunked response stays compatible, including its legacy `text/html` representation. New viewers must request bounded chunks and sanitize HTML explicitly. No runtime limits or capability enforcement were relaxed.
+This additive contract supports the official Scoped Document Viewer implementation of PR #241. The original unchunked response stays compatible, including its legacy `text/html` representation. New viewers must request bounded chunks and sanitize HTML explicitly. The legacy 5 MiB default remains for callers that omit a size limit. Explicit chunked callers may provide `max_bytes`; `0` means unlimited, while live ownership and capability checks remain unchanged.
 
 ## Listing
 
@@ -12,7 +12,7 @@ Metadata fields remain `id`, `game_id`, `game_title`, `filename`, `media_type`, 
 
 ## Reading
 
-Payload: `{document_id: UUID, chunk_bytes: 24576, offset: 0}`. Later requests add `content_sha256` from the first response and use the previous `next_offset`. Chunk size must be 1–24576 bytes, offsets must be integers within the file, and bool values are rejected. Every chunk repeats the actual ownership lookup and live grant check.
+Payload: `{document_id: UUID, chunk_bytes: 24576, offset: 0, max_bytes: 0}`. `max_bytes` is optional for backward compatibility; omitted preserves the legacy 5 MiB ceiling, while `0` means unlimited and a positive value sets a caller-selected ceiling. Later requests add `content_sha256` from the first response and use the previous `next_offset`. Chunk size must be 1–24576 bytes, offsets must be integers within the file, and bool values are rejected. Every chunk repeats the actual ownership lookup and live grant check.
 
 Success fields:
 
@@ -22,7 +22,7 @@ Success fields:
 - `offset`, `next_offset`, `complete`: exact byte-range accounting, including empty files.
 - `content_sha256`: SHA-256 of the complete validated file. A continuation without the matching digest returns a changed-document error. Consumers should recheck the assembled digest.
 
-The host reads once per request, at most 5 MiB plus a sentinel byte, before disclosing any chunk. It validates the whole text and computes its digest each time. It does not retain shared user-content caches or reusable authorization tokens. This trades repeated bounded reads for simple revocation and consistency semantics.
+The host reads once per request using the caller's `max_bytes` ceiling before disclosing any chunk. The legacy ceiling is 5 MiB when no explicit limit is supplied; an explicit `0` removes that fixed preview ceiling. It validates the whole text and computes its digest each time. It does not retain shared user-content caches or reusable authorization tokens. This trades repeated bounded reads for simple revocation and consistency semantics.
 
 Domain failures return `{error: {kind, message, status_code}}` inside the gateway payload, so action/SDK transports preserve explicit errors. Kinds include invalid (400), missing (404), changed (409), oversized (413), unsupported (415) and server (500). Namespaced plugin handlers may promote the domain status to HTTP. Missing and another user's IDs are indistinguishable. Runtime-token, installation/lifecycle and grant failures remain host HTTP errors; they are not converted to successful domain reads. The frontend bridge includes the failing action's HTTP `status_code` without sharing credentials or raw response bodies.
 
@@ -32,7 +32,7 @@ PDF `%PDF-` signature takes precedence over filename, matching PR #241. Text use
 
 Raw and decoded filename separators, dot traversal, NUL and Windows drive syntax are rejected. Resolved document and game-folder paths must remain within the owner's games/document directories. Escaping symlinks are rejected. No caller-supplied file path is accepted.
 
-The platform's existing 5 MiB cap also applies to PDF. PR #241 streamed PDFs without a viewer cap; unrestricted PDF streaming is not reproduced by this bounded API. The official sandbox viewer bundles PDF.js because native PDF plugins cannot reliably run under `allow-scripts` alone. No same-origin, native, network or worker privilege is added.
+PR #241 streamed PDFs without a viewer cap. The Plugin API preserves a 5 MiB compatibility default, but the official viewer can explicitly request a larger limit or `0` for no fixed preview-size ceiling. The official sandbox viewer bundles PDF.js because native PDF plugins cannot reliably run under `allow-scripts` alone. No same-origin, native, network or worker privilege is added.
 
 ## Verification
 
