@@ -309,6 +309,27 @@ def test_pr241_pdf_signature_overrides_extension(tmp_path, name):
         {"offset": 1},
     ],
 )
+async def test_configurable_preview_limit_can_exceed_legacy_cap_and_be_unlimited(stored):
+    boundary, save, _ = stored
+    grant(boundary, "documents.read")
+    data = b"x" * (MAX_DOCUMENT_BYTES + 1024)
+    item = save(data=data)
+
+    bounded = await read(boundary, item.id, max_bytes=MAX_DOCUMENT_BYTES)
+    assert bounded.json()["payload"]["error"]["status_code"] == 413
+
+    extended = await read(
+        boundary, item.id, max_bytes=MAX_DOCUMENT_BYTES + 1024, offset=0
+    )
+    payload = extended.json()["payload"]
+    assert payload["document"]["size_bytes"] == len(data)
+    assert payload["complete"] is False
+
+    unlimited = await read(boundary, item.id, max_bytes=0, offset=0)
+    unlimited_payload = unlimited.json()["payload"]
+    assert unlimited_payload["document"]["size_bytes"] == len(data)
+    assert unlimited_payload["next_offset"] == 24576
+
 async def test_invalid_chunk_request_is_explicit(stored, payload):
     boundary, save, _ = stored
     grant(boundary, "documents.read")
