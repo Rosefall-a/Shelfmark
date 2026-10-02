@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
+from urllib.error import HTTPError
 from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
@@ -91,6 +92,35 @@ _RESERVED_PLUGIN_ROUTE_ROOTS = {
 
 class RuntimePolicyError(ValueError):
     """Raised when a plugin request violates the runtime contract."""
+
+
+class RuntimeGatewayError(RuntimePolicyError):
+    """A public gateway failure retained across the private HTTP transport."""
+
+    def __init__(self, envelope: dict[str, Any]) -> None:
+        self.envelope = envelope
+        super().__init__(f"plugin gateway request failed: {envelope['message']}")
+
+
+def gateway_error_response(exc: Exception, request: Any) -> dict[str, Any]:
+    """Keep the v1 SDK's string error while exposing machine-readable details."""
+    request_id = request.get("request_id") if isinstance(request, dict) else None
+    envelope = (
+        exc.envelope
+        if isinstance(exc, RuntimeGatewayError)
+        else {
+            "api_version": "v1",
+            "request_id": request_id,
+            "code": "invalid_request" if isinstance(exc, ValueError) else "internal",
+            "message": PluginSupervisor._redact(str(exc)),
+        }
+    )
+    return {
+        "api_version": "v1",
+        "request_id": envelope.get("request_id"),
+        "error": envelope["message"],
+        "error_detail": envelope,
+    }
 
 
 @dataclass(frozen=True)
@@ -287,7 +317,7 @@ class PluginSupervisor:
                     event="gateway.request_failed",
                     correlation_id=str(request_id) if request_id else None,
                 )
-                response = {"error": str(exc)}
+                response = gateway_error_response(exc, request)
             try:
                 if process.stdin is None:
                     break
@@ -344,6 +374,32 @@ class PluginSupervisor:
         *,
         user_id: str | None = None,
     ) -> dict[str, Any]:
+        # Older v1 SDKs omit correlation and version; both remain supported.
+        request.setdefault("request_id", str(uuid4()))
+        try:
+            request_id = str(UUID(str(request["request_id"])))
+        except ValueError as exc:
+            raise RuntimePolicyError("gateway request_id must be a UUID") from exc
+        request["request_id"] = request_id
+        if request.get("api_version", "v1") != "v1":
+            raise RuntimeGatewayError(
+                {
+                    "api_version": "v1",
+                    "request_id": request_id,
+                    "code": "incompatible",
+                    "message": "Unsupported Plugin API version; supported: v1.",
+                }
+            )
+        response = self._dispatch_gateway_request(plugin_id, request, user_id=user_id)
+        return {"api_version": "v1", "request_id": request_id, **response}
+
+    def _dispatch_gateway_request(
+        self,
+        plugin_id: str,
+        request: dict[str, Any],
+        *,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
         method = str(request.get("method", ""))
         if self.execution_allowed is not None and not self.execution_allowed(
             plugin_id, method
@@ -363,7 +419,12 @@ class PluginSupervisor:
         if local_capability is not None:
             # Declarations and caller-selected capabilities cannot authorize
             # runtime-local operations. The host owns the live grant decision.
-            self._authorize_capability(plugin_id, local_capability, user_id=user_id)
+            self._authorize_capability(
+                plugin_id,
+                local_capability,
+                user_id=user_id,
+                request_id=request["request_id"],
+            )
         if method == "lifecycle.ready":
             self._log(
                 plugin_id,
@@ -413,7 +474,8 @@ class PluginSupervisor:
             {
                 "plugin_id": plugin_id,
                 "installation_id": installation_id,
-                "request_id": str(uuid4()),
+                "api_version": "v1",
+                "request_id": request["request_id"],
                 "user_id": resolved_user_id,
                 "method": method,
                 "capability": capability,
@@ -433,12 +495,52 @@ class PluginSupervisor:
         try:
             with urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
+        except HTTPError as exc:
+            try:
+                error = json.loads(exc.read(64 * 1024)).get("error")
+            except (ValueError, AttributeError):
+                error = None
+            finally:
+                exc.close()
+            if isinstance(error, dict) and isinstance(error.get("message"), str):
+                if (
+                    error.get("api_version", "v1") != "v1"
+                    or error.get("request_id", request["request_id"])
+                    != request["request_id"]
+                ):
+                    raise RuntimePolicyError(
+                        "plugin gateway error correlation or version does not match"
+                    ) from exc
+                raise RuntimeGatewayError(error) from exc
+            raise RuntimeGatewayError(
+                {
+                    "api_version": "v1",
+                    "request_id": request["request_id"],
+                    "code": "unavailable",
+                    "message": "Plugin gateway rejected the request.",
+                }
+            ) from exc
         except Exception as exc:
-            raise RuntimePolicyError("plugin gateway request failed") from exc
+            raise RuntimeGatewayError(
+                {
+                    "api_version": "v1",
+                    "request_id": request["request_id"],
+                    "code": "unavailable",
+                    "message": "Plugin gateway is unavailable.",
+                }
+            ) from exc
         if not isinstance(data, dict):
             raise RuntimePolicyError("plugin gateway returned an invalid response")
         if data.get("error"):
             raise RuntimePolicyError(str(data["error"]))
+        if data.get("api_version", "v1") != "v1":
+            raise RuntimePolicyError(
+                "plugin gateway returned an unsupported API version"
+            )
+        if data.get("request_id", request["request_id"]) != request["request_id"]:
+            raise RuntimePolicyError(
+                "plugin gateway response correlation does not match"
+            )
         return {"payload": data.get("payload", {})}
 
     def _authorize_capability(
@@ -448,6 +550,7 @@ class PluginSupervisor:
         *,
         user_id: str | None = None,
         version: int = 1,
+        request_id: str | None = None,
     ) -> None:
         response = self._handle_gateway_request(
             plugin_id,
@@ -456,6 +559,7 @@ class PluginSupervisor:
                 "capability": capability,
                 "capability_version": version,
                 "payload": {},
+                "request_id": request_id or str(uuid4()),
             },
             user_id=user_id,
         )
@@ -751,8 +855,9 @@ class PluginSupervisor:
                         f"Gateway request failed: {exc}",
                         level="error",
                         event="gateway.request_failed",
+                        correlation_id=str(message.get("request_id", "")) or None,
                     )
-                    response = {"error": str(exc)}
+                    response = gateway_error_response(exc, message)
                 process.stdin.write(
                     (json.dumps(response, separators=(",", ":")) + "\n").encode("utf-8")
                 )
@@ -922,7 +1027,9 @@ class PluginRegistry:
         self.root.mkdir(mode=0o750, parents=True, exist_ok=True)
         self._recover_publication()
 
-    def _transaction_backup(self, plugin_id: str, pending: dict[str, Any]) -> Path | None:
+    def _transaction_backup(
+        self, plugin_id: str, pending: dict[str, Any]
+    ) -> Path | None:
         name = pending.get("backup")
         if name is None:
             return None
@@ -941,7 +1048,9 @@ class PluginRegistry:
             if not isinstance(current, dict):
                 continue
             pending = current.get("pending_installation") or {}
-            if not (pending.get("publication_pending") or pending.get("rollback_pending")):
+            if not (
+                pending.get("publication_pending") or pending.get("rollback_pending")
+            ):
                 continue
             if not _PLUGIN_ID.fullmatch(plugin_id):
                 raise RuntimePolicyError("plugin transaction identity is invalid")
@@ -953,9 +1062,13 @@ class PluginRegistry:
                     shutil.rmtree(target)
                 backup.rename(target)
             elif previous is not None:
-                manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+                manifest = json.loads(
+                    (target / "manifest.json").read_text(encoding="utf-8")
+                )
                 if manifest["integrity"]["sha256"] != pending.get("previous_digest"):
-                    raise RuntimePolicyError("plugin predecessor cannot be recovered safely")
+                    raise RuntimePolicyError(
+                        "plugin predecessor cannot be recovered safely"
+                    )
             elif target.exists():
                 shutil.rmtree(target)
             if previous is None:
@@ -963,10 +1076,17 @@ class PluginRegistry:
             else:
                 state[plugin_id] = previous
             self._save_state(state)
-            for name in (pending.get("staging"), f".rejected-{plugin_id}-{pending['operation_id']}"):
+            for name in (
+                pending.get("staging"),
+                f".rejected-{plugin_id}-{pending['operation_id']}",
+            ):
                 if name:
-                    if not re.fullmatch(r"\.(?:install|rejected)-[A-Za-z0-9._-]+", str(name)):
-                        raise RuntimePolicyError("plugin transaction temporary path is invalid")
+                    if not re.fullmatch(
+                        r"\.(?:install|rejected)-[A-Za-z0-9._-]+", str(name)
+                    ):
+                        raise RuntimePolicyError(
+                            "plugin transaction temporary path is invalid"
+                        )
                     shutil.rmtree(self.root / name, ignore_errors=True)
 
     def _state(self) -> dict[str, Any]:
@@ -1691,7 +1811,8 @@ class PluginRegistry:
                     "staging": staging.name,
                     "publication_pending": True,
                     "previous_digest": self.package(plugin_id)[1]["integrity"]["sha256"]
-                    if backup is not None else None,
+                    if backup is not None
+                    else None,
                 }
                 self._save_state(state)
             # Journal the blocked transaction before stopping or moving packages.
@@ -2416,7 +2537,16 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         try:
             if parts == ["health"]:
                 self._json(
-                    200, {"status": "ok", **self.server.registry.supervisor.isolation}
+                    200,
+                    {
+                        "status": "ok",
+                        "available": True,
+                        "api_version": "v1",
+                        "supported_api_versions": ["v1"],
+                        "transport": "http",
+                        "plugin_transport": "json-lines",
+                        **self.server.registry.supervisor.isolation,
+                    },
                 )
             elif parts == ["plugins"]:
                 self._json(200, self.server.registry.list())  # type: ignore[attr-defined]

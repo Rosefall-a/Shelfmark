@@ -49,4 +49,22 @@ reduced process isolation. See [lifecycle](../development/plugin-lifecycle.md),
 
 The Diagnostics tab shows process state, last exit code, and up to 200 structured events. Secret-, token-, password-, and webhook-shaped values are redacted. Disable a misbehaving plugin before investigating. Revocation blocks subsequent gateway calls; uninstall additionally removes package/private storage and provider registrations.
 
+Installed inventory loads independently of remote catalogues. During an outage,
+identity, installed version and enablement remain visible; current health becomes
+unknown. The capability notice explicitly says the runtime is unavailable rather
+than inferring sandbox status from its last successful report.
+
+![Installed plugin remains visible while the runtime is offline and catalogues are still refreshing](../assets/plugin-integration/offline-inventory.png)
+
+Diagnostics distinguish unavailable runtime, unknown Bubblewrap capability and
+unavailable sandbox. Existing grants remain in the Permissions tab; the outage
+does not revoke them or delete data. Reconnect the runtime before attempting
+worker operations.
+
+![Actual plugin diagnostics during a runtime outage](../assets/plugin-integration/offline-diagnostics.png)
+
+These screenshots come from the real built frontend in
+[installed-plugin conformance](../development/plugin-conformance.md), with a
+deliberately stopped runtime and delayed catalogue transport.
+
 Production deployments must use bubblewrap isolation and a unique `PLUGIN_RUNTIME_TOKEN`. `NONBUBBLE_ENV=true` is development-only and must not be used for untrusted plugins.

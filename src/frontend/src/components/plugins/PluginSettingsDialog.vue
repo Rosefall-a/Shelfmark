@@ -364,9 +364,11 @@ watch(
                 <dt>Runtime availability</dt>
                 <dd>
                   {{
-                    plugin.runtime_available === false
-                      ? "Unavailable"
-                      : "Available"
+                    plugin.runtime_available === undefined
+                      ? "Unknown"
+                      : plugin.runtime_available
+                        ? "Available"
+                        : "Unavailable"
                   }}
                 </dd>
               </div>
@@ -378,9 +380,11 @@ watch(
                 <dt>Bubblewrap</dt>
                 <dd>
                   {{
-                    plugin.runtime?.bubblewrap_available
-                      ? "Usable"
-                      : "Unavailable"
+                    plugin.runtime?.bubblewrap_available == null
+                      ? "Unknown"
+                      : plugin.runtime.bubblewrap_available
+                        ? "Usable"
+                        : "Unavailable"
                   }}
                 </dd>
               </div>
@@ -388,9 +392,13 @@ watch(
                 <dt>Sandbox</dt>
                 <dd>
                   {{
-                    plugin.runtime?.sandbox_available
-                      ? "Active"
-                      : "Reduced isolation"
+                    plugin.runtime_available === false
+                      ? "Unavailable"
+                      : plugin.runtime?.sandbox_available
+                        ? "Active"
+                        : plugin.runtime?.reduced_isolation_allowed
+                          ? "Reduced isolation"
+                          : "Unavailable"
                   }}
                 </dd>
               </div>
@@ -398,6 +406,7 @@ watch(
                 <dt>Last error</dt>
                 <dd>
                   {{
+                    plugin.runtime_error ??
                     plugin.last_error ??
                     plugin.last_update_error ??
                     plugin.runtime?.last_error ??

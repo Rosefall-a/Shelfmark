@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.error import HTTPError
 from uuid import uuid4
 
 import httpx
@@ -523,6 +524,55 @@ async def request(boundary, path="/api/plugins/runtime/gateway", **changes):
 
 
 @pytest.mark.asyncio
+async def test_gateway_version_correlation_and_structured_denial(boundary):
+    request_id = str(uuid4())
+    denied = await request(boundary, request_id=request_id)
+    assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "private, no-store"
+    assert denied.headers["x-content-type-options"] == "nosniff"
+    error = denied.json()["error"]
+    assert error["code"] == "forbidden"
+    assert error["api_version"] == "v1" and error["request_id"] == request_id
+    assert "has not been granted" in error["message"]
+    assert denied.json()["detail"] == error["message"]
+    grant(boundary)
+    accepted = await request(boundary, request_id=request_id, api_version="v1")
+    assert accepted.status_code == 200
+    assert accepted.json()["api_version"] == "v1"
+    assert accepted.json()["request_id"] == request_id
+    assert accepted.json()["payload"]["sessions"]
+    incompatible = await request(boundary, request_id=request_id, api_version="v2")
+    assert incompatible.status_code == 409
+    assert incompatible.json()["error"]["code"] == "incompatible"
+    assert incompatible.json()["error"]["request_id"] == request_id
+
+
+@pytest.mark.asyncio
+async def test_gateway_internal_errors_are_safe_and_dispatch_is_bounded(boundary, monkeypatch):
+    dispatch = AsyncMock(side_effect=RuntimeError("private SQL password=do-not-expose"))
+    monkeypatch.setattr(plugins, "dispatch_gateway_request", dispatch)
+    failed = await request(boundary)
+    assert failed.status_code == 500
+    assert failed.json()["error"]["code"] == "internal"
+    assert "private SQL" not in failed.text and "do-not-expose" not in failed.text
+
+    cancelled = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(plugins, "dispatch_gateway_request", slow)
+    monkeypatch.setattr(plugins, "_GATEWAY_DISPATCH_TIMEOUT", 0.01)
+    timed_out = await request(boundary)
+    assert timed_out.status_code == 504
+    assert timed_out.json()["error"]["code"] == "unavailable"
+    assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
 async def test_declarations_and_pending_request_never_grant_access(boundary):
     boundary.session.add(
         PluginPermissionRequest(
@@ -873,7 +923,14 @@ def broker(boundary, tmp_path, monkeypatch):
 
     def send(req, **_kwargs):
         response = asyncio.run_coroutine_threadsafe(http_request(req), loop).result(timeout=10)
-        response.raise_for_status()
+        if response.is_error:
+            raise HTTPError(
+                req.full_url,
+                response.status_code,
+                response.reason_phrase,
+                response.headers,
+                io.BytesIO(response.content),
+            )
         return io.BytesIO(response.content)
 
     monkeypatch.setattr(runtime, "urlopen", send)
@@ -1025,16 +1082,16 @@ async def test_runtime_local_storage_and_settings_require_live_host_grants(bound
             await broker.dispatch(method, capability, payload)
     assert broker.supervisor._storage("audit.plugin").get("data") is None
     storage_grant = grant(boundary, "plugin.storage")
-    assert await broker.dispatch(
-        "storage.put", "sessions.read", {"key": "data", "value": "saved"}
-    ) == {"payload": {"saved": True}}
-    assert await broker.dispatch("storage.get", "plugin.storage", {"key": "data"}) == {
-        "payload": {"value": "saved"}
+    saved = await broker.dispatch("storage.put", "sessions.read", {"key": "data", "value": "saved"})
+    assert saved["payload"] == {"saved": True}
+    assert saved["api_version"] == "v1" and saved["request_id"]
+    assert (await broker.dispatch("storage.get", "plugin.storage", {"key": "data"}))["payload"] == {
+        "value": "saved"
     }
     grant(boundary, "plugin.settings")
-    assert await broker.dispatch("settings.get", "plugin.settings", {"key": "mode"}) == {
-        "payload": {"value": "dark"}
-    }
+    assert (await broker.dispatch("settings.get", "plugin.settings", {"key": "mode"}))[
+        "payload"
+    ] == {"value": "dark"}
     assert (
         await request(boundary, f"/api/plugin-permissions/grants/{storage_grant.id}/revoke")
     ).status_code == 200

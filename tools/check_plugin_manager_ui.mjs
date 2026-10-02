@@ -46,9 +46,20 @@ try {
     data: { username_or_email: process.env.PRIMARY_USER_USERNAME, password: process.env.PRIMARY_USER_PASSWORD },
   });
   assert.equal(login.status(), 200);
+  let releaseCatalogue;
+  if (phase === "offline") {
+    const catalogueGate = new Promise((resolve) => { releaseCatalogue = resolve; });
+    await page.route("**/api/plugins/catalogues", async (route) => {
+      await catalogueGate;
+      await route.continue();
+    });
+  }
   await page.goto(origin + "/settings?section=plugins");
   await page.getByRole("button", { name: "All", exact: true }).waitFor();
-  await page.getByText("Per-plugin sandbox isolation is unavailable.", { exact: false }).waitFor();
+  await page.getByText(
+    phase === "offline" ? "Plugin runtime unavailable" : "Per-plugin sandbox isolation is unavailable.",
+    { exact: false },
+  ).waitFor();
   if (phase === "install") {
     await page.getByRole("button", { name: "Available to Install", exact: true }).click();
     await page.getByRole("searchbox", { name: "Filter plugins" }).fill("Jellyfin");
@@ -102,6 +113,21 @@ try {
     await page.getByText("Jellyfin server URL", { exact: true }).waitFor();
     await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "jellyfin-native-ui.png"), fullPage: true });
     console.log("Browser catalogue filtering, README, scope counts, risk bubbles, approval, installation, duplicate choices and native UI: passed");
+  } else if (phase === "offline") {
+    // Backend inventory must render even before catalogue discovery completes.
+    await plugin.getByText("unknown", { exact: true }).first().waitFor();
+    assert.equal(await plugin.count(), 1);
+    await page.getByText("Refreshing catalogues…", { exact: true }).waitFor();
+    await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "offline-inventory.png"), fullPage: true });
+    releaseCatalogue();
+    await plugin.getByRole("button", { name: "Manage plugin", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Jellyfin Media Sync", exact: true });
+    await settings.getByRole("button", { name: "Diagnostics", exact: true }).click();
+    await settings.getByText("Runtime availability", { exact: true }).waitFor();
+    assert.equal(await settings.getByText("Active", { exact: true }).count(), 0);
+    assert.equal(await settings.getByText("Reduced isolation", { exact: true }).count(), 0);
+    await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "offline-diagnostics.png"), fullPage: true });
+    console.log("Browser authoritative installed inventory during runtime outage and delayed catalogues: passed");
   } else {
     await page.getByRole("button", { name: "All", exact: true }).click();
     await page.getByRole("heading", { name: "Integration catalogue help", exact: true }).waitFor();

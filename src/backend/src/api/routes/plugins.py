@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import ipaddress
-import hashlib
 import asyncio
+import hashlib
+import ipaddress
 import json
 import logging
 import mimetypes
@@ -42,21 +42,17 @@ from starlette.responses import FileResponse, JSONResponse
 
 from src.api.routes.session_manager import upload_geoip
 from src.core.auth import get_current_admin, get_current_user, hash_token, verify_password
-from src.database.models.auth import UserSession, UserApiKey
-from src.database.models.plugin_permissions import PluginClientIdentity
-from src.plugin_api.manager_state import manager_state
-from src.plugin_api.management_auth import (
-    MANAGEMENT_PREFIX,
-    MANAGEMENT_SCOPES,
-    get_plugin_manager_admin,
-    get_plugin_manager_reader,
-)
+from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
-from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
+from src.database.models.plugin_permissions import (
+    PluginClientIdentity,
+    PluginPermissionGrant,
+    PluginPermissionRequest,
+)
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.backend_routes import (
@@ -68,7 +64,6 @@ from src.plugin_api.backend_routes import (
 from src.plugin_api.capabilities import (
     capability_children,
     capability_definition,
-    expand_capabilities,
 )
 from src.plugin_api.catalogues import CatalogueStore, CatalogueStoreError
 from src.plugin_api.contracts import (
@@ -76,9 +71,11 @@ from src.plugin_api.contracts import (
     BackendRouteScope,
     Capability,
     CapabilityRef,
+    ErrorCode,
+    ErrorEnvelope,
+    PermissionDeclaration,
     PluginDependency,
     PluginUiDocument,
-    PermissionDeclaration,
     parse_semver,
 )
 from src.plugin_api.documents import DocumentAccessError, document_path, owned_document
@@ -94,6 +91,13 @@ from src.plugin_api.installer import (
     inspect_package,
     plan_dependencies,
 )
+from src.plugin_api.management_auth import (
+    MANAGEMENT_PREFIX,
+    MANAGEMENT_SCOPES,
+    get_plugin_manager_admin,
+    get_plugin_manager_reader,
+)
+from src.plugin_api.manager_state import manager_state
 from src.plugin_api.publisher_trust import PublisherTrustError, load_trusted_publishers
 from src.plugin_api.runtime_client import (
     PluginRuntimeClient,
@@ -112,6 +116,7 @@ logger = logging.getLogger(__name__)
 _client = PluginRuntimeClient()
 _MAX_PLUGIN_ROUTE_BODY_BYTES = 48 * 1024
 _MAX_PLUGIN_ROUTE_ENVELOPE_BYTES = 64 * 1024
+_GATEWAY_DISPATCH_TIMEOUT = 8.0
 _GEOIP_UPLOAD_FILE = File(...)
 _PLUGIN_DB = Depends(get_db)
 _PLUGIN_ADMIN = Depends(get_plugin_manager_admin)
@@ -1112,6 +1117,14 @@ async def _installed_plugins() -> list[dict[str, Any]]:
                 "status": "unknown",
                 "health": "unknown",
                 "runtime_error": str(exc),
+                "runtime": {
+                    **item.get("runtime", {}),
+                    "available": False,
+                    "mechanism": "unavailable",
+                    "sandbox_available": False,
+                    "bubblewrap_available": None,
+                    "last_error": str(exc),
+                },
             }
             for item in store.read()["plugins"].values()
         ]
@@ -1485,8 +1498,8 @@ async def grant_plugin_permissions(
     admin: User = Depends(get_plugin_manager_admin),
 ) -> dict:
     """Explicitly re-grant declared permissions without replacing package or data."""
-    from src.plugin_api.installer import InstallationPlan
     from src.plugin_api.capabilities import calculate_permission_delta
+    from src.plugin_api.installer import InstallationPlan
 
     inspected = await asyncio.to_thread(
         _plugin_installer()._inspect_snapshot, await _client.package_archive(plugin_id)
@@ -2554,6 +2567,7 @@ async def plugin_action(
 
 class PluginGatewayIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    api_version: str = Field(default="v1", min_length=1, max_length=16)
     plugin_id: str
     installation_id: UUID
     request_id: UUID
@@ -2564,15 +2578,34 @@ class PluginGatewayIn(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-@router.post("/runtime/gateway", dependencies=[Depends(_private_plugin_response)])
+@router.post(
+    "/runtime/gateway", dependencies=[Depends(_private_plugin_response)], response_model=None
+)
 async def plugin_gateway(
     payload: PluginGatewayIn,
     db: AsyncSession = Depends(get_db),
     runtime_token: str | None = Header(default=None, alias="X-Plugin-Runtime-Token"),
-) -> dict[str, Any]:
+) -> dict[str, Any] | JSONResponse:
+    def failure(status: int, code: ErrorCode, message: str) -> JSONResponse:
+        envelope = ErrorEnvelope(code=code, message=message[:1024], request_id=payload.request_id)
+        response = JSONResponse(
+            status_code=status,
+            content={"detail": message, "error": envelope.model_dump(mode="json")},
+        )
+        _private_plugin_response(response)
+        return response
+
     if not runtime_token_is_valid(runtime_token):
-        raise HTTPException(status_code=503, detail="Plugin runtime gateway is not configured.")
-    plugin = await _live_plugin(payload.plugin_id, require_enabled=False)
+        return failure(503, ErrorCode.UNAVAILABLE, "Plugin runtime gateway is not configured.")
+    if payload.api_version != "v1":
+        return failure(
+            409, ErrorCode.INCOMPATIBLE, "Unsupported Plugin API version; supported: v1."
+        )
+    try:
+        plugin = await _live_plugin(payload.plugin_id, require_enabled=False)
+    except HTTPException as exc:
+        code = ErrorCode.NOT_FOUND if exc.status_code == 404 else ErrorCode.UNAVAILABLE
+        return failure(exc.status_code, code, str(exc.detail))
     starting_authorization = (
         payload.method == "capabilities.check"
         and plugin.get("enabled") is True
@@ -2581,12 +2614,12 @@ async def plugin_gateway(
         and plugin.get("health") in {"healthy", "unknown"}
     )
     if not installation_is_executable(plugin) and not starting_authorization:
-        raise HTTPException(status_code=409, detail="Plugin installation is not executable.")
+        return failure(409, ErrorCode.CONFLICT, "Plugin installation is not executable.")
     if UUID(str(plugin["installation_id"])) != payload.installation_id:
-        raise HTTPException(status_code=409, detail="Plugin installation identity does not match.")
+        return failure(409, ErrorCode.CONFLICT, "Plugin installation identity does not match.")
     user = await db.scalar(select(User).where(User.id == payload.user_id, User.is_active.is_(True)))
     if user is None:
-        raise HTTPException(status_code=403, detail="Active user context is required.")
+        return failure(403, ErrorCode.FORBIDDEN, "Active user context is required.")
     logger.info(
         "Plugin gateway dispatch: request_id=%s plugin_id=%s installation_id=%s method=%s capability=%s user_id=%s",
         payload.request_id,
@@ -2597,21 +2630,28 @@ async def plugin_gateway(
         payload.user_id,
     )
     try:
-        result = await dispatch_gateway_request(
-            db,
-            plugin_id=payload.plugin_id,
-            user_id=payload.user_id,
-            installation_id=payload.installation_id,
-            method=payload.method,
-            capability=payload.capability,
-            capability_version=payload.capability_version,
-            payload=payload.payload,
-        )
+        # Complete before the runtime bridge's ten-second transport deadline.
+        async with asyncio.timeout(_GATEWAY_DISPATCH_TIMEOUT):
+            result = await dispatch_gateway_request(
+                db,
+                plugin_id=payload.plugin_id,
+                user_id=payload.user_id,
+                installation_id=payload.installation_id,
+                method=payload.method,
+                capability=payload.capability,
+                capability_version=payload.capability_version,
+                payload=payload.payload,
+            )
     except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return failure(403, ErrorCode.FORBIDDEN, str(exc))
     except (ValueError, LookupError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"payload": result}
+        return failure(422, ErrorCode.INVALID_REQUEST, str(exc))
+    except TimeoutError:
+        return failure(504, ErrorCode.UNAVAILABLE, "Plugin gateway operation timed out.")
+    except Exception:
+        logger.exception("Plugin gateway failure: request_id=%s", payload.request_id)
+        return failure(500, ErrorCode.INTERNAL, "Plugin gateway operation failed.")
+    return {"api_version": "v1", "request_id": str(payload.request_id), "payload": result}
 
 
 @router.get("/runtime/health")

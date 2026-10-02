@@ -445,6 +445,11 @@ async def test_host_inventory_survives_runtime_unavailability(gate, monkeypatch)
     assert result[0]["version"] == before["version"]
     assert result[0]["runtime_available"] is False
     assert result[0]["status"] == "unknown"
+    assert result[0]["runtime"]["available"] is False
+    assert result[0]["runtime"]["mechanism"] == "unavailable"
+    assert result[0]["runtime"]["sandbox_available"] is False
+    assert result[0]["runtime"]["bubblewrap_available"] is None
+    assert result[0]["enabled"] == before["enabled"]
     assert (
         ManagerState(manager_state().path).read()["plugins"][gate.plugin_id]["installation_id"]
         == before["installation_id"]

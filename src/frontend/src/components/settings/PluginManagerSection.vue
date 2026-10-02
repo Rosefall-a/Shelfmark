@@ -63,6 +63,7 @@ import {
 const plugins = ref<PluginSummary[]>([]);
 const catalog = ref<PluginCatalogEntry[]>([]);
 const loading = ref(true);
+const cataloguesLoading = ref(false);
 const error = ref("");
 const action = ref("");
 const selectedFile = ref<File | null>(null);
@@ -263,35 +264,45 @@ async function toggleCatalogEndpoint(
 }
 
 async function loadCatalogues() {
+  if (cataloguesLoading.value) return;
+  cataloguesLoading.value = true;
   catalogueErrors.value = [];
-  catalogues.value = await fetchPluginCatalogues();
-  const enabled = catalogues.value.filter((catalogue) => catalogue.enabled);
-  const results = await Promise.all(
-    enabled.map(async (catalogue) => ({
-      catalogue,
-      entries: await fetchPluginCatalogFromSource(catalogue.url).catch(
-        (error: unknown) => {
-          catalogueErrors.value.push(
-            `${catalogue.name}: ${error instanceof Error ? error.message : "Catalogue could not be loaded"}`,
-          );
-          return [];
-        },
-      ),
-    })),
-  );
-  const seen = new Set<string>();
-  catalog.value = results
-    .flatMap((result) =>
-      result.entries.map((entry) => ({
-        ...entry,
-        catalogue_url: result.catalogue.url,
+  try {
+    catalogues.value = await fetchPluginCatalogues();
+    const enabled = catalogues.value.filter((catalogue) => catalogue.enabled);
+    const results = await Promise.all(
+      enabled.map(async (catalogue) => ({
+        catalogue,
+        entries: await fetchPluginCatalogFromSource(catalogue.url).catch(
+          (error: unknown) => {
+            catalogueErrors.value.push(
+              `${catalogue.name}: ${error instanceof Error ? error.message : "Catalogue could not be loaded"}`,
+            );
+            return [];
+          },
+        ),
       })),
-    )
-    .filter((entry) => {
-      if (seen.has(entry.plugin_id)) return false;
-      seen.add(entry.plugin_id);
-      return true;
-    });
+    );
+    const seen = new Set<string>();
+    catalog.value = results
+      .flatMap((result) =>
+        result.entries.map((entry) => ({
+          ...entry,
+          catalogue_url: result.catalogue.url,
+        })),
+      )
+      .filter((entry) => {
+        if (seen.has(entry.plugin_id)) return false;
+        seen.add(entry.plugin_id);
+        return true;
+      });
+  } catch (err) {
+    catalogueErrors.value.push(
+      err instanceof Error ? err.message : "Catalogues are unavailable.",
+    );
+  } finally {
+    cataloguesLoading.value = false;
+  }
 }
 
 function openInstaller() {
@@ -309,6 +320,9 @@ function closeInstaller() {
 async function load() {
   loading.value = true;
   error.value = "";
+  void fetchRuntimeCapabilities()
+    .then((value) => (runtime.value = value))
+    .catch(() => (runtime.value = null));
   try {
     plugins.value = await fetchPlugins();
     availableUpdates.value = Object.fromEntries(
@@ -316,7 +330,8 @@ async function load() {
         .filter((item) => item.available_update?.update_available)
         .map((item) => [item.plugin_id, item.available_update!]),
     );
-    await loadCatalogues();
+    // Installed inventory is usable while remote catalogue enrichment loads.
+    void loadCatalogues();
     if (selected.value) {
       selected.value =
         plugins.value.find(
@@ -738,9 +753,6 @@ async function removePlugin(plugin: PluginSummary) {
 
 onMounted(() => {
   void load();
-  void fetchRuntimeCapabilities()
-    .then((value) => (runtime.value = value))
-    .catch(() => {});
   void fetchManagerSettings()
     .then((value) => (managerSettings.value = value))
     .catch(() => {});
@@ -748,7 +760,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section>
+  <section class="plugin-manager">
     <h2>Plugins</h2>
     <p class="muted">
       Browse plugins, review access, and manage installed releases and
@@ -756,17 +768,21 @@ onMounted(() => {
     </p>
     <aside v-if="runtime" class="runtime-notice">
       <strong>{{
-        runtime.bubblewrap_available
-          ? "Bubblewrap is usable"
-          : runtime.bubblewrap_available === null
-            ? "Runtime capability is unknown"
-            : "Bubblewrap is unavailable"
+        runtime.available === false
+          ? "Plugin runtime unavailable"
+          : runtime.bubblewrap_available
+            ? "Bubblewrap is usable"
+            : runtime.bubblewrap_available === null
+              ? "Runtime capability is unknown"
+              : "Bubblewrap is unavailable"
       }}</strong>
       <p>
         {{
-          runtime.sandbox_available
-            ? "Per-plugin namespace and filesystem isolation is available."
-            : "Per-plugin sandbox isolation is unavailable. Reduced isolation uses separate processes and available resource limits. Continue only where runtime policy permits."
+          runtime.available === false
+            ? "Installed plugins remain listed. Runtime status and isolation cannot be checked until the runtime reconnects."
+            : runtime.sandbox_available
+              ? "Per-plugin namespace and filesystem isolation is available."
+              : "Per-plugin sandbox isolation is unavailable. Reduced isolation uses separate processes and available resource limits. Continue only where runtime policy permits."
         }}
       </p>
       <p v-if="runtime.last_error">{{ runtime.last_error }}</p>
@@ -1010,9 +1026,12 @@ onMounted(() => {
       </div>
     </Teleport>
     <p v-if="loading">Loading plugins…</p>
-    <p v-else-if="error" class="error">{{ error }}</p>
-    <p v-else-if="!entries.length" class="muted">No plugins match this view.</p>
-    <div v-else class="list">
+    <p v-if="cataloguesLoading" class="muted">Refreshing catalogues…</p>
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="!loading && !entries.length" class="muted">
+      No plugins match this view.
+    </p>
+    <div v-if="!loading && entries.length" class="list">
       <article
         v-for="entry in catalogueEntries"
         :key="entry.plugin_id"
@@ -1190,6 +1209,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.plugin-manager {
+  color: var(--ui-text);
+}
+.runtime-notice a {
+  color: var(--ui-accent, #ffb765);
+}
 .manager-tabs,
 .manager-filters {
   display: flex;

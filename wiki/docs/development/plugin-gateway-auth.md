@@ -1,6 +1,13 @@
 # Plugin Gateway Authentication
 
-This document records the authenticated application-to-runtime/gateway trust model.
+The deployed host/runtime path uses authenticated private HTTP with
+`PLUGIN_RUNTIME_TOKEN`. Workers use the mediated JSON-line Plugin API and never
+receive this token. See [platform architecture](plugin-platform.md) for version,
+correlation, error and transport behavior.
+
+The bootstrap/session identity design below is implemented by the contract library
+and tested independently. It is not currently the runtime's deployed credential
+provisioning path; its in-memory credential store is not a durable production store.
 
 ## Identities
 
@@ -24,7 +31,9 @@ A durable CredentialStore implementation is required for production so credentia
 
 A successful bootstrap produces a separate short-lived session credential bound to the same application identity and gateway identity. Session credentials are independently revocable and rotatable.
 
-Session credentials must be presented on subsequent core-to-gateway requests. The gateway never trusts a URL alone.
+Consumers of the bootstrap library must present session credentials on subsequent
+requests. The production runtime bridge instead presents its dedicated runtime token.
+Neither path treats a URL as proof of identity.
 
 ## API version selection
 
@@ -36,7 +45,12 @@ RequestContext includes gateway_id alongside application_id, plugin identity, in
 
 ## Production runtime transport
 
-The application communicates with `plugin-runtime` over the private runtime network using `PLUGIN_RUNTIME_TOKEN`. Runtime-originated Plugin API requests carry that token back to `/api/plugins/runtime/gateway`; browsers and plugins never receive it. Each forwarded request includes a fresh request UUID plus persisted plugin and installation identity.
+The application communicates with its configured `PLUGIN_RUNTIME_URL` using
+`PLUGIN_RUNTIME_TOKEN`. Runtime-originated requests carry that token back to the
+configured `PLUGIN_GATEWAY_URL` at `/api/plugins/runtime/gateway`; browsers and
+plugins never receive it. Each request preserves a supplied UUID or receives a
+runtime-generated UUID, plus persisted plugin/installation identity and host user
+context. JSON-line responses preserve structured host errors and legacy SDK fields.
 
 ## Security boundary
 
