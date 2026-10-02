@@ -295,6 +295,7 @@ async function loadCatalogues() {
 }
 
 function openInstaller() {
+  if (installing.value || previewing.value) return;
   installOpen.value = true;
   void loadCatalogues();
 }
@@ -350,7 +351,7 @@ function selectFile(event: Event) {
 }
 
 async function previewSelected() {
-  if (!selectedFile.value) return;
+  if (!selectedFile.value || installing.value || previewing.value) return;
   previewing.value = true;
   error.value = "";
   installMessage.value = "";
@@ -376,6 +377,7 @@ async function previewRemoteUrl(
   url = remoteUrl.value,
   source: Partial<PluginSourceMetadata> = { type: "url" },
 ) {
+  if (installing.value || previewing.value) return;
   const normalized = url.trim();
   if (!normalized) return;
   previewing.value = true;
@@ -828,6 +830,7 @@ onMounted(() => {
       <button
         type="button"
         class="primary install-launcher"
+        :disabled="installing || previewing"
         @click="openInstaller"
       >
         Install a plugin
@@ -878,7 +881,7 @@ onMounted(() => {
               />
               <button
                 type="button"
-                :disabled="!selectedFile || previewing"
+                :disabled="!selectedFile || previewing || installing"
                 @click="previewSelected"
               >
                 {{ previewing ? "Inspecting…" : "Review package" }}
@@ -897,7 +900,7 @@ onMounted(() => {
                   @keyup.enter="previewRemoteUrl()"
                 /><button
                   type="button"
-                  :disabled="!remoteUrl.trim() || previewing"
+                  :disabled="!remoteUrl.trim() || previewing || installing"
                   @click="previewRemoteUrl()"
                 >
                   Review URL
@@ -975,7 +978,7 @@ onMounted(() => {
               </div>
               <button
                 type="button"
-                :disabled="previewing"
+                :disabled="previewing || installing"
                 @click="loadCatalogues"
               >
                 Refresh
@@ -1031,7 +1034,10 @@ onMounted(() => {
           · {{ entry.compatibility ?? "Compatibility checked during review" }}
         </p>
         <p>{{ entry.tags?.join(" · ") }}</p>
-        <button :disabled="previewing" @click="previewCatalogEntry(entry)">
+        <button
+          :disabled="previewing || installing"
+          @click="previewCatalogEntry(entry)"
+        >
           Review plugin
         </button>
       </article>

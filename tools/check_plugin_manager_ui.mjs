@@ -69,8 +69,20 @@ try {
     for (const category of await consent.locator(".category-header input[type=checkbox]").all()) await category.check();
     assert.match(await consent.innerText(), new RegExp(`${review.permissions.length} of ${review.permissions.length} newly granted`));
     await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "permission-review.png"), fullPage: true });
+    // Hold a real contribution request to reproduce fast-install/slow-refresh timing.
+    let releaseRefresh;
+    let holdRefresh = true;
+    const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
+    const refreshRequest = page.waitForRequest("**/api/plugins/example.jellyfin-media-sync/ui");
+    await page.route("**/api/plugins/example.jellyfin-media-sync/ui", async (route) => {
+      if (holdRefresh) { holdRefresh = false; await refreshGate; }
+      await route.continue();
+    });
     await consent.getByRole("button", { name: "Install with selected access", exact: true }).click();
     await consent.waitFor({ state: "hidden" });
+    await refreshRequest;
+    assert.equal(await page.getByRole("button", { name: "Install a plugin", exact: true }).isDisabled(), true);
+    releaseRefresh();
     await page.getByRole("button", { name: "Installed", exact: true }).click();
     await plugin.getByText("running", { exact: true }).waitFor();
     await page.getByRole("button", { name: "All", exact: true }).click();
@@ -84,6 +96,7 @@ try {
       assert.equal(await duplicate.getByRole("button", { name, exact: true }).count(), 1);
     }
     await duplicate.getByRole("button", { name: "Cancel", exact: true }).click();
+    await duplicate.waitFor({ state: "hidden" });
     await page.getByRole("dialog", { name: "Install a plugin", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
     await page.goto(origin + "/plugins/example.jellyfin-media-sync");
     await page.getByText("Jellyfin server URL", { exact: true }).waitFor();

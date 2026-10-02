@@ -366,6 +366,35 @@ def acceptance(plugins_root, work, browser=False):
                 f"Official distribution: {len(official)} live packages verified",
                 flush=True,
             )
+            live_release = next(
+                item for item in official if item["plugin_id"] == PLUGIN
+            )
+            live_source = {
+                "url": live_release["url"],
+                "source_type": "catalogue",
+                "catalogue_url": "https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/main/list.json",
+            }
+            live_preview = request("POST", "/install/preview-url", json=live_source)
+            request(
+                "POST",
+                "/install/url",
+                201,
+                params={
+                    "approved_permissions": [
+                        p["key"] for p in live_preview["permissions"]
+                    ]
+                },
+                json=live_source,
+            )
+            assert current()["status"] == "running" and current()["health"] == "healthy"
+            assert current()["version"] == live_release["version"]
+            assert current()["source"]["type"] == "catalogue"
+            assert request("GET", f"/{PLUGIN}/ui")["native_frontend"]
+            request("DELETE", f"/{PLUGIN}", 204)
+            print(
+                "Live official Jellyfin package installation and healthy startup: passed",
+                flush=True,
+            )
             request(
                 "POST",
                 "/catalogues",

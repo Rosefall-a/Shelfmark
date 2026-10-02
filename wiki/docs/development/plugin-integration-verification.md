@@ -12,6 +12,12 @@ later catalogue updates. Spreading stored source metadata also allowed the old
 URL to replace the selected new release URL. All four remote preview/install/update
 requests now serialize provenance explicitly and preserve the selected URL.
 
+GitHub browser acceptance also exposed an installer timing bug: after the consent
+dialog closed, a second installation preview could open while contribution refresh
+still kept the first installation busy. Cancelling the duplicate then did nothing.
+The launcher and preview actions now remain disabled until installation finishes;
+acceptance holds a real contribution request to reproduce this timing deterministically.
+
 The official builder stores tags, release notes and release-specific update policy
 in integrity-protected `distribution.json`. The host previously read only manifest
 defaults, losing this information from previews and installed inventory. The host
@@ -35,7 +41,7 @@ and configuration through public APIs.
 
 | Requested area | Verified behavior |
 | --- | --- |
-| Distribution | Live official catalogue and all ten package URLs; payload/archive hashes, versions, trusted signatures, README, tags and update policy; release metadata validated by both repository tooling and host |
+| Distribution | Live official catalogue and all ten package URLs; payload/archive hashes, versions, trusted signatures, README, tags and update policy; the downloaded official Jellyfin package installs and runs healthy before the synthetic sequence; release metadata validated by both repository tooling and host |
 | Install | Rendered discovery, tag filtering, detail/README, host risk bubbles and scope counts, explicit approval, running/healthy worker and native Jellyfin page; duplicate installation exposes update/reinstall/replace/cancel |
 | Persistent data | Configuration, secret/progress storage bytes and installation identity survive host/runtime restart, disable/enable, preserving reinstall, update, rollback and failed update; confirmed purge resets owned data and uninstall removes it |
 | Permissions | Plugin declarations are classified by host; revocation denies real actions; explicit regrant restores access; newly requested scope stages an update while the old version runs, then approved staged activation succeeds |
