@@ -12,6 +12,7 @@ import asyncio
 import base64
 import binascii
 import logging
+import os
 import tempfile
 import time
 from collections.abc import Callable
@@ -28,7 +29,11 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
-from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
+from src.database.models.plugin_permissions import (
+    PluginPermissionGrant,
+    PluginPermissionRequest,
+    PluginLifecycleTransaction,
+)
 
 from .backend_routes import BackendRouteConflictError, validate_host_route_ownership
 from .capabilities import (
@@ -44,8 +49,12 @@ from .contracts import (
     PluginPackageIdentity,
     parse_semver,
     version_satisfies,
+    evaluate_manifest_compatibility,
+    CompatibilityStatus,
 )
 from .runtime_client import PluginRuntimeClient, PluginRuntimeRequestError, PluginRuntimeUnavailable
+from .manager_state import manager_state
+from .lifecycle_lock import serialized_lifecycle
 from .updates import (
     PackageVerificationError,
     PluginPackageVerifier,
@@ -411,10 +420,22 @@ class PluginInstaller:
             return inspect_package(snapshot, self.verifier)
 
     async def plan_update(
-        self, plugin_id: str, inspected: InspectedPackage, db: AsyncSession
+        self,
+        plugin_id: str,
+        inspected: InspectedPackage,
+        db: AsyncSession,
+        *,
+        operation: str = "update",
     ) -> InstallationPlan:
         """Compare only this installation's identity, declarations and grants."""
         manifest = inspected.package.manifest
+        compatibility = evaluate_manifest_compatibility(
+            manifest,
+            os.getenv("PLUGIN_SDK_VERSION", "1.0.0"),
+            os.getenv("PLUGIN_APPLICATION_VERSION", "1.0.0"),
+        )
+        if compatibility.status != CompatibilityStatus.COMPATIBLE:
+            raise InstallationError(409, f"Package is not installable: {compatibility.reason}")
         if manifest.plugin_id != plugin_id:
             raise InstallationError(
                 400, "Updated package plugin ID does not match the installed plugin."
@@ -425,8 +446,17 @@ class PluginInstaller:
         )
         if installed is None or not installed.get("installation_id"):
             raise InstallationError(409, "Plugin installation identity is missing.")
-        if parse_semver(manifest.version) <= parse_semver(str(installed.get("version", "0.0.0"))):
+        if operation == "update" and parse_semver(manifest.version) <= parse_semver(
+            str(installed.get("version", "0.0.0"))
+        ):
             raise InstallationError(409, "Plugin update version must be newer.")
+        if operation == "reinstall" and (
+            manifest.version != installed.get("version")
+            or manifest.integrity.sha256 != installed.get("digest")
+        ):
+            raise InstallationError(
+                409, "Reinstall must use the exact installed release and digest."
+            )
         installation_id = UUID(str(installed["installation_id"]))
         installed_trust = installed.get("trust")
         installed_trust = installed_trust if isinstance(installed_trust, dict) else {}
@@ -443,7 +473,23 @@ class PluginInstaller:
             and inspected.trust.is_verified
             and package_identity_can_retain_grants(previous_identity, candidate_identity)
         )
-        if installed_trust.get("status") == PackageTrustStatus.TRUSTED.value and not can_retain:
+        if operation == "reinstall":
+            can_retain = True
+        if operation == "rollback":
+            if not any(
+                item.get("version") == manifest.version
+                and item.get("digest") == manifest.integrity.sha256
+                for item in installed.get("history", [])
+            ):
+                raise InstallationError(409, "Rollback must use a retained package.")
+            can_retain = True
+        if operation == "replace":
+            can_retain = False
+        if (
+            installed_trust.get("status") == PackageTrustStatus.TRUSTED.value
+            and not can_retain
+            and operation != "replace"
+        ):
             raise InstallationError(
                 409,
                 "The verified update publisher does not match the installed package. "
@@ -471,6 +517,8 @@ class PluginInstaller:
             tuple(permission.capability for permission in manifest.permissions),
             grants if can_retain else (),
         )
+        if operation == "rollback":
+            delta = delta.model_copy(update={"newly_requested_grants": ()})
         dependencies = plan_dependencies(
             manifest, (item for item in installed_plugins if item.get("plugin_id") != plugin_id)
         )
@@ -532,6 +580,7 @@ class PluginInstaller:
                 )
         return dangerous
 
+    @serialized_lifecycle
     async def install(
         self,
         package: bytes,
@@ -541,6 +590,7 @@ class PluginInstaller:
         db: AsyncSession,
         source: dict[str, Any] | None = None,
         update_plugin_id: str | None = None,
+        operation: str = "update",
     ) -> dict[str, Any]:
         """Validate, resolve, authorize, atomically install, then activate and check health."""
         if len(package) > self.verifier.max_package_bytes:
@@ -561,9 +611,31 @@ class PluginInstaller:
                 409, "The remote plugin changed after preview; review it again before installing."
             )
         if update_plugin_id is not None:
-            plan = await self.plan_update(update_plugin_id, inspected, db)
+            plan = await self.plan_update(update_plugin_id, inspected, db, operation=operation)
         else:
-            installed = await self.runtime.plugins() if manifest.dependencies else ()
+            compatibility = evaluate_manifest_compatibility(
+                manifest,
+                os.getenv("PLUGIN_SDK_VERSION", "1.0.0"),
+                os.getenv("PLUGIN_APPLICATION_VERSION", "1.0.0"),
+            )
+            if compatibility.status != CompatibilityStatus.COMPATIBLE:
+                raise InstallationError(409, f"Package is not installable: {compatibility.reason}")
+            installed = await self.runtime.plugins()
+            duplicate = next(
+                (item for item in installed if item.get("plugin_id") == manifest.plugin_id), None
+            )
+            duplicate = duplicate or manager_state().read()["plugins"].get(manifest.plugin_id)
+            if duplicate is not None:
+                raise InstallationError(
+                    409,
+                    {
+                        "code": "already_installed",
+                        "plugin_id": manifest.plugin_id,
+                        "installed_version": duplicate.get("version"),
+                        "message": "Plugin is already installed. Choose update, reinstall, replace, or cancel.",
+                        "choices": ["update", "reinstall", "replace", "cancel"],
+                    },
+                )
             plan = InstallationPlan(
                 inspected,
                 uuid4(),
@@ -588,6 +660,28 @@ class PluginInstaller:
         except InstallationError as exc:
             exc.plan = plan
             raise
+        if plan.installed is not None:
+            new_keys = {permission_key(ref) for ref in plan.permissions.newly_requested_grants}
+            if not new_keys.issubset(set(consent.approved_permissions)):
+                manager_state().stage(
+                    manifest.plugin_id,
+                    package,
+                    {
+                        "version": manifest.version,
+                        "available_version": manifest.version,
+                        "digest": manifest.integrity.sha256,
+                        "status": "awaiting_permissions",
+                        "source": source,
+                        "new_permission_keys": sorted(new_keys),
+                    },
+                )
+                return {
+                    "plugin_id": manifest.plugin_id,
+                    "version": plan.installed["version"],
+                    "available_version": manifest.version,
+                    "status": "awaiting_permissions",
+                    "healthy": plan.installed.get("health") == "healthy",
+                }
         return await self._commit(plan, package, consent, admin, db, source, dangerous)
 
     async def _commit(
@@ -609,8 +703,18 @@ class PluginInstaller:
         operation_id = str(uuid4())
         prepared = False
         commit_attempted = False
+        removed_grants: list[UUID] = []
+        added_grants: list[PluginPermissionGrant] = []
         try:
             if replacing and not plan.can_retain_grants:
+                previous_grants = await db.scalars(
+                    select(PluginPermissionGrant).where(
+                        PluginPermissionGrant.plugin_id == plugin_id,
+                        PluginPermissionGrant.installation_id == plan.installation_id,
+                        PluginPermissionGrant.revoked_at.is_(None),
+                    )
+                )
+                removed_grants.extend(grant.id for grant in previous_grants)
                 await db.execute(
                     update(PluginPermissionGrant)
                     .where(
@@ -618,7 +722,7 @@ class PluginInstaller:
                         PluginPermissionGrant.installation_id == plan.installation_id,
                         PluginPermissionGrant.revoked_at.is_(None),
                     )
-                    .values(revoked_at=now)
+                    .values(revoked_at=now, revoked_by_operation=UUID(operation_id))
                 )
             rows: list[Any] = []
             for ref in plan.permissions.newly_requested_grants:
@@ -640,7 +744,9 @@ class PluginInstaller:
                     )
                 )
                 if allowed:
-                    rows.append(PluginPermissionGrant(**identity))
+                    grant = PluginPermissionGrant(id=uuid4(), **identity)
+                    rows.append(grant)
+                    added_grants.append(grant)
                 rows.append(
                     PluginPermissionAudit(
                         **identity,
@@ -676,6 +782,28 @@ class PluginInstaller:
                     "runtime did not prepare the installation transaction"
                 )
             prepared = True
+            manager_state().patch(
+                plugin_id,
+                **{
+                    **(plan.installed or {}),
+                    "plugin_id": plugin_id,
+                    "name": manifest.name,
+                    "version": manifest.version,
+                    "description": manifest.description,
+                    "installation_id": str(plan.installation_id),
+                    "digest": manifest.integrity.sha256,
+                    "permissions": [p.capability.name.value for p in manifest.permissions],
+                    "permission_refs": [
+                        p.capability.model_dump(mode="json") for p in manifest.permissions
+                    ],
+                    "source": source or (plan.installed or {}).get("source", {"type": "upload"}),
+                    "trust": options["trust_metadata"],
+                    "status": "stopped",
+                    "enabled": False,
+                    "compatible": True,
+                    "health": "unknown",
+                },
+            )
             if plan.can_retain_grants:
                 removed = {(ref.name.value, ref.version) for ref in plan.permissions.removed}
                 for grant in await db.scalars(
@@ -686,7 +814,19 @@ class PluginInstaller:
                     )
                 ):
                     if (grant.capability, grant.capability_version) in removed:
+                        removed_grants.append(grant.id)
                         grant.revoked_at = now
+                        grant.revoked_by_operation = UUID(operation_id)
+            receipt = PluginLifecycleTransaction(
+                id=UUID(operation_id),
+                plugin_id=plugin_id,
+                user_id=getattr(admin, "id", None),
+                added_grants=[str(grant.id) for grant in added_grants],
+                removed_grants=[str(grant_id) for grant_id in removed_grants],
+                grant_timestamp=now,
+                completed=False,
+            )
+            db.add_all([receipt])
             commit_attempted = True
             await db.commit()
         except Exception as exc:
@@ -700,6 +840,10 @@ class PluginInstaller:
             if prepared and definite_rejection:
                 try:
                     await self.runtime.finish_installation(plugin_id, operation_id, commit=False)
+                    if plan.installed:
+                        manager_state().patch(plugin_id, **plan.installed)
+                    else:
+                        manager_state().remove(plugin_id)
                 except (PluginRuntimeRequestError, PluginRuntimeUnavailable):
                     logging.getLogger(__name__).exception(
                         "Plugin installation remains pending and cannot activate: plugin_id=%s",
@@ -730,9 +874,57 @@ class PluginInstaller:
                     "Plugin activation failed: plugin_id=%s error=%s", plugin_id, exc
                 )
                 status = "failed_activation"
+        failed = status in {"unhealthy", "failed_activation"}
+        if replacing and failed:
+            # Candidate code is stopped before its grants are withdrawn. Restore
+            # only grants this transaction removed; never revive unrelated revocations.
+            await self.runtime.stop(quote(plugin_id, safe=""))
+            for grant in added_grants:
+                await db.execute(
+                    update(PluginPermissionGrant)
+                    .where(PluginPermissionGrant.id == grant.id)
+                    .values(revoked_at=int(time.time()))
+                )
+            if removed_grants:
+                await db.execute(
+                    update(PluginPermissionGrant)
+                    .where(
+                        PluginPermissionGrant.id.in_(removed_grants),
+                        PluginPermissionGrant.revoked_by_operation == UUID(operation_id),
+                    )
+                    .values(revoked_at=None, revoked_by_operation=None)
+                )
+            await db.commit()
+            await self.runtime.finish_activation(plugin_id, operation_id, commit=False)
+            manager_state().patch(
+                plugin_id,
+                last_update_error="Candidate failed startup/health; previous release restored.",
+            )
+            status = "rolled_back"
+            healthy = await self.runtime.plugin_health(quote(plugin_id, safe=""))
+        else:
+            if (
+                plan.installed
+                and plan.installed.get("enabled")
+                and plan.installed.get("status") == "stopped"
+            ):
+                await self.runtime.stop_runtime(plugin_id)
+                status = "stopped"
+            await self.runtime.finish_activation(plugin_id, operation_id, commit=True)
+            await self.runtime.prune_history(
+                plugin_id, int(manager_state().settings()["retained_versions"])
+            )
+        manager_state().reconcile(await self.runtime.plugins())
+        receipt.completed = True
+        await db.commit()
+        if not failed:
+            manager_state().patch(plugin_id, staged_update=None, available_update=None)
+            manager_state().stage_path(plugin_id).unlink(missing_ok=True)
         response = {
             "plugin_id": plugin_id,
-            "version": manifest.version,
+            "version": plan.installed["version"]
+            if status == "rolled_back" and plan.installed
+            else manifest.version,
             "permissions_requested": len(plan.permissions.newly_requested_grants),
             "permissions_granted": len(approved),
             "dangerous_permissions_reauthenticated": dangerous,

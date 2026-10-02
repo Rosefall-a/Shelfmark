@@ -608,15 +608,19 @@ class PluginBackendRoute(ContractModel):
             "native-frontend",
             "permissions",
             "retry",
+            "reinstall",
+            "rollback",
+            "history",
+            "start",
+            "stop",
+            "auto-update",
+            "detail",
             "secrets",
             "settings",
             "ui",
             "update",
         }
-        if (
-            scope is BackendRouteScope.PLUGIN
-            and path.split("/", 1)[0] in reserved_plugin_roots
-        ):
+        if scope is BackendRouteScope.PLUGIN and path.split("/", 1)[0] in reserved_plugin_roots:
             raise ValueError("namespaced backend route conflicts with a host-owned plugin path")
         if scope is BackendRouteScope.HOST and not path.startswith("/api/"):
             raise ValueError("host backend route paths must start with /api/")
@@ -634,6 +638,9 @@ class PluginManifest(ContractModel):
     name: str = Field(min_length=1, max_length=128)
     version: str
     description: str = Field(default="", max_length=2_000)
+    icon: str | None = Field(default=None, max_length=2048)
+    tags: tuple[str, ...] = ()
+    automatic_update: bool = True
     entrypoint: str = Field(
         min_length=1,
         max_length=255,

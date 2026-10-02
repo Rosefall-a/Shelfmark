@@ -77,7 +77,36 @@ class PluginRuntimeClient:
         await self._request("POST", f"/plugins/{plugin_id}/start", json=payload)
 
     async def stop(self, plugin_id: str) -> None:
+        await self._request("POST", f"/plugins/{plugin_id}/disable")
+
+    async def stop_runtime(self, plugin_id: str) -> None:
         await self._request("POST", f"/plugins/{plugin_id}/stop")
+
+    async def finish_activation(self, plugin_id: str, operation_id: str, *, commit: bool) -> None:
+        await self._request(
+            "PUT",
+            f"/plugins/{quote(plugin_id, safe='')}/activation",
+            json={"operation_id": operation_id, "commit": commit},
+        )
+
+    async def package_archive(self, plugin_id: str, history_id: str | None = None) -> bytes:
+        path = f"/plugins/{quote(plugin_id, safe='')}/archive"
+        if history_id:
+            path += f"/{quote(history_id, safe='')}"
+        data = await self._request("GET", path)
+        return base64.b64decode(data["package"], validate=True)
+
+    async def prune_history(
+        self, plugin_id: str, retain: int, history_id: str | None = None
+    ) -> None:
+        await self._request(
+            "PUT",
+            f"/plugins/{quote(plugin_id, safe='')}/history",
+            json={"retain": retain, "history_id": history_id},
+        )
+
+    async def purge_data(self, plugin_id: str) -> None:
+        await self._request("POST", f"/plugins/{quote(plugin_id, safe='')}/purge")
 
     async def delete(self, plugin_id: str) -> None:
         await self._request("DELETE", f"/plugins/{plugin_id}")

@@ -130,6 +130,7 @@ def _package_bytes(
     plugin_id: str = "example.upload",
     frontend: bool = False,
     native_frontend: bool = False,
+    version: str = "1.0.0",
 ) -> bytes:
     files = {
         "plugin.py": b"def main():\n    return None\n",
@@ -150,7 +151,7 @@ def _package_bytes(
         "manifest_version": 1,
         "plugin_id": plugin_id,
         "name": "Upload Example",
-        "version": "1.0.0",
+        "version": version,
         "entrypoint": "plugin:main",
         "sdk_version_range": "*",
         "application_version_range": "*",

@@ -115,13 +115,18 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
             "frontend.native",
         )
     ]
-    db.scalars.return_value = SimpleNamespace(all=lambda: [registration])
+    async def scalars(statement):
+        if "plugin_permission_grants" in str(statement):
+            return []
+        return SimpleNamespace(all=lambda: [registration])
+    db.scalars.side_effect = scalars
     app = FastAPI()
     app.include_router(plugins.router)
     app.include_router(plugins.host_router)
     app.dependency_overrides[plugins.get_db] = lambda: db
     app.dependency_overrides[plugins.get_current_user] = lambda: user
-    app.dependency_overrides[plugins.get_current_admin] = lambda: user
+    app.dependency_overrides[plugins.get_plugin_manager_reader] = lambda: user
+    app.dependency_overrides[plugins.get_plugin_manager_admin] = lambda: user
     monkeypatch.setattr(plugins, "get_current_user", AsyncMock(return_value=user))
     try:
         async with httpx.AsyncClient(

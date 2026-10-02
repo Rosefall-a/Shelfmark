@@ -59,6 +59,36 @@ def _summarize_airing(r: dict[str, Any]) -> str:
 
 
 _airing_running = False
+_plugin_updates_running = False
+
+
+def _plugin_updates_is_running() -> bool:
+    return _plugin_updates_running
+
+
+def _start_plugin_updates(_mode: str) -> dict[str, Any]:
+    global _plugin_updates_running
+    if not _plugin_updates_running:
+        _plugin_updates_running = True
+        asyncio.get_running_loop().create_task(_run_plugin_updates())
+    return {"running": True}
+
+
+async def _run_plugin_updates() -> None:
+    global _plugin_updates_running
+    from src.api.routes.plugins import run_automatic_plugin_updates
+
+    try:
+        async with SessionLocal() as db:
+            admin = await db.scalar(
+                select(User).where(User.is_admin.is_(True), User.is_active.is_(True))
+            )
+            result = await run_automatic_plugin_updates(db, admin) if admin else {"checked": 0}
+        await record_run("plugin_updates", result)
+    except Exception:
+        logger.exception("Scheduled plugin updates failed")
+    finally:
+        _plugin_updates_running = False
 
 
 def _airing_is_running() -> bool:
@@ -84,6 +114,20 @@ async def _run_airing(force: bool) -> None:
 
 
 JOBS: dict[str, JobSpec] = {
+    "plugin_updates": JobSpec(
+        "plugin_updates",
+        "Plugin updates",
+        "Checks catalogue releases and applies automatic update policy.",
+        60,
+        7 * 24 * 60,
+        24 * 60,
+        True,
+        _start_plugin_updates,
+        _plugin_updates_is_running,
+        lambda result: (
+            f"{result.get('checked', 0)} checked, {result.get('installed', 0)} installed"
+        ),
+    ),
     "airing_check": JobSpec(
         "airing_check",
         "Airing episode check",

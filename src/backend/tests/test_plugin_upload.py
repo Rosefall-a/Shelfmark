@@ -51,6 +51,15 @@ class FakeClient:
         self.package: bytes | None = None
         self.filename = ""
 
+    async def plugins(self):
+        return []
+
+    async def finish_activation(self, plugin_id, operation_id, *, commit):
+        assert commit
+
+    async def prune_history(self, plugin_id, retain):
+        assert retain >= 1
+
     async def install_package(
         self,
         package: bytes,
@@ -168,7 +177,7 @@ def test_upload_endpoint_verifies_and_forwards_utp(monkeypatch) -> None:
 
     class FakeDb:
         def add_all(self, rows):
-            self.rows = rows
+            self.rows = getattr(self, "rows", []) + list(rows)
 
         async def commit(self):
             pass
@@ -213,7 +222,7 @@ def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) ->
 
     class FakeDb:
         def add_all(self, rows):
-            self.rows = rows
+            self.rows = getattr(self, "rows", []) + list(rows)
 
         async def commit(self):
             pass
@@ -239,6 +248,7 @@ def test_upload_endpoint_accepts_ui_playground_frontend_manifest(monkeypatch) ->
         "PluginPermissionRequest",
         "PluginPermissionGrant",
         "PluginPermissionAudit",
+        "PluginLifecycleTransaction",
     }
     assert client.package == payload
 
@@ -300,7 +310,7 @@ def test_dangerous_unsigned_grant_requires_password_reauthentication(monkeypatch
 
     class FakeDb:
         def add_all(self, rows):
-            self.rows = rows
+            self.rows = getattr(self, "rows", []) + list(rows)
 
         async def commit(self):
             pass
@@ -345,7 +355,7 @@ def test_upload_endpoint_accepts_zip_package() -> None:
 
     class FakeDb:
         def add_all(self, rows):
-            self.rows = rows
+            self.rows = getattr(self, "rows", []) + list(rows)
 
         async def commit(self):
             pass
@@ -371,7 +381,7 @@ def test_upload_endpoint_accepts_package_with_unusual_filename() -> None:
 
     class FakeDb:
         def add_all(self, rows):
-            self.rows = rows
+            self.rows = getattr(self, "rows", []) + list(rows)
 
         async def commit(self):
             pass

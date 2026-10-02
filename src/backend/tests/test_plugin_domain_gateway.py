@@ -76,7 +76,7 @@ def test_gateway_rejects_capability_confusion_before_dispatch() -> None:
 def test_gateway_rejects_missing_installation_grant() -> None:
     with pytest.raises(PermissionError, match="has not been granted"):
         dispatch(
-            FakeDb(scalar_results=[None]),
+            FakeDb(scalar_results=[None, None, None]),
             method="sessions.list",
             capability="sessions.read",
         )

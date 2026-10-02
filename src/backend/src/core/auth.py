@@ -103,6 +103,10 @@ async def get_current_user(
 
     if authorization and authorization.startswith("Bearer "):
         api_key = authorization[7:].strip()
+        if api_key.startswith("utpm_"):
+            raise HTTPException(
+                status_code=403, detail="Plugin management tokens cannot access application APIs."
+            )
         if api_key.startswith(API_KEY_PREFIX):
             user = await db.scalar(
                 select(User)

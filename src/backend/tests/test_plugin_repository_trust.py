@@ -104,6 +104,12 @@ def test_signed_plugin_repo_artifact_is_forwarded_only_after_verification(
         async def finish_installation(self, plugin_id, operation_id, *, commit):
             assert commit is True
 
+        async def finish_activation(self, plugin_id, operation_id, *, commit):
+            assert commit
+
+        async def prune_history(self, plugin_id, retain):
+            assert retain >= 1
+
         async def start(self, plugin_id, user_id=None):
             self.started = plugin_id
 

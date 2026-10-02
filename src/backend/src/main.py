@@ -146,7 +146,25 @@ async def start_session_retention_loop() -> None:
 @app.on_event("startup")
 async def start_jobs_loop() -> None:
     # scheduled jobs (see features/jobs.py), including the airing check
-    asyncio.create_task(run_jobs_loop())
+    from src.plugin_api.recovery import recover_transactions
+    from src.plugin_api.runtime_client import PluginRuntimeClient, PluginRuntimeUnavailable
+    import logging
+
+    # Runtime starts alongside the host. No package can auto-start while pending;
+    # retry this reconciliation when the runtime becomes reachable.
+    async def recover_and_start_jobs() -> None:
+        for _ in range(30):
+            try:
+                async with SessionLocal() as db:
+                    await recover_transactions(PluginRuntimeClient(), db)
+                break
+            except PluginRuntimeUnavailable:
+                await asyncio.sleep(5)
+            except Exception:
+                logging.getLogger(__name__).exception("Plugin transaction recovery failed")
+                await asyncio.sleep(5)
+        await run_jobs_loop()
+    asyncio.create_task(recover_and_start_jobs())
 
 
 @app.get("/health")

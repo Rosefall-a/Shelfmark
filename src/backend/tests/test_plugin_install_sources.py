@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from src.api.routes import plugins
-from src.core.auth import get_current_admin, hash_password
+from src.core.auth import hash_password
 from src.core.config import settings
 from src.database.models import achievement as _achievement  # noqa: F401
 from src.database.models.plugin_permission_audit import PluginPermissionAudit
@@ -121,6 +121,7 @@ def package_bytes(
 
 @pytest.fixture
 async def gate(monkeypatch, tmp_path):
+    monkeypatch.setenv("PLUGIN_MANAGER_STATE_PATH", str(tmp_path / "manager.json"))
     monkeypatch.syspath_prepend(str(Path(__file__).parents[2] / "plugin-runtime"))
     runtime_module = importlib.import_module("runtime")
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
@@ -166,16 +167,40 @@ async def gate(monkeypatch, tmp_path):
             events.append("finalize" if commit else "abort")
             registry.finish_installation(plugin_id, operation_id, commit=commit)
 
+        async def finish_activation(self, plugin_id, operation_id, *, commit):
+            registry.finish_activation(plugin_id, operation_id, commit=commit)
+
+        async def prune_history(self, plugin_id, retain, history_id=None):
+            registry.prune_history(plugin_id, retain=retain, history_id=history_id)
+
+        async def stop(self, plugin_id):
+            registry.stop(plugin_id)
+
+        async def stop_runtime(self, plugin_id):
+            registry.stop(plugin_id, disable=False)
+
+        async def package_archive(self, plugin_id, history_id=None):
+            return base64.b64decode(registry.package_archive(plugin_id, history_id)["package"])
+
+        async def purge_data(self, plugin_id):
+            registry.purge_data(plugin_id)
+
+        async def delete(self, plugin_id):
+            registry.delete(plugin_id)
+
         async def start(self, plugin_id, user_id=None):
             events.append("start")
-            assert "commit" in events
+            if registry._state().get(plugin_id, {}).get("pending_activation"):
+                assert "commit" in events
             if self.fail_start:
                 raise PluginRuntimeRequestError("injected activation failure")
             registry.start(plugin_id, user_id)
 
         async def plugin_health(self, plugin_id):
             events.append("health")
-            return self.healthy and registry.health(plugin_id)
+            return (
+                self.healthy or registry.package(plugin_id)[1]["version"] == "1.0.0"
+            ) and registry.health(plugin_id)
 
     class Session(AsyncSession):
         async def commit(self):
@@ -244,13 +269,14 @@ async def gate(monkeypatch, tmp_path):
         authenticated_admin = SimpleNamespace(
             id=admin_id, password_hash=admin.password_hash, is_admin=True
         )
-        app.dependency_overrides[get_current_admin] = lambda: authenticated_admin
+        app.dependency_overrides[plugins.get_plugin_manager_admin] = lambda: authenticated_admin
         app.dependency_overrides[get_db] = lambda: db
         async with original_async_client(
             transport=httpx.ASGITransport(app=app), base_url="http://gate.test"
         ) as client:
             harness = SimpleNamespace(
                 client=client,
+                admin=authenticated_admin,
                 db=db,
                 runtime=runtime,
                 registry=registry,
@@ -348,7 +374,7 @@ async def test_every_source_uses_the_complete_lifecycle(gate, source, trust):
     assert response.json()["trust_status"] == trust
     assert response.json()["status"] == "running"
     assert response.json()["healthy"] is True
-    assert gate.events[-5:] == ["install", "commit", "finalize", "start", "health"]
+    assert gate.events[-6:] == ["install", "commit", "finalize", "start", "health", "commit"]
     assert (
         gate.registry.root / gate.plugin_id / "plugin.py"
     ).read_bytes() == b"protocol fixture bytes\n"
@@ -579,10 +605,11 @@ async def test_becoming_trusted_does_not_retain_unverified_grants(gate, source):
         package_bytes(gate.plugin_id, trust="trusted", key=gate.key, permissions=("games.read",)),
     )
     assert response.status_code == 200, response.text
-    assert [
-        ref["name"] for ref in response.json()["permission_delta"]["newly_requested_grants"]
-    ] == ["games.read"]
-    assert await grants(gate) == []
+    assert response.json()["status"] == "awaiting_permissions"
+    assert gate.registry.package(gate.plugin_id)[1]["version"] == "1.0.0"
+    assert gate.registry.health(gate.plugin_id)
+    assert [row.capability for row in await grants(gate)] == ["games.read"]
+    assert "install" not in gate.events
 
 
 @pytest.mark.parametrize("source", ("update", "update-url", "update-catalogue"))
@@ -608,8 +635,16 @@ async def test_activation_failure_is_reported_after_a_successful_commit(gate, so
     gate.runtime.healthy = failure != "health"
     response = await acquire(gate, source, package_bytes(gate.plugin_id))
     assert response.status_code == (200 if source.startswith("update") else 201), response.text
-    assert response.json()["status"] == ("failed_activation" if failure == "start" else "unhealthy")
-    assert response.json()["healthy"] is False
+    if source.startswith("update"):
+        assert response.json()["status"] == "rolled_back"
+        assert response.json()["healthy"] is True
+        assert gate.registry.package(gate.plugin_id)[1]["version"] == "1.0.0"
+        assert gate.registry.health(gate.plugin_id)
+    else:
+        assert response.json()["status"] == (
+            "failed_activation" if failure == "start" else "unhealthy"
+        )
+        assert response.json()["healthy"] is False
     assert gate.events.index("install") < gate.events.index("commit") < gate.events.index("start")
 
 

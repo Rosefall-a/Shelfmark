@@ -11,12 +11,33 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_admin, get_current_user
-from src.database.models.plugin_permissions import PluginClientIdentity, PluginPermissionGrant, PluginPermissionRequest
+from src.core.auth import get_current_user
+from src.plugin_api.management_auth import get_plugin_manager_admin
+from src.database.models.plugin_permissions import (
+    PluginClientIdentity,
+    PluginPermissionGrant,
+    PluginPermissionRequest,
+)
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.contracts import Capability
 from src.plugin_api.permissions import issue_client_credential
+from src.plugin_api.capabilities import capability_definition
+
+
+async def _declared_permission(
+    plugin_id: str, installation_id: UUID, capability: str, version: int
+) -> dict:
+    from src.api.routes.plugins import _live_plugin
+
+    plugin = await _live_plugin(plugin_id, require_enabled=False)
+    if plugin.get("installation_id") != str(installation_id) or not any(
+        ref.get("name") == capability and ref.get("version") == version
+        for ref in plugin.get("permission_refs", [])
+    ):
+        raise HTTPException(409, "Permission must be declared by the active installation.")
+    return plugin
+
 
 router = APIRouter(prefix="/api/plugin-permissions", tags=["plugin-permissions"])
 
@@ -38,24 +59,44 @@ class ClientIdentityIn(BaseModel):
 
 
 @router.get("/requests")
-async def list_permission_requests(db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> list[dict]:
+async def list_permission_requests(
+    db: AsyncSession = Depends(get_db), admin: User = Depends(get_plugin_manager_admin)
+) -> list[dict]:
     del admin
-    rows = await db.scalars(select(PluginPermissionRequest).order_by(PluginPermissionRequest.requested_at.desc()))
+    rows = await db.scalars(
+        select(PluginPermissionRequest).order_by(PluginPermissionRequest.requested_at.desc())
+    )
     return [
-        {"id": str(row.id), "plugin_id": row.plugin_id, "installation_id": str(row.installation_id),
-         "capability": row.capability, "capability_version": row.capability_version, "rationale": row.rationale,
-         "user_id": str(row.user_id) if row.user_id else None, "status": row.status,
-         "requested_at": row.requested_at, "resolved_at": row.resolved_at}
+        {
+            "id": str(row.id),
+            "plugin_id": row.plugin_id,
+            "installation_id": str(row.installation_id),
+            "capability": row.capability,
+            "capability_version": row.capability_version,
+            "rationale": row.rationale,
+            "user_id": str(row.user_id) if row.user_id else None,
+            "status": row.status,
+            "requested_at": row.requested_at,
+            "resolved_at": row.resolved_at,
+        }
         for row in rows
     ]
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
 async def create_permission_request(
-    payload: PermissionRequestIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    payload: PermissionRequestIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> dict:
     if payload.user_id is not None and payload.user_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="Cannot request permissions for another user.")
+    await _declared_permission(
+        payload.plugin_id,
+        payload.installation_id,
+        payload.capability.value,
+        payload.capability_version,
+    )
     row = PluginPermissionRequest(**payload.model_dump(), status="pending")
     db.add(row)
     await db.commit()
@@ -65,9 +106,13 @@ async def create_permission_request(
 
 @router.post("/requests/{request_id}/deny")
 async def deny_permission_request(
-    request_id: UUID, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)
+    request_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict:
-    row = await db.scalar(select(PluginPermissionRequest).where(PluginPermissionRequest.id == request_id))
+    row = await db.scalar(
+        select(PluginPermissionRequest).where(PluginPermissionRequest.id == request_id)
+    )
     if row is None or row.status != "pending":
         raise HTTPException(status_code=404, detail="Pending permission request not found.")
     row.status = "denied"
@@ -79,14 +124,32 @@ async def deny_permission_request(
 
 @router.post("/requests/{request_id}/approve", status_code=status.HTTP_201_CREATED)
 async def approve_permission_request(
-    request_id: UUID, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)
+    request_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict:
-    row = await db.scalar(select(PluginPermissionRequest).where(PluginPermissionRequest.id == request_id))
+    row = await db.scalar(
+        select(PluginPermissionRequest).where(PluginPermissionRequest.id == request_id)
+    )
     if row is None or row.status != "pending":
         raise HTTPException(status_code=404, detail="Pending permission request not found.")
+    plugin = await _declared_permission(
+        row.plugin_id, row.installation_id, row.capability, row.capability_version
+    )
+    if (
+        capability_definition(row.capability).highly_privileged
+        and plugin.get("trust", {}).get("status") != "trusted"
+    ):
+        raise HTTPException(
+            409,
+            "Review this unverified privileged grant with administrator reauthentication in Plugin Manager.",
+        )
     grant = PluginPermissionGrant(
-        plugin_id=row.plugin_id, installation_id=row.installation_id,
-        capability=row.capability, capability_version=row.capability_version, user_id=row.user_id,
+        plugin_id=row.plugin_id,
+        installation_id=row.installation_id,
+        capability=row.capability,
+        capability_version=row.capability_version,
+        user_id=row.user_id,
     )
     row.status = "approved"
     row.resolved_at = int(time.time())
@@ -97,66 +160,113 @@ async def approve_permission_request(
 
 
 @router.get("/grants")
-async def list_grants(db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> list[dict]:
+async def list_grants(
+    db: AsyncSession = Depends(get_db), admin: User = Depends(get_plugin_manager_admin)
+) -> list[dict]:
     del admin
-    rows = await db.scalars(select(PluginPermissionGrant).order_by(PluginPermissionGrant.granted_at.desc()))
+    rows = await db.scalars(
+        select(PluginPermissionGrant).order_by(PluginPermissionGrant.granted_at.desc())
+    )
     return [
-        {"id": str(row.id), "plugin_id": row.plugin_id, "installation_id": str(row.installation_id),
-         "capability": row.capability, "capability_version": row.capability_version,
-         "user_id": str(row.user_id) if row.user_id else None, "device_id": str(row.device_id) if row.device_id else None,
-         "granted_at": row.granted_at, "revoked_at": row.revoked_at, "active": row.revoked_at is None}
+        {
+            "id": str(row.id),
+            "plugin_id": row.plugin_id,
+            "installation_id": str(row.installation_id),
+            "capability": row.capability,
+            "capability_version": row.capability_version,
+            "user_id": str(row.user_id) if row.user_id else None,
+            "device_id": str(row.device_id) if row.device_id else None,
+            "granted_at": row.granted_at,
+            "revoked_at": row.revoked_at,
+            "active": row.revoked_at is None,
+        }
         for row in rows
     ]
 
 
 @router.post("/grants/{grant_id}/revoke")
-async def revoke_grant(grant_id: UUID, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)) -> dict:
+async def revoke_grant(
+    grant_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
     del admin
     row = await db.scalar(select(PluginPermissionGrant).where(PluginPermissionGrant.id == grant_id))
     if row is None:
         raise HTTPException(status_code=404, detail="Permission grant not found.")
     row.revoked_at = int(time.time())
+    row.revoked_by_operation = None
     await db.commit()
     return {"id": str(row.id), "status": "revoked"}
 
 
 @router.post("/clients", status_code=status.HTTP_201_CREATED)
 async def create_client_identity(
-    payload: ClientIdentityIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    payload: ClientIdentityIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> dict:
     issued = issue_client_credential(
-        plugin_id=payload.plugin_id, installation_id=payload.installation_id, user_id=user.id,
-        device_id=payload.device_id, name=payload.name,
+        plugin_id=payload.plugin_id,
+        installation_id=payload.installation_id,
+        user_id=user.id,
+        device_id=payload.device_id,
+        name=payload.name,
     )
     row = PluginClientIdentity(
-        id=issued.client.client_id, plugin_id=issued.client.plugin_id,
-        installation_id=issued.client.installation_id, user_id=user.id, device_id=issued.client.device_id,
-        name=issued.client.name, token_hash=hashlib.sha256(issued.token.encode()).hexdigest(),
+        id=issued.client.client_id,
+        plugin_id=issued.client.plugin_id,
+        installation_id=issued.client.installation_id,
+        user_id=user.id,
+        device_id=issued.client.device_id,
+        name=issued.client.name,
+        token_hash=hashlib.sha256(issued.token.encode()).hexdigest(),
     )
     db.add(row)
     await db.commit()
-    return {"id": str(row.id), "plugin_id": row.plugin_id, "installation_id": str(row.installation_id),
-            "device_id": str(row.device_id), "name": row.name, "credential": issued.token}
+    return {
+        "id": str(row.id),
+        "plugin_id": row.plugin_id,
+        "installation_id": str(row.installation_id),
+        "device_id": str(row.device_id),
+        "name": row.name,
+        "credential": issued.token,
+    }
 
 
 @router.get("/clients")
-async def list_client_identities(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict]:
+async def list_client_identities(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[dict]:
     rows = await db.scalars(
-        select(PluginClientIdentity).where(PluginClientIdentity.user_id == user.id)
+        select(PluginClientIdentity)
+        .where(PluginClientIdentity.user_id == user.id)
         .order_by(PluginClientIdentity.created_at.desc())
     )
     return [
-        {"id": str(row.id), "plugin_id": row.plugin_id, "installation_id": str(row.installation_id),
-         "device_id": str(row.device_id), "name": row.name, "created_at": row.created_at,
-         "last_seen_at": row.last_seen_at, "revoked_at": row.revoked_at, "active": row.revoked_at is None}
+        {
+            "id": str(row.id),
+            "plugin_id": row.plugin_id,
+            "installation_id": str(row.installation_id),
+            "device_id": str(row.device_id),
+            "name": row.name,
+            "created_at": row.created_at,
+            "last_seen_at": row.last_seen_at,
+            "revoked_at": row.revoked_at,
+            "active": row.revoked_at is None,
+        }
         for row in rows
     ]
 
 
 @router.post("/clients/{client_id}/revoke")
-async def revoke_client_identity(client_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
+async def revoke_client_identity(
+    client_id: UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+) -> dict:
     row = await db.scalar(
-        select(PluginClientIdentity).where(PluginClientIdentity.id == client_id, PluginClientIdentity.user_id == user.id)
+        select(PluginClientIdentity).where(
+            PluginClientIdentity.id == client_id, PluginClientIdentity.user_id == user.id
+        )
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Client identity not found.")

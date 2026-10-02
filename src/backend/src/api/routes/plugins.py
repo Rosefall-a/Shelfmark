@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ipaddress
+import hashlib
+import asyncio
 import json
 import logging
 import mimetypes
@@ -10,9 +12,11 @@ import os
 import socket
 import tempfile
 import time
+import secrets
+import zipfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, urljoin, urlparse
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -29,8 +33,8 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import or_, select
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator, AliasChoices
+from sqlalchemy import delete, or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -38,12 +42,21 @@ from starlette.responses import JSONResponse
 
 from src.api.routes.session_manager import upload_geoip
 from src.core.auth import get_current_admin, get_current_user, hash_token, verify_password
-from src.database.models.auth import UserSession
+from src.database.models.auth import UserSession, UserApiKey
+from src.database.models.plugin_permissions import PluginClientIdentity
+from src.plugin_api.manager_state import manager_state
+from src.plugin_api.management_auth import (
+    MANAGEMENT_PREFIX,
+    MANAGEMENT_SCOPES,
+    get_plugin_manager_admin,
+    get_plugin_manager_reader,
+)
 from src.database.models.notification import Notification
 from src.database.models.plugin_notification_provider import (
     PluginNotificationProviderRegistration,
 )
 from src.database.models.plugin_permissions import PluginPermissionGrant, PluginPermissionRequest
+from src.database.models.plugin_permission_audit import PluginPermissionAudit
 from src.database.models.user import User
 from src.database.session import get_db
 from src.plugin_api.backend_routes import (
@@ -65,6 +78,7 @@ from src.plugin_api.contracts import (
     CapabilityRef,
     PluginDependency,
     PluginUiDocument,
+    PermissionDeclaration,
     parse_semver,
 )
 from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
@@ -98,7 +112,7 @@ _MAX_PLUGIN_ROUTE_BODY_BYTES = 48 * 1024
 _MAX_PLUGIN_ROUTE_ENVELOPE_BYTES = 64 * 1024
 _GEOIP_UPLOAD_FILE = File(...)
 _PLUGIN_DB = Depends(get_db)
-_PLUGIN_ADMIN = Depends(get_current_admin)
+_PLUGIN_ADMIN = Depends(get_plugin_manager_admin)
 
 
 class PluginSettingsIn(BaseModel):
@@ -131,6 +145,21 @@ class PluginInstallUrl(BaseModel):
     confirm_dangerous: bool = False
 
 
+class CatalogueIcon(BaseModel):
+    path: str = Field(min_length=1, max_length=255)
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+
+    @model_validator(mode="after")
+    def safe_path(self) -> "CatalogueIcon":
+        if (
+            "\\" in self.path
+            or self.path.startswith("/")
+            or any(part in {"", ".", ".."} for part in self.path.split("/"))
+        ):
+            raise ValueError("Icon path must be a safe relative package path")
+        return self
+
+
 class PluginCatalogEntry(BaseModel):
     plugin_id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
@@ -140,6 +169,31 @@ class PluginCatalogEntry(BaseModel):
     release_notes: str | None = Field(default=None, max_length=4_000)
     changelog_url: str | None = Field(default=None, max_length=2048)
     dependencies: tuple[PluginDependency, ...] = ()
+    icon: str | None = None
+    icon_metadata: CatalogueIcon | None = None
+    publisher: str | None = None
+    tags: tuple[str, ...] = ()
+    readme: str | None = None
+    compatibility: str | None = None
+    permissions: list[dict[str, Any]] = Field(default_factory=list)
+    digest: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("digest", "sha256"),
+        pattern=r"^[0-9a-fA-F]{64}$",
+    )
+    package_sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    package: dict[str, Any] = Field(default_factory=dict)
+    signing: dict[str, Any] = Field(default_factory=dict)
+    documentation: dict[str, Any] = Field(default_factory=dict)
+    build: dict[str, Any] = Field(default_factory=dict)
+    automatic_update: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def packaged_icon(cls, value: Any) -> Any:
+        if isinstance(value, dict) and isinstance(value.get("icon"), dict):
+            value = {**value, "icon_metadata": value["icon"], "icon": None}
+        return value
 
 
 class PluginBackendRouteResponse(BaseModel):
@@ -338,7 +392,7 @@ async def _download_remote_file(
     raise HTTPException(status_code=502, detail="Plugin download followed too many redirects.")
 
 
-def _catalog_entries(payload: Any) -> list[dict[str, Any]]:
+def _catalog_entries(payload: Any, *, source_url: str | None = None) -> list[dict[str, Any]]:
     """Validate the small, host-consumed catalogue contract."""
     if (
         not isinstance(payload, dict)
@@ -350,6 +404,18 @@ def _catalog_entries(payload: Any) -> list[dict[str, Any]]:
     for raw_entry in payload["plugins"]:
         try:
             entry = PluginCatalogEntry.model_validate(raw_entry)
+            if entry.icon_metadata and source_url:
+                source_path = entry.build.get("source_path", "")
+                if (
+                    source_path
+                    and all(part not in {"", ".", ".."} for part in str(source_path).split("/"))
+                    and "\\" not in source_path
+                ):
+                    entry.icon = _validate_remote_url(
+                        urljoin(source_url, source_path + "/" + entry.icon_metadata.path)
+                    )
+            if not entry.compatibility:
+                entry.compatibility = f"SDK {raw_entry.get('sdk_version_range', '*')}; application {raw_entry.get('application_version_range', '*')}"
             parse_semver(entry.version)
             _validate_remote_url(entry.url)
             if entry.changelog_url:
@@ -408,6 +474,31 @@ def _install_preview(
 ) -> dict[str, Any]:
     manifest = inspected.package.manifest
     trust = inspected.trust
+    readme = None
+    icon = manifest.icon
+    if inspected.package.package_path.exists():
+        with zipfile.ZipFile(inspected.package.package_path) as archive:
+            import base64
+
+            for name, content_type in (
+                ("payload/icon.svg", "image/svg+xml"),
+                ("payload/icon.png", "image/png"),
+            ):
+                if name in archive.namelist() and archive.getinfo(name).file_size <= 256 * 1024:
+                    icon = f"data:{content_type};base64," + base64.b64encode(
+                        archive.read(name)
+                    ).decode("ascii")
+                    break
+            readme_name = next(
+                (
+                    name
+                    for name in archive.namelist()
+                    if name.lower() in {"payload/readme.md", "payload/readme.txt"}
+                ),
+                None,
+            )
+            if readme_name:
+                readme = archive.read(readme_name)[: 128 * 1024].decode("utf-8", errors="replace")
     dependency_items = (
         [
             {
@@ -439,6 +530,10 @@ def _install_preview(
         "plugin_id": manifest.plugin_id,
         "name": manifest.name,
         "description": manifest.description,
+        "icon": icon,
+        "tags": list(manifest.tags),
+        "automatic_update": manifest.automatic_update,
+        "readme": readme,
         "version": manifest.version,
         "publisher": trust.publisher_identity,
         "publisher_key_id": trust.publisher_key_id,
@@ -512,7 +607,7 @@ async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> S
 
 @router.post("/install/preview-url")
 async def preview_plugin_install_url(
-    request: PluginInstallUrl, admin: User = Depends(get_current_admin)
+    request: PluginInstallUrl, admin: User = Depends(get_plugin_manager_admin)
 ) -> dict[str, Any]:
     """Download and statically inspect a remote .utp/.zip package."""
     path: Path | None = None
@@ -552,7 +647,7 @@ async def install_plugin_url(
     request: PluginInstallUrl,
     allow_untrusted: bool = False,
     approved_permissions: list[str] | None = Query(default=None),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Download a remote package and send it through the same install/consent path."""
@@ -589,7 +684,7 @@ async def install_plugin_url(
 async def preview_plugin_install(
     request: Request,
     file: UploadFile | None = File(default=None),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict[str, Any]:
     """Statically inspect an upload for consent without installing or executing it."""
     del admin
@@ -624,7 +719,7 @@ async def install_plugin(
     approved_permissions: list[str] | None = Query(default=None),
     admin_password: str | None = Query(default=None),
     confirm_dangerous: bool = Query(default=False),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     return await _install_plugin_package(
@@ -651,6 +746,7 @@ async def _commit_plugin_upload(
     admin: User,
     db: AsyncSession,
     plugin_id: str | None = None,
+    operation: str = "update",
 ) -> dict[str, Any]:
     """HTTP acquisition adapter; all policy and lifecycle decisions belong to the installer."""
     temporary_path: Path | None = None
@@ -663,6 +759,7 @@ async def _commit_plugin_upload(
             db=db,
             source=source_metadata,
             update_plugin_id=plugin_id,
+            operation=operation,
         )
     except InstallationError as exc:
         detail = exc.detail
@@ -735,7 +832,7 @@ async def _install_plugin_package(
 
 @router.get("/catalogues")
 async def list_plugin_catalogues(
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> list[dict[str, Any]]:
     del admin
     try:
@@ -747,7 +844,7 @@ async def list_plugin_catalogues(
 @router.post("/catalogues", status_code=201)
 async def create_plugin_catalogue(
     payload: PluginCatalogueCreate,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict[str, Any]:
     del admin
     url = _validate_remote_url(payload.url)
@@ -766,7 +863,7 @@ async def create_plugin_catalogue(
 async def update_plugin_catalogue(
     catalogue_id: str,
     payload: PluginCatalogueUpdate,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict[str, Any]:
     del admin
     changes = payload.model_dump(exclude_unset=True)
@@ -783,7 +880,7 @@ async def update_plugin_catalogue(
 @router.delete("/catalogues/{catalogue_id}", status_code=204)
 async def delete_plugin_catalogue(
     catalogue_id: str,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> Response:
     del admin
     try:
@@ -796,7 +893,7 @@ async def delete_plugin_catalogue(
 @router.get("/catalog", response_model=list[PluginCatalogEntry])
 async def plugin_catalog(
     source: str | None = Query(default=None, min_length=1, max_length=2048),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_plugin_manager_reader),
 ) -> list[PluginCatalogEntry]:
     del user
     catalog_url = source or _PLUGIN_CATALOG_URL
@@ -808,7 +905,10 @@ async def plugin_catalog(
     try:
         path, _, _ = await _download_remote_file(catalog_url, json_document=True)
         payload = json.loads(path.read_text(encoding="utf-8"))
-        entries = [PluginCatalogEntry.model_validate(entry) for entry in _catalog_entries(payload)]
+        entries = [
+            PluginCatalogEntry.model_validate(entry)
+            for entry in _catalog_entries(payload, source_url=catalog_url)
+        ]
         if configured is not None:
             _catalogue_store().record_check(str(configured["id"]), None)
         return entries
@@ -886,18 +986,27 @@ async def _check_plugin_update(
         "release_notes": release_notes,
         "changelog_url": changelog_url,
         "source": source,
+        "automatic_update": entry.automatic_update
+        if source_type == "catalogue" and entry is not None
+        else False,
+        "digest": entry.digest if source_type == "catalogue" and entry is not None else None,
+        "package_sha256": entry.package_sha256
+        if source_type == "catalogue" and entry is not None
+        else None,
     }
 
 
 async def _notify_plugin_update(
     db: AsyncSession,
     update: dict[str, Any],
+    *,
+    failed: bool = False,
 ) -> None:
     if not update.get("update_available"):
         return
     plugin_id = str(update["plugin_id"])
     version = str(update["available_version"])
-    dedupe_key = f"plugin-update:{plugin_id}:{version}"
+    dedupe_key = f"plugin-update:{plugin_id}:{version}" + (":failed" if failed else "")
     admin_ids = list(
         await db.scalars(select(User.id).where(User.is_admin.is_(True), User.is_active.is_(True)))
     )
@@ -921,8 +1030,12 @@ async def _notify_plugin_update(
                 kind="plugin_update",
                 media_type="plugin",
                 media_id=uuid5(NAMESPACE_URL, f"urn:unnamed-tracking:plugin:{plugin_id}"),
-                title=f"Plugin update available: {plugin_id}",
-                body=f"Version {version} is available (installed: {update['current_version']}).",
+                title=f"Plugin update {'failed' if failed else 'available'}: {plugin_id}",
+                body=(
+                    f"Version {version} could not be activated. The previous package is retained; inspect Plugin Manager diagnostics."
+                    if failed
+                    else f"Version {version} is available (installed: {update['current_version']})."
+                ),
                 poster_url=None,
                 event_at=now,
                 dedupe_key=dedupe_key,
@@ -932,11 +1045,11 @@ async def _notify_plugin_update(
 
 @router.post("/updates/check")
 async def check_plugin_updates(
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     updates: list[dict[str, Any]] = []
-    for plugin in await _client.plugins():
+    for plugin in await _installed_plugins():
         try:
             update = await _check_plugin_update(plugin, admin)
         except HTTPException as exc:
@@ -947,6 +1060,7 @@ async def check_plugin_updates(
                 "error": str(exc.detail),
             }
         updates.append(update)
+        manager_state().patch(str(plugin["plugin_id"]), available_update=update)
         await _notify_plugin_update(db, update)
     await db.commit()
     return {
@@ -956,10 +1070,464 @@ async def check_plugin_updates(
     }
 
 
+async def _installed_plugins() -> list[dict[str, Any]]:
+    store = manager_state()
+    try:
+        return store.reconcile(await _client.plugins())
+    except (PluginRuntimeRequestError, PluginRuntimeUnavailable) as exc:
+        return [
+            {
+                **item,
+                "runtime_available": False,
+                "status": "unknown",
+                "health": "unknown",
+                "runtime_error": str(exc),
+            }
+            for item in store.read()["plugins"].values()
+        ]
+
+
+class ManagerSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    automatic_updates: bool | None = None
+    retained_versions: int | None = Field(default=None, ge=1, le=100)
+
+
+class AutoUpdateIn(BaseModel):
+    mode: str = Field(pattern=r"^(follow|enabled|disabled)$")
+
+
+class PackageOperationIn(BaseModel):
+    expected_digest: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    approved_permissions: list[str] = Field(default_factory=list)
+    allow_untrusted: bool = False
+    confirm_dangerous: bool = False
+    admin_password: str | None = None
+    purge: bool = False
+    confirmed: bool = False
+    history_id: UUID | None = None
+
+
+@router.get("/manager-settings")
+async def get_manager_settings(admin: User = Depends(get_plugin_manager_admin)) -> dict:
+    del admin
+    return manager_state().settings()
+
+
+@router.put("/manager-settings")
+async def save_manager_settings(
+    payload: ManagerSettingsIn, admin: User = Depends(get_plugin_manager_admin)
+) -> dict:
+    del admin
+    settings = manager_state().settings(payload.model_dump(exclude_none=True))
+    for plugin in await _client.plugins():
+        await _client.prune_history(plugin["plugin_id"], settings["retained_versions"])
+    return settings
+
+
+@router.put("/{plugin_id}/auto-update")
+async def set_plugin_auto_update(
+    plugin_id: str, payload: AutoUpdateIn, admin: User = Depends(get_plugin_manager_admin)
+) -> dict:
+    del admin
+    if plugin_id not in manager_state().read()["plugins"]:
+        raise HTTPException(404, "Plugin installation not found.")
+    return manager_state().patch(plugin_id, automatic_updates=payload.mode)
+
+
+@router.post("/{plugin_id}/update/staged/preview")
+async def preview_staged_update(
+    plugin_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
+    del admin
+    path = manager_state().stage_path(plugin_id)
+    if not path.is_file():
+        raise HTTPException(404, "No staged package.")
+    inspected = _inspect_install_candidate(path)
+    installed, _, delta, dependencies, retain = await _update_context(plugin_id, inspected, db)
+    return _update_preview(inspected, installed, delta, dependencies, can_retain_grants=retain)
+
+
+@router.post("/{plugin_id}/update/staged")
+async def activate_staged_update(
+    plugin_id: str,
+    payload: PackageOperationIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
+    path = manager_state().stage_path(plugin_id)
+    if not path.is_file():
+        raise HTTPException(404, "No staged package.")
+    record = manager_state().read()["plugins"].get(plugin_id, {})
+    if payload.expected_digest:
+        inspected = _inspect_install_candidate(path)
+        if inspected.package.manifest.integrity.sha256 != payload.expected_digest:
+            raise HTTPException(409, "Staged package changed; review its permissions again.")
+    if payload.confirmed and not payload.approved_permissions:
+        manager_state().patch(
+            plugin_id, staged_update={**record.get("staged_update", {}), "status": "denied"}
+        )
+        return {"plugin_id": plugin_id, "status": "denied"}
+    return await _perform_package_operation(
+        plugin_id,
+        path.read_bytes(),
+        payload,
+        admin,
+        db,
+        source=record.get("staged_update", {}).get("source"),
+    )
+
+
+async def _perform_package_operation(
+    plugin_id: str,
+    package: bytes,
+    payload: PackageOperationIn,
+    admin: User,
+    db: AsyncSession,
+    *,
+    operation: str = "update",
+    source: dict | None = None,
+) -> dict:
+    try:
+        return await _plugin_installer().install(
+            package,
+            consent=InstallationConsent(
+                approved_permissions=tuple(payload.approved_permissions),
+                expected_digest=payload.expected_digest,
+                allow_untrusted=payload.allow_untrusted,
+                confirm_dangerous=payload.confirm_dangerous,
+                admin_password=payload.admin_password,
+            ),
+            admin=admin,
+            db=db,
+            update_plugin_id=plugin_id,
+            operation=operation,
+            source=source,
+        )
+    except InstallationError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+
+
+@router.post("/{plugin_id}/reinstall")
+async def reinstall_plugin(
+    plugin_id: str,
+    payload: PackageOperationIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
+    if payload.purge and not payload.confirmed:
+        raise HTTPException(409, "Reinstall with purge requires explicit destructive confirmation.")
+    package = await _client.package_archive(plugin_id)
+    if payload.purge:
+        await _client.purge_data(plugin_id)
+        await _purge_plugin_database(db, plugin_id)
+        await db.commit()
+    return await _perform_package_operation(
+        plugin_id, package, payload, admin, db, operation="reinstall"
+    )
+
+
+@router.post("/{plugin_id}/rollback")
+async def rollback_plugin(
+    plugin_id: str,
+    payload: PackageOperationIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
+    plugin = next(
+        (item for item in await _client.plugins() if item["plugin_id"] == plugin_id), None
+    )
+    history = plugin.get("history", []) if plugin else []
+    history_id = (
+        str(payload.history_id) if payload.history_id else history[0]["id"] if history else None
+    )
+    if history_id is None:
+        raise HTTPException(409, "No retained package version.")
+    package = await _client.package_archive(plugin_id, history_id)
+    return await _perform_package_operation(
+        plugin_id, package, payload, admin, db, operation="rollback"
+    )
+
+
+@router.delete("/{plugin_id}/history/{history_id}")
+async def delete_package_history(
+    plugin_id: str, history_id: UUID, admin: User = Depends(get_plugin_manager_admin)
+) -> dict:
+    del admin
+    await _client.prune_history(
+        plugin_id, manager_state().settings()["retained_versions"], str(history_id)
+    )
+    manager_state().reconcile(await _client.plugins())
+    return {"deleted": True}
+
+
+@router.post("/{plugin_id}/stop")
+async def stop_plugin(plugin_id: str, admin: User = Depends(get_plugin_manager_admin)) -> dict:
+    del admin
+    await _client.stop_runtime(quote(plugin_id, safe=""))
+    manager_state().reconcile(await _client.plugins())
+    return {"plugin_id": plugin_id, "status": "stopped"}
+
+
+@router.post("/{plugin_id}/start")
+async def start_plugin(plugin_id: str, admin: User = Depends(get_plugin_manager_admin)) -> dict:
+    plugin = next(
+        (item for item in await _client.plugins() if item["plugin_id"] == plugin_id), None
+    )
+    if not plugin or not plugin.get("enabled"):
+        raise HTTPException(409, "Enable this plugin before starting it.")
+    await _client.start(quote(plugin_id, safe=""), user_id=str(admin.id))
+    manager_state().reconcile(await _client.plugins())
+    return {"plugin_id": plugin_id, "status": "running"}
+
+
+class ManagementTokenIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    scopes: list[str]
+
+
+@router.post("/management/tokens", status_code=201)
+async def create_management_token(
+    payload: ManagementTokenIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> dict:
+    if not payload.scopes or not set(payload.scopes).issubset(MANAGEMENT_SCOPES):
+        raise HTTPException(422, "Choose only plugin management scopes.")
+    token = MANAGEMENT_PREFIX + secrets.token_urlsafe(32)
+    row = UserApiKey(
+        user_id=admin.id,
+        name=payload.name,
+        key_prefix=token[:12],
+        key_hash=hash_token(token),
+        scopes=sorted(set(payload.scopes)),
+    )
+    db.add(row)
+    await db.commit()
+    return {"id": str(row.id), "token": token, "scopes": row.scopes}
+
+
+@router.delete("/management/tokens/{token_id}")
+async def revoke_management_token(
+    token_id: UUID, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)
+) -> dict:
+    del admin
+    row = await db.scalar(
+        select(UserApiKey).where(
+            UserApiKey.id == token_id, UserApiKey.key_prefix.startswith(MANAGEMENT_PREFIX)
+        )
+    )
+    if row is None:
+        raise HTTPException(404, "Plugin management token not found.")
+    row.revoked_at = int(time.time())
+    await db.commit()
+    return {"revoked": True}
+
+
+async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
+    from src.database.models.plugin_permissions import PluginLifecycleTransaction
+
+    for model in (
+        PluginLifecycleTransaction,
+        PluginPermissionGrant,
+        PluginPermissionRequest,
+        PluginClientIdentity,
+        PluginNotificationProviderRegistration,
+    ):
+        await db.execute(delete(model).where(model.plugin_id == plugin_id))
+
+
+async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[str, int]:
+    """Discover, validate and stage releases, then apply policy without granting scopes."""
+    counts = {"checked": 0, "installed": 0, "staged": 0, "failed": 0}
+    store = manager_state()
+    for plugin in await _installed_plugins():
+        source = plugin.get("source", {})
+        if source.get("type") != "catalogue":
+            continue
+        configured = next(
+            (
+                item
+                for item in _catalogue_store().list()
+                if item["url"] == source.get("catalogue_url") and item["enabled"]
+            ),
+            None,
+        )
+        if configured is None:
+            continue
+        counts["checked"] += 1
+        path = None
+        try:
+            update = await _check_plugin_update(plugin, admin)
+            store.patch(plugin["plugin_id"], available_update=update)
+            if not update.get("update_available"):
+                continue
+            await _notify_plugin_update(db, update)
+            path, _, _ = await _download_remote_file(update["url"])
+            if (
+                update.get("package_sha256")
+                and hashlib.sha256(path.read_bytes()).hexdigest()
+                != update["package_sha256"].lower()
+            ):
+                raise ValueError("Catalogue archive hash differs.")
+            inspected = _inspect_install_candidate(path)
+            manifest = inspected.package.manifest
+            if (
+                manifest.plugin_id != plugin["plugin_id"]
+                or manifest.version != update["available_version"]
+            ):
+                raise ValueError("Catalogue release and package identity differ.")
+            if update.get("digest") and update["digest"] != manifest.integrity.sha256:
+                raise ValueError("Catalogue package digest differs.")
+            plan = await _plugin_installer().plan_update(plugin["plugin_id"], inspected, db)
+            mode = plugin.get("automatic_updates", "follow")
+            enabled = (
+                mode == "enabled" or mode == "follow" and store.settings()["automatic_updates"]
+            )
+            eligible = (
+                enabled
+                and update["automatic_update"]
+                and manifest.automatic_update
+                and inspected.trust.is_verified
+                and plan.dependencies.ready
+                and not plan.permissions.newly_requested_grants
+            )
+            previous_stage = store.read()["plugins"][plugin["plugin_id"]].get("staged_update") or {}
+            denied = (
+                previous_stage.get("status") == "denied"
+                and previous_stage.get("digest") == manifest.integrity.sha256
+                and (previous_stage.get("version") or previous_stage.get("available_version"))
+                == manifest.version
+            )
+            eligible = eligible and not denied
+            stage = {
+                **update,
+                "digest": manifest.integrity.sha256,
+                "status": "denied" if denied else (
+                    "awaiting_permissions" if plan.permissions.newly_requested_grants
+                    else "downloaded"
+                ),
+            }
+            store.stage(plugin["plugin_id"], path.read_bytes(), stage)
+            counts["staged"] += 1
+            if eligible:
+                result = await _plugin_installer().install(
+                    path.read_bytes(),
+                    consent=InstallationConsent(),
+                    admin=admin,
+                    db=db,
+                    update_plugin_id=plugin["plugin_id"],
+                    source=source,
+                )
+                if result["status"] == "rolled_back":
+                    counts["failed"] += 1
+                    await _notify_plugin_update(db, update, failed=True)
+                else:
+                    counts["installed"] += 1
+        except Exception as exc:
+            await db.rollback()
+            counts["failed"] += 1
+            store.patch(plugin["plugin_id"], last_update_error=str(exc))
+            logger.warning(
+                "Plugin automatic update failed: plugin_id=%s error=%s", plugin["plugin_id"], exc
+            )
+            failure = store.read()["plugins"][plugin["plugin_id"]].get("available_update")
+            if failure and failure.get("update_available"):
+                await _notify_plugin_update(db, failure, failed=True)
+        finally:
+            if path is not None:
+                path.unlink(missing_ok=True)
+    await db.commit()
+    return counts
+
+
+@router.post("/{plugin_id}/permissions/grant")
+async def grant_plugin_permissions(
+    plugin_id: str,
+    payload: PackageOperationIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
+) -> dict:
+    """Explicitly re-grant declared permissions without replacing package or data."""
+    from src.plugin_api.installer import InstallationPlan
+    from src.plugin_api.capabilities import calculate_permission_delta
+
+    inspected = await asyncio.to_thread(
+        _plugin_installer()._inspect_snapshot, await _client.package_archive(plugin_id)
+    )
+    manifest = inspected.package.manifest
+    requested = set(payload.approved_permissions)
+    if payload.expected_digest and manifest.integrity.sha256 != payload.expected_digest:
+        raise HTTPException(409, "Active package changed; review its permissions again.")
+    refs = tuple(
+        p.capability
+        for p in manifest.permissions
+        if _permission_key(p.capability.name.value, p.capability.version) in requested
+    )
+    if len(refs) != len(requested):
+        raise HTTPException(422, "Grant only permissions declared by the active package.")
+    plugin = next(item for item in await _client.plugins() if item["plugin_id"] == plugin_id)
+    installation_id = UUID(plugin["installation_id"])
+    plan = InstallationPlan(
+        inspected,
+        installation_id,
+        plan_dependencies(manifest, await _client.plugins()),
+        calculate_permission_delta((), refs, ()),
+    )
+    try:
+        _plugin_installer().confirm(
+            plan,
+            InstallationConsent(
+                allow_untrusted=payload.allow_untrusted,
+                approved_permissions=tuple(requested),
+                confirm_dangerous=payload.confirm_dangerous,
+                admin_password=payload.admin_password,
+            ),
+            admin,
+        )
+    except InstallationError as exc:
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    for ref in refs:
+        db.add(
+            PluginPermissionGrant(
+                plugin_id=plugin_id,
+                installation_id=installation_id,
+                capability=ref.name.value,
+                capability_version=ref.version,
+            )
+        )
+        db.add(
+            PluginPermissionAudit(
+                plugin_id=plugin_id,
+                installation_id=installation_id,
+                capability=ref.name.value,
+                capability_version=ref.version,
+                user_id=admin.id,
+                decision="allowed",
+                reason="administrator explicit permission re-grant",
+            )
+        )
+    await db.commit()
+    return {"granted": sorted(requested)}
+
+
+@router.post("/{plugin_id}/permissions/preview")
+async def preview_plugin_permissions(
+    plugin_id: str, admin: User = Depends(get_plugin_manager_admin)
+) -> dict:
+    del admin
+    inspected = await asyncio.to_thread(
+        _plugin_installer()._inspect_snapshot, await _client.package_archive(plugin_id)
+    )
+    return _install_preview(inspected)
+
+
 @router.get("/{plugin_id}/changelog")
 async def plugin_changelog(
     plugin_id: str,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict[str, Any]:
     plugin = next(
         (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id),
@@ -1056,7 +1624,9 @@ async def _plugin_and_capabilities(
         )
     )
     granted = [str(capability) for capability, version in rows if version == 1]
-    return plugin, frozenset(expand_capabilities(granted))
+    from src.plugin_api.grants import effective_capabilities
+
+    return plugin, await effective_capabilities(db, plugin_id, installation_id, user.id, granted)
 
 
 def _filter_ui_document(
@@ -1135,14 +1705,11 @@ def _filter_ui_document(
 @router.get("", response_model=list[dict])
 async def list_plugins(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_plugin_manager_reader),
 ) -> list[dict]:
-    try:
-        plugins = await _client.plugins()
-    except PluginRuntimeRequestError as exc:
-        raise _runtime_request_error(exc) from exc
-    except PluginRuntimeUnavailable as exc:
-        raise _runtime_error(exc) from exc
+    from src.plugin_api.grants import effective_capabilities
+
+    plugins = await _installed_plugins()
     result: list[dict] = []
     for plugin in plugins:
         granted: list[str] = []
@@ -1167,9 +1734,23 @@ async def list_plugins(
         result.append(
             {
                 **plugin,
+                "permission_details": [
+                    _permission_preview(PermissionDeclaration.model_validate(item))
+                    for item in plugin.get("permission_declarations", [])
+                ],
                 "granted_capabilities": sorted(set(granted)),
                 "effective_capabilities": (
-                    list(expand_capabilities(granted)) if installation_is_executable(plugin) else []
+                    sorted(
+                        await effective_capabilities(
+                            db,
+                            str(plugin["plugin_id"]),
+                            UUID(str(installation_id)),
+                            user.id,
+                            granted,
+                        )
+                    )
+                    if installation_id and installation_is_executable(plugin)
+                    else []
                 ),
             }
         )
@@ -1180,7 +1761,7 @@ async def list_plugins(
 async def delete_plugin(
     plugin_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> Response:
     del admin
     try:
@@ -1189,21 +1770,17 @@ async def delete_plugin(
         raise _runtime_request_error(exc) from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
-    await db.execute(
-        sql_update(PluginNotificationProviderRegistration)
-        .where(
-            PluginNotificationProviderRegistration.plugin_id == plugin_id,
-            PluginNotificationProviderRegistration.revoked_at.is_(None),
-        )
-        .values(revoked_at=int(time.time()))
-    )
+    await _purge_plugin_database(db, plugin_id)
     await db.commit()
+    manager_state().remove(plugin_id)
     return Response(status_code=204)
 
 
 @router.post("/{plugin_id}/enable")
 async def enable_plugin(
-    plugin_id: str, db: AsyncSession = Depends(get_db), admin: User = Depends(get_current_admin)
+    plugin_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict:
     plugin = next(
         (item for item in await _client.plugins() if item.get("plugin_id") == plugin_id),
@@ -1232,7 +1809,7 @@ async def enable_plugin(
 
 
 @router.post("/{plugin_id}/disable")
-async def disable_plugin(plugin_id: str, admin: User = Depends(get_current_admin)) -> dict:
+async def disable_plugin(plugin_id: str, admin: User = Depends(get_plugin_manager_admin)) -> dict:
     del admin
     try:
         await _client.stop(quote(plugin_id, safe=""))
@@ -1245,9 +1822,10 @@ async def _update_context(
     plugin_id: str,
     inspected: InspectedPackage,
     db: AsyncSession,
+    operation: str = "update",
 ) -> tuple[dict[str, Any], UUID, Any, DependencyPlan, bool]:
     try:
-        plan = await _plugin_installer().plan_update(plugin_id, inspected, db)
+        plan = await _plugin_installer().plan_update(plugin_id, inspected, db, operation=operation)
     except InstallationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     assert plan.installed is not None
@@ -1319,8 +1897,9 @@ def _update_preview(
 async def preview_plugin_update(
     plugin_id: str,
     file: UploadFile = File(...),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
+    operation: Literal["update", "replace"] = "update",
 ) -> dict[str, Any]:
     del admin
     temporary_path: Path | None = None
@@ -1328,7 +1907,7 @@ async def preview_plugin_update(
         temporary_path, _, _ = await _store_plugin_upload(file, "plugin-update-preview-")
         inspected = _inspect_install_candidate(temporary_path)
         installed, _, permission_delta, dependencies, can_retain_grants = await _update_context(
-            plugin_id, inspected, db
+            plugin_id, inspected, db, operation=operation
         )
         return _update_preview(
             inspected,
@@ -1347,8 +1926,9 @@ async def preview_plugin_update(
 async def preview_plugin_update_url(
     plugin_id: str,
     request: PluginInstallUrl,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
+    operation: Literal["update", "replace"] = "update",
 ) -> dict[str, Any]:
     del admin
     temporary_path: Path | None = None
@@ -1359,6 +1939,7 @@ async def preview_plugin_update_url(
             plugin_id,
             inspected,
             db,
+            operation=operation,
         )
         source = {
             "type": request.source_type,
@@ -1391,8 +1972,9 @@ async def update_plugin_url(
     request: PluginInstallUrl,
     allow_untrusted: bool = False,
     approved_permissions: list[str] | None = Query(default=None),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
+    operation: Literal["update", "replace"] = "update",
 ) -> dict[str, Any]:
     temporary_path: Path | None = None
     upload: UploadFile | None = None
@@ -1402,6 +1984,7 @@ async def update_plugin_url(
         return await _update_plugin_package(
             plugin_id,
             upload,
+            operation=operation,
             allow_untrusted=allow_untrusted,
             approved_permissions=approved_permissions,
             admin_password=request.admin_password,
@@ -1432,12 +2015,14 @@ async def update_plugin(
     approved_permissions: list[str] | None = Query(default=None),
     admin_password: str | None = Query(default=None),
     confirm_dangerous: bool = Query(default=False),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
     db: AsyncSession = Depends(get_db),
+    operation: Literal["update", "replace"] = "update",
 ) -> dict[str, Any]:
     return await _update_plugin_package(
         plugin_id,
         file,
+        operation=operation,
         allow_untrusted=allow_untrusted,
         approved_permissions=approved_permissions,
         admin_password=admin_password,
@@ -1460,6 +2045,7 @@ async def _update_plugin_package(
     admin: User,
     db: AsyncSession,
     expected_digest: str | None = None,
+    operation: str = "update",
 ) -> dict[str, Any]:
     return await _commit_plugin_upload(
         file,
@@ -1476,11 +2062,12 @@ async def _update_plugin_package(
         admin=admin,
         db=db,
         plugin_id=plugin_id,
+        operation=operation,
     )
 
 
 @router.post("/{plugin_id}/retry")
-async def retry_plugin(plugin_id: str, admin: User = Depends(get_current_admin)) -> dict:
+async def retry_plugin(plugin_id: str, admin: User = Depends(get_plugin_manager_admin)) -> dict:
     del admin
     encoded = quote(plugin_id, safe="")
     try:
@@ -1498,7 +2085,7 @@ async def retry_plugin(plugin_id: str, admin: User = Depends(get_current_admin))
 async def revoke_plugin_permissions(
     plugin_id: str,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict:
     del admin
     rows = await db.scalars(
@@ -1528,7 +2115,7 @@ async def plugin_logs(
     plugin_id: str,
     level: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=200),
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_plugin_manager_admin),
 ) -> dict[str, Any]:
     del admin
     if level is not None and level not in {"debug", "info", "warning", "error"}:
@@ -1928,12 +2515,18 @@ async def plugin_gateway(
 
 
 @router.get("/runtime/health")
-async def runtime_health(admin: User = Depends(get_current_admin)) -> dict:
+async def runtime_health(admin: User = Depends(get_plugin_manager_admin)) -> dict:
     del admin
     try:
         return await _client.health()
     except PluginRuntimeUnavailable as exc:
-        raise _runtime_error(exc) from exc
+        return {
+            "available": False,
+            "bubblewrap_available": None,
+            "sandbox_available": False,
+            "mechanism": "unavailable",
+            "last_error": str(exc),
+        }
 
 
 def _backend_route_error(

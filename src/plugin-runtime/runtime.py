@@ -75,6 +75,13 @@ _RESERVED_PLUGIN_ROUTE_ROOTS = {
     "native-frontend",
     "permissions",
     "retry",
+    "reinstall",
+    "rollback",
+    "history",
+    "start",
+    "stop",
+    "auto-update",
+    "detail",
     "secrets",
     "settings",
     "ui",
@@ -168,6 +175,38 @@ class PluginSupervisor:
         self._package_paths: dict[str, Path] = {}
         self._package_manifests: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
+        self.isolation: dict[str, Any] = {
+            "bubblewrap_available": None,
+            "sandbox_available": False,
+            "mechanism": "unprobed",
+            "reduced_isolation_allowed": self._nonbubble_enabled(),
+        }
+
+    def probe_isolation(self) -> dict[str, Any]:
+        """Test namespaces on this host, rather than trusting an installed binary."""
+        error = None
+        try:
+            result = subprocess.run(
+                ["bwrap", "--unshare-all", "--ro-bind", "/", "/", "--", "/bin/true"],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            available = result.returncode == 0
+            if not available:
+                error = self._redact(result.stderr.decode(errors="replace"))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            available = False
+            error = self._redact(str(exc))
+        reduced = self._nonbubble_enabled()
+        self.isolation = {
+            "bubblewrap_available": available,
+            "sandbox_available": available and not reduced,
+            "mechanism": "bubblewrap" if available and not reduced else "process",
+            "reduced_isolation_allowed": reduced,
+            "last_error": error,
+        }
+        return dict(self.isolation)
 
     @staticmethod
     def _redact(value: str) -> str:
@@ -285,7 +324,11 @@ class PluginSupervisor:
         package = self._package_paths.get(plugin_id)
         if package is None:
             return {}
-        path = package / ".settings.json"
+        path = self.storage_root.parent / ".configuration" / f"{plugin_id}.json"
+        legacy = package / ".settings.json"
+        if not path.exists() and legacy.exists():
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            shutil.copyfile(legacy, path)
         if not path.exists():
             return {}
         try:
@@ -453,6 +496,11 @@ class PluginSupervisor:
             # the per-plugin bwrap namespace/filesystem boundary is intentionally
             # disabled.
             return list(spec.command)
+        if self.isolation.get("bubblewrap_available") is False:
+            raise RuntimePolicyError(
+                "Bubblewrap is unavailable. Repair namespace support or explicitly "
+                "allow reduced isolation with NONBUBBLE_ENV=true."
+            )
         # Create the mask target even before settings have ever been saved.
         # Otherwise a later host write would become visible through /plugin.
         settings_path = package_dir / ".settings.json"
@@ -883,7 +931,10 @@ class PluginRegistry:
     def _save_state(self, state: dict[str, Any]) -> None:
         with self._state_lock:
             temporary = self.state_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(json.dumps(state, sort_keys=True))
+                handle.flush()
+                os.fsync(handle.fileno())
             temporary.replace(self.state_path)
 
     def _transition(self, plugin_id: str, **changes: Any) -> dict[str, Any]:
@@ -1102,6 +1153,24 @@ class PluginRegistry:
             digest.update(b"\0")
         return digest.hexdigest()
 
+    @staticmethod
+    def _package_icon(package: Path, manifest: dict[str, Any]) -> str | None:
+        for name, content_type in (
+            ("icon.svg", "image/svg+xml"),
+            ("icon.png", "image/png"),
+        ):
+            path = package / name
+            if (
+                path.is_file()
+                and not path.is_symlink()
+                and path.stat().st_size <= 256 * 1024
+            ):
+                return f"data:{content_type};base64," + base64.b64encode(
+                    path.read_bytes()
+                ).decode("ascii")
+        icon = manifest.get("icon")
+        return icon if isinstance(icon, str) else None
+
     def _item(self, package: Path) -> dict[str, Any]:
         data = self.package(package.name)[1]
         plugin_id = data["plugin_id"]
@@ -1140,6 +1209,9 @@ class PluginRegistry:
         return {
             "plugin_id": plugin_id,
             "name": data.get("name", plugin_id),
+            "description": data.get("description", ""),
+            "icon": self._package_icon(package, data),
+            "tags": data.get("tags", []),
             "version": data.get("version", "0.0.0"),
             "publisher": (
                 data.get("integrity", {}).get("key_id")
@@ -1157,6 +1229,7 @@ class PluginRegistry:
             "permissions": [
                 p.get("capability", {}).get("name") for p in data.get("permissions", [])
             ],
+            "permission_declarations": data.get("permissions", []),
             "permission_refs": [
                 p.get("capability")
                 for p in data.get("permissions", [])
@@ -1186,6 +1259,20 @@ class PluginRegistry:
             "logs_available": bool(self.supervisor.logs(plugin_id)),
             "last_exit_code": self.supervisor.exit_code(plugin_id),
             "status": status,
+            "last_error": raw_state.get("last_error")
+            if isinstance(raw_state, dict)
+            else None,
+            "runtime": dict(self.supervisor.isolation),
+            "pending_transaction": (
+                {"phase": "prepared", **raw_state["pending_installation"]}
+                if isinstance(raw_state, dict) and raw_state.get("pending_installation")
+                else {"phase": "activation", **raw_state["pending_activation"]}
+                if isinstance(raw_state, dict) and raw_state.get("pending_activation")
+                else None
+            ),
+            "history": raw_state.get("history", [])
+            if isinstance(raw_state, dict)
+            else [],
         }
 
     def install_package(
@@ -1443,8 +1530,9 @@ class PluginRegistry:
         target = self.root / plugin_id
         state = self._state()
         previous_state = state.get(plugin_id)
-        if isinstance(previous_state, dict) and previous_state.get(
-            "pending_installation"
+        if isinstance(previous_state, dict) and (
+            previous_state.get("pending_installation")
+            or previous_state.get("pending_activation")
         ):
             raise RuntimePolicyError(
                 "plugin installation is awaiting its permission commit"
@@ -1471,6 +1559,10 @@ class PluginRegistry:
                 "installed plugin version changed after update planning"
             )
         if target.exists():
+            self.supervisor._package_paths[plugin_id] = target
+            self.supervisor._settings(
+                plugin_id
+            )  # Migrate data before replacing its package.
             self._transition(plugin_id, enabled=False, status="stopping")
             self.supervisor.stop(plugin_id)
         staging = (
@@ -1586,10 +1678,12 @@ class PluginRegistry:
             if commit:
                 current = dict(current)
                 current.pop("pending_installation")
+                current["pending_activation"] = pending
+                previous = pending.get("previous_state") or {}
+                current["enabled"] = bool(previous.get("enabled"))
+                current["status"] = "stopped" if current["enabled"] else "disabled"
                 state[plugin_id] = current
                 self._save_state(state)
-                if backup is not None:
-                    shutil.rmtree(backup, ignore_errors=True)
                 return
             # Persist a disabled state first. If recovery fails, never expose
             # candidate code with the predecessor's still-authorized grants.
@@ -1606,12 +1700,119 @@ class PluginRegistry:
                 state[plugin_id] = previous_state
                 self._save_state(state)
                 shutil.rmtree(rejected, ignore_errors=True)
-                if isinstance(previous_state, dict) and previous_state.get("enabled"):
+                if (
+                    isinstance(previous_state, dict)
+                    and previous_state.get("enabled")
+                    and previous_state.get("status") != "stopped"
+                ):
+                    self._transition(plugin_id, status="stopped")
                     self.start(plugin_id, user_id=previous_state.get("user_id"))
             else:
                 shutil.rmtree(target)
                 state.pop(plugin_id, None)
                 self._save_state(state)
+
+    def finish_activation(
+        self, plugin_id: str, operation_id: str, *, commit: bool
+    ) -> None:
+        """Retain a predecessor only after health verification; recover on failure."""
+        with self._installation_lock:
+            state = self._state()
+            current = state.get(plugin_id, {})
+            pending = current.get("pending_activation")
+            if (
+                not isinstance(pending, dict)
+                or pending.get("operation_id") != operation_id
+            ):
+                raise RuntimePolicyError("plugin activation operation does not match")
+            backup_name = pending.get("backup")
+            backup = self.root / backup_name if backup_name else None
+            if backup is not None and (
+                not re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(backup_name))
+                or not backup.is_dir()
+            ):
+                raise RuntimePolicyError("plugin activation backup is unavailable")
+            if not commit:
+                self.supervisor.stop(plugin_id)
+                current.pop("pending_activation")
+                current["pending_installation"] = pending
+                state[plugin_id] = current
+                self._save_state(state)
+                self.finish_installation(plugin_id, operation_id, commit=False)
+                return
+            current.pop("pending_activation")
+            if backup is not None:
+                manifest = json.loads(
+                    (backup / "manifest.json").read_text(encoding="utf-8")
+                )
+                history_id = str(uuid4())
+                history_root = self.root / ".history" / plugin_id
+                history_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+                backup.rename(history_root / history_id)
+                history = list(current.get("history", []))
+                history.insert(
+                    0,
+                    {
+                        "id": history_id,
+                        "version": manifest["version"],
+                        "digest": manifest["integrity"]["sha256"],
+                        "trust": (pending.get("previous_state") or {}).get("trust", {}),
+                    },
+                )
+                current["history"] = history
+            state[plugin_id] = current
+            self._save_state(state)
+
+    def package_archive(
+        self, plugin_id: str, history_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return the exact active/retained release without consulting a mutable URL."""
+        package, manifest = self.package(plugin_id)
+        if history_id is not None:
+            UUID(history_id)
+            history = self._state().get(plugin_id, {}).get("history", [])
+            if not any(item["id"] == history_id for item in history):
+                raise KeyError(history_id)
+            package = self.root / ".history" / plugin_id / history_id
+            manifest = json.loads(
+                (package / "manifest.json").read_text(encoding="utf-8")
+            )
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("manifest.json", json.dumps(manifest))
+            for path in self._payload_files(package):
+                archive.writestr(
+                    f"payload/{path.relative_to(package).as_posix()}", path.read_bytes()
+                )
+        return {"package": base64.b64encode(output.getvalue()).decode("ascii")}
+
+    def prune_history(
+        self, plugin_id: str, *, retain: int = 1, history_id: str | None = None
+    ) -> None:
+        with self._installation_lock:
+            self.package(plugin_id)
+            if not 1 <= retain <= 100:
+                raise RuntimePolicyError("retain must be between 1 and 100")
+            state = self._state()
+            current = state[plugin_id]
+            history = current.get("history", [])
+            keep = [item for item in history if item["id"] != history_id][:retain]
+            removed = [item for item in history if item not in keep]
+            current["history"] = keep
+            self._save_state(state)
+            for item in removed:
+                UUID(item["id"])
+                shutil.rmtree(self.root / ".history" / plugin_id / item["id"])
+
+    def purge_data(self, plugin_id: str) -> None:
+        self.package(plugin_id)
+        self.stop(plugin_id)
+        self.supervisor._storage(plugin_id).uninstall()
+        configuration = (
+            self.supervisor.storage_root.parent / ".configuration" / f"{plugin_id}.json"
+        )
+        configuration.unlink(missing_ok=True)
+        (self.root / plugin_id / ".settings.json").unlink(missing_ok=True)
 
     def list(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -1776,16 +1977,20 @@ class PluginRegistry:
                 self.supervisor.start(
                     PluginSpec(plugin_id, self._command(manifest)), package
                 )
-            except Exception:
-                self._transition(plugin_id, status="failed")
+            except Exception as exc:
+                self._transition(
+                    plugin_id,
+                    status="failed",
+                    last_error=self.supervisor._redact(str(exc)),
+                )
                 self.supervisor.stop(plugin_id)
                 raise
-            self._transition(plugin_id, status="running")
+            self._transition(plugin_id, status="running", last_error=None)
             if not self.supervisor.running(plugin_id):
                 self._transition(plugin_id, status="failed")
                 self.supervisor.stop(plugin_id)
 
-    def stop(self, plugin_id: str) -> None:
+    def stop(self, plugin_id: str, *, disable: bool = True) -> None:
         with self._operation_lock:
             self.package(plugin_id)
             persisted = self._state().get(plugin_id)
@@ -1793,7 +1998,11 @@ class PluginRegistry:
                 isinstance(persisted, dict) and persisted.get("status") == "quarantined"
             )
             # Revoke execution before waiting for any worker to finish.
-            self._transition(plugin_id, enabled=False, status="stopping")
+            enabled = (
+                bool(isinstance(persisted, dict) and persisted.get("enabled"))
+                and not disable
+            )
+            self._transition(plugin_id, enabled=enabled, status="stopping")
             try:
                 self.supervisor.stop(plugin_id)
             except Exception:
@@ -1802,7 +2011,12 @@ class PluginRegistry:
                 )
                 raise
             self._transition(
-                plugin_id, status="quarantined" if quarantined else "disabled"
+                plugin_id,
+                status="quarantined"
+                if quarantined
+                else "stopped"
+                if enabled
+                else "disabled",
             )
 
     def quarantine(self, plugin_id: str) -> None:
@@ -1819,6 +2033,9 @@ class PluginRegistry:
             "status": "running" if running else "stopped",
             "last_exit_code": self.supervisor.exit_code(plugin_id),
             "events": self.supervisor.logs(plugin_id),
+            "runtime": self.supervisor.isolation,
+            "process_running": running,
+            "last_error": self._state().get(plugin_id, {}).get("last_error"),
         }
 
     def storage_put(self, plugin_id: str, key: str, value: str) -> None:
@@ -1831,7 +2048,17 @@ class PluginRegistry:
 
     def health(self, plugin_id: str) -> bool:
         self.package(plugin_id)
-        return self.supervisor.running(plugin_id)
+        # Let an actual worker finish imports and initialization before committing
+        # a package switch. Synthetic supervisors need no startup grace period.
+        if plugin_id in self.supervisor._processes:
+            deadline = time.monotonic() + 0.5
+            while time.monotonic() < deadline:
+                if not self.supervisor.running(plugin_id):
+                    break
+                time.sleep(0.05)
+        healthy = self.supervisor.running(plugin_id)
+        self._transition(plugin_id, last_health=healthy)
+        return healthy
 
     def settings(self, plugin_id: str, values: dict[str, Any]) -> None:
         package, _ = self.package(plugin_id)
@@ -1845,7 +2072,12 @@ class PluginRegistry:
             raise RuntimePolicyError(
                 "secret settings may only be supplied to a plugin action"
             )
-        path = package / ".settings.json"
+        self.supervisor._package_paths[plugin_id] = package
+        self.supervisor._settings(plugin_id)
+        path = (
+            self.supervisor.storage_root.parent / ".configuration" / f"{plugin_id}.json"
+        )
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         current: dict[str, Any] = {}
         if path.exists():
             try:
@@ -2020,6 +2252,8 @@ class PluginRegistry:
     def delete(self, plugin_id: str) -> None:
         with self._operation_lock:
             package, manifest = self.package(plugin_id)
+            self.purge_data(plugin_id)
+            shutil.rmtree(self.root / ".history" / plugin_id, ignore_errors=True)
             self.stop(plugin_id)
             quota_mb = manifest.get("storage", {}).get("quota_mb") or 64
             self.supervisor._storage_quotas[plugin_id] = int(quota_mb) * 1024 * 1024
@@ -2027,7 +2261,9 @@ class PluginRegistry:
             shutil.rmtree(package, ignore_errors=False)
             with self._state_lock:
                 state = self._state()
-                pending = state.get(plugin_id, {}).get("pending_installation", {})
+                pending = state.get(plugin_id, {}).get(
+                    "pending_installation"
+                ) or state.get(plugin_id, {}).get("pending_activation", {})
                 backup_name = (
                     pending.get("backup") if isinstance(pending, dict) else None
                 )
@@ -2052,7 +2288,15 @@ class PluginRegistry:
                 user_id = (
                     raw_state.get("user_id") if isinstance(raw_state, dict) else None
                 )
-                if enabled:
+                if enabled and not (
+                    isinstance(raw_state, dict)
+                    and (
+                        raw_state.get("status") == "stopped"
+                        or raw_state.get("pending_activation")
+                        or raw_state.get("pending_installation")
+                    )
+                ):
+                    self._transition(plugin_id, status="stopped")
                     try:
                         self.start(plugin_id, user_id=user_id)
                     except Exception:
@@ -2088,9 +2332,17 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         parts = self._parts()
         try:
             if parts == ["health"]:
-                self._json(200, {"status": "ok"})
+                self._json(
+                    200, {"status": "ok", **self.server.registry.supervisor.isolation}
+                )
             elif parts == ["plugins"]:
                 self._json(200, self.server.registry.list())  # type: ignore[attr-defined]
+            elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "archive":
+                self._json(200, self.server.registry.package_archive(parts[1]))
+            elif len(parts) == 4 and parts[0] == "plugins" and parts[2] == "archive":
+                self._json(
+                    200, self.server.registry.package_archive(parts[1], parts[3])
+                )
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "ui":
                 self._json(200, self.server.registry.ui(parts[1]))  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "health":
@@ -2126,7 +2378,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             if (
                 len(parts) == 3
                 and parts[0] == "plugins"
-                and parts[2] in {"start", "stop"}
+                and parts[2] in {"start", "stop", "disable", "purge"}
             ):
                 payload = {}
                 if parts[2] == "start":
@@ -2134,8 +2386,10 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     if length:
                         payload = json.loads(self.rfile.read(length))
                     self.server.registry.start(parts[1], user_id=payload.get("user_id"))  # type: ignore[attr-defined]
+                elif parts[2] == "purge":
+                    self.server.registry.purge_data(parts[1])
                 else:
-                    self.server.registry.stop(parts[1])  # type: ignore[attr-defined]
+                    self.server.registry.stop(parts[1], disable=parts[2] == "disable")
                 self._json(200, {"plugin_id": parts[1], "status": parts[2]})
                 return
             if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "storage":
@@ -2237,17 +2491,30 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             except (RuntimePolicyError, ValueError, OSError) as exc:
                 self._json(422, {"detail": str(exc)})
             return
-        if len(parts) == 3 and parts[0] == "plugins" and parts[2] == "installation":
+        if (
+            len(parts) == 3
+            and parts[0] == "plugins"
+            and parts[2] in {"installation", "activation", "history"}
+        ):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 1 or length > 4096:
                     raise RuntimePolicyError("invalid installation completion request")
                 payload = json.loads(self.rfile.read(length))
+                if parts[2] == "history" and isinstance(payload, dict):
+                    self.server.registry.prune_history(parts[1], **payload)
+                    self._json(200, {"completed": True})
+                    return
                 if not isinstance(payload, dict) or not isinstance(
                     payload.get("commit"), bool
                 ):
                     raise RuntimePolicyError("invalid installation completion request")
-                self.server.registry.finish_installation(  # type: ignore[attr-defined]
+                finish = (
+                    self.server.registry.finish_activation
+                    if parts[2] == "activation"
+                    else self.server.registry.finish_installation
+                )
+                finish(
                     parts[1],
                     str(payload.get("operation_id", "")),
                     commit=payload["commit"],
@@ -2305,6 +2572,7 @@ def main() -> None:
         raise RuntimeError("PLUGIN_RUNTIME_TOKEN must contain at least 256 bits")
     root = Path(os.environ.get("PLUGIN_ROOT", "/var/lib/unnamed-tracking/plugins"))
     registry = PluginRegistry(root, PluginSupervisor())
+    registry.supervisor.probe_isolation()
     server = RuntimeServer(
         (
             os.environ.get("PLUGIN_RUNTIME_HOST", "0.0.0.0"),
