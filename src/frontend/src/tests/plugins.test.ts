@@ -20,14 +20,12 @@ import {
 
 describe("plugin management service", () => {
   it("sends administrator upload confirmation passwords only in multipart bodies", async () => {
-    const mock = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(
-        async () =>
-          new Response(JSON.stringify({ status: "installed" }), {
-            status: 201,
-          }),
-      );
+    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ status: "installed" }), {
+          status: 201,
+        }),
+    );
     const file = new File([new Uint8Array([80, 75])], "example.utp");
     const confirmation = {
       approvedPermissions: ["frontend.native:v1"],
