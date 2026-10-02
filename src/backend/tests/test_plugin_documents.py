@@ -298,6 +298,27 @@ def test_pr241_pdf_signature_overrides_extension(tmp_path, name):
     assert read_representation(path)[1:3] == ("application/pdf", "pdf")
 
 
+@pytest.mark.parametrize("limit", [1, 2, 3])
+def test_small_finite_limit_does_not_consume_the_entire_file(tmp_path, monkeypatch, limit):
+    path = tmp_path / "large.txt"
+    consumed = 0
+
+    class CountingReader(io.BytesIO):
+        def read(self, size=-1):
+            nonlocal consumed
+            data = super().read(size)
+            consumed += len(data)
+            return data
+
+    monkeypatch.setattr(
+        type(path), "open", lambda *_args, **_kwargs: CountingReader(b"x" * 100_000)
+    )
+    with pytest.raises(DocumentAccessError) as error:
+        read_representation(path, max_bytes=limit)
+    assert error.value.status_code == 413
+    assert consumed <= 5
+
+
 @pytest.mark.asyncio
 async def test_configurable_preview_limit_can_exceed_legacy_cap_and_be_unlimited(stored):
     boundary, save, _ = stored
