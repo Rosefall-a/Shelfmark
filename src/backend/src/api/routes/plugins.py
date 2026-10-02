@@ -33,7 +33,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator, AliasChoices
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import delete, or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -164,6 +164,9 @@ class CatalogueIcon(BaseModel):
 
 
 class PluginCatalogEntry(BaseModel):
+    """Transport metadata; packaged assets are validated during catalogue normalization."""
+
+    model_config = {"populate_by_name": True}
     plugin_id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
     description: str = Field(default="", max_length=2_000)
@@ -172,31 +175,24 @@ class PluginCatalogEntry(BaseModel):
     release_notes: str | None = Field(default=None, max_length=4_000)
     changelog_url: str | None = Field(default=None, max_length=2048)
     dependencies: tuple[PluginDependency, ...] = ()
-    icon: str | None = None
-    icon_metadata: CatalogueIcon | None = None
+    icon: str | dict[str, str] | None = None
+    icon_metadata: dict[str, str] | None = None
     publisher: str | None = None
     tags: tuple[str, ...] = ()
     readme: str | None = None
     compatibility: str | None = None
-    permissions: list[dict[str, Any]] = Field(default_factory=list)
+    permissions: list[dict[str, object]] = Field(default_factory=list)
     digest: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("digest", "sha256"),
+        alias="sha256",
         pattern=r"^[0-9a-fA-F]{64}$",
     )
     package_sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
-    package: dict[str, Any] = Field(default_factory=dict)
-    signing: dict[str, Any] = Field(default_factory=dict)
-    documentation: dict[str, Any] = Field(default_factory=dict)
-    build: dict[str, Any] = Field(default_factory=dict)
+    package: dict[str, object] = Field(default_factory=dict)
+    signing: dict[str, object] = Field(default_factory=dict)
+    documentation: dict[str, object] = Field(default_factory=dict)
+    build: dict[str, object] = Field(default_factory=dict)
     automatic_update: bool = True
-
-    @model_validator(mode="before")
-    @classmethod
-    def packaged_icon(cls, value: Any) -> Any:
-        if isinstance(value, dict) and isinstance(value.get("icon"), dict):
-            value = {**value, "icon_metadata": value["icon"], "icon": None}
-        return value
 
 
 class PluginBackendRouteResponse(BaseModel):
@@ -407,15 +403,20 @@ def _catalog_entries(payload: Any, *, source_url: str | None = None) -> list[dic
     for raw_entry in payload["plugins"]:
         try:
             entry = PluginCatalogEntry.model_validate(raw_entry)
-            if entry.icon_metadata and source_url:
-                source_path = entry.build.get("source_path", "")
+            icon_metadata = entry.icon if isinstance(entry.icon, dict) else entry.icon_metadata
+            if icon_metadata:
+                packaged_icon = CatalogueIcon.model_validate(icon_metadata)
+                entry.icon_metadata = packaged_icon.model_dump()
+                entry.icon = None
+                source_path = str(entry.build.get("source_path", ""))
                 if (
-                    source_path
+                    source_url
+                    and source_path
                     and all(part not in {"", ".", ".."} for part in str(source_path).split("/"))
                     and "\\" not in source_path
                 ):
                     entry.icon = _validate_remote_url(
-                        urljoin(source_url, source_path + "/" + entry.icon_metadata.path)
+                        urljoin(source_url, source_path + "/" + packaged_icon.path)
                     )
             if not entry.compatibility:
                 entry.compatibility = f"SDK {raw_entry.get('sdk_version_range', '*')}; application {raw_entry.get('application_version_range', '*')}"

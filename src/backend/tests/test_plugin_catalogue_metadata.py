@@ -1,6 +1,9 @@
 """Rich release metadata must remain compatible with existing v1 catalogues."""
 
 import pytest
+import ast
+import inspect
+from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from src.api.routes import plugins
 
@@ -65,3 +68,22 @@ def test_old_catalogue_without_release_metadata_remains_supported(monkeypatch):
     assert record["version"] == "2.0.0"
     assert record["automatic_update"] is True
     assert record["icon"] is None
+
+
+def test_catalogue_transport_model_remains_loadable_by_public_contract_tools():
+    # The independent plugin repository validates transport metadata without
+    # importing the host API server or requiring its database configuration.
+    namespace = {
+        "BaseModel": BaseModel,
+        "Field": Field,
+        "PluginDependency": plugins.PluginDependency,
+    }
+    source = inspect.getsource(plugins.PluginCatalogEntry)
+    exec(compile(ast.parse(source), "catalogue-contract", "exec"), namespace)
+    model = namespace["PluginCatalogEntry"]
+    validated = model.model_validate(
+        entry(icon={"path": "icon.svg", "sha256": "a" * 64}, sha256="b" * 64)
+    )
+    assert validated.icon["path"] == "icon.svg"
+    assert validated.digest == "b" * 64
+    assert model.model_validate(entry(digest="c" * 64)).digest == "c" * 64
