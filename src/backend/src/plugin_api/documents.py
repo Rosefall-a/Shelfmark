@@ -150,7 +150,7 @@ def read_representation(
             if max_bytes == 0:
                 data = signature + handle.read()
             else:
-                data = signature + handle.read(max_bytes + 1 - len(signature))
+                data = signature + handle.read(max(0, max_bytes + 1 - len(signature)))
     except OSError as exc:
         raise DocumentAccessError("server", "Could not read document.", 500) from exc
     if max_bytes and len(data) > max_bytes:
