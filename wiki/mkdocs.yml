@@ -61,6 +61,7 @@ nav:
       - Plugin Gateway Authentication: development/plugin-gateway-auth.md
       - Plugin Permissions & Scoped Identities: development/plugin-permissions.md
       - Plugin Lifecycle: development/plugin-lifecycle.md
+      - Remote Plugin Management API: development/plugin-management-api.md
       - Plugin Updates & Rollback: development/plugin-updates.md
       - Plugin Runtime Isolation: development/plugin-runtime.md
       - Plugin Storage: development/plugin-storage.md

@@ -34,6 +34,32 @@ export interface PluginSummary {
   enabled: boolean;
   source?: PluginSourceMetadata;
   trust?: Record<string, unknown>;
+  description?: string;
+  icon?: string | null;
+  tags?: string[];
+  publisher?: string | null;
+  digest?: string;
+  runtime_available?: boolean;
+  runtime?: RuntimeCapabilities;
+  last_error?: string | null;
+  last_update_error?: string | null;
+  available_update?: PluginUpdateCheck;
+  staged_update?: PluginUpdateCheck & { status: string; version?: string };
+  automatic_updates?: "follow" | "enabled" | "disabled";
+  history?: Array<{ id: string; version: string; digest: string }>;
+  permission_details?: PluginInstallPermission[];
+}
+export interface RuntimeCapabilities {
+  bubblewrap_available: boolean | null;
+  sandbox_available: boolean;
+  mechanism: string;
+  reduced_isolation_allowed: boolean;
+  last_error?: string | null;
+  available?: boolean;
+}
+export interface ManagerSettings {
+  automatic_updates: boolean;
+  retained_versions: number;
 }
 export type PluginTrustStatus =
   "trusted" | "unknown_publisher" | "invalid_signature" | "unsigned";
@@ -61,6 +87,8 @@ export interface PluginInstallPreview {
   plugin_id: string;
   name: string;
   description: string;
+  icon?: string | null;
+  readme?: string | null;
   version: string;
   publisher: string | null;
   publisher_key_id: string | null;
@@ -109,6 +137,11 @@ export interface PluginCatalogEntry {
   description: string;
   version: string;
   url: string;
+  tags?: string[];
+  icon?: string | null;
+  publisher?: string | null;
+  compatibility?: string | null;
+  readme?: string | null;
   release_notes?: string | null;
   changelog_url?: string | null;
   catalogue_url?: string;
@@ -185,6 +218,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`Plugin manager request failed (${response.status}).`);
   return response.json() as Promise<T>;
 }
+export const fetchRuntimeCapabilities = () =>
+  request<RuntimeCapabilities>("/api/plugins/runtime/health");
+export const fetchManagerSettings = () =>
+  request<ManagerSettings>("/api/plugins/manager-settings");
+export const saveManagerSettings = (values: ManagerSettings) =>
+  request<ManagerSettings>("/api/plugins/manager-settings", {
+    method: "PUT",
+    body: JSON.stringify(values),
+  });
+export const setPluginAutomaticUpdates = (id: string, mode: string) =>
+  request<PluginSummary>(`/api/plugins/${encodeURIComponent(id)}/auto-update`, {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
+export const packageOperation = (
+  id: string,
+  operation: string,
+  values: Record<string, unknown> = {},
+) =>
+  request<PluginInstallResult>(
+    `/api/plugins/${encodeURIComponent(id)}/${operation}`,
+    { method: "POST", body: JSON.stringify(values) },
+  );
+export const previewStagedUpdate = (id: string) =>
+  request<PluginInstallPreview>(
+    `/api/plugins/${encodeURIComponent(id)}/update/staged/preview`,
+    { method: "POST" },
+  );
 export class UntrustedPluginError extends Error {
   details: {
     plugin_id: string;
@@ -372,11 +433,12 @@ export const fetchPluginLogs = (id: string) =>
 export const previewPluginUpdate = async (
   id: string,
   file: File,
+  operation = "update",
 ): Promise<PluginInstallPreview> => {
   const form = new FormData();
   form.append("file", file, file.name);
   const response = await fetch(
-    `/api/plugins/${encodeURIComponent(id)}/update/preview`,
+    `/api/plugins/${encodeURIComponent(id)}/update/preview?operation=${operation}`,
     { method: "PUT", credentials: "include", body: form },
   );
   if (!response.ok)
@@ -388,9 +450,10 @@ export const previewPluginUpdateUrl = async (
   id: string,
   url: string,
   source: Partial<PluginSourceMetadata> = {},
+  operation = "update",
 ): Promise<PluginInstallPreview> => {
   const response = await fetch(
-    `/api/plugins/${encodeURIComponent(id)}/update/preview-url`,
+    `/api/plugins/${encodeURIComponent(id)}/update/preview-url?operation=${operation}`,
     {
       method: "POST",
       credentials: "include",
@@ -408,6 +471,7 @@ export const updatePlugin = async (
   file: File,
   confirmation: PluginInstallConfirmation,
   allowUntrusted = false,
+  operation = "update",
 ): Promise<{
   plugin_id: string;
   version: string;
@@ -417,6 +481,7 @@ export const updatePlugin = async (
   const form = new FormData();
   form.append("file", file, file.name);
   const query = new URLSearchParams({
+    operation,
     allow_untrusted: allowUntrusted ? "true" : "false",
     confirm_dangerous: confirmation.confirmDangerous ? "true" : "false",
   });
@@ -440,6 +505,7 @@ export const updatePluginFromUrl = async (
   expectedDigest: string,
   allowUntrusted = false,
   source: Partial<PluginSourceMetadata> = {},
+  operation = "update",
 ): Promise<{
   plugin_id: string;
   version: string;
@@ -447,6 +513,7 @@ export const updatePluginFromUrl = async (
   status: string;
 }> => {
   const query = new URLSearchParams({
+    operation,
     allow_untrusted: allowUntrusted ? "true" : "false",
   });
   for (const permission of confirmation.approvedPermissions)

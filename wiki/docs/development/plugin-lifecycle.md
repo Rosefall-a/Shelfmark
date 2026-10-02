@@ -1,42 +1,45 @@
-# Plugin lifecycle
+# Plugin Manager lifecycle
 
-Plugin lifecycle management spans the application Plugin Manager and the isolated runtime.
+The host backend owns the installed inventory. It persists identity, version, source, digest, publisher trust, enabled preference, runtime observations, staged releases and update policy. PostgreSQL owns permission decisions and installation-scoped grants. The runtime owns packages, retained versions, configuration, storage, secrets and process state. The frontend reads this inventory; a temporarily unavailable runtime does not make an installed plugin disappear. Its current health is reported as unknown until observations resume.
 
-The manager previews and validates manifests, verifies and installs packages, resolves required dependencies deterministically, and delegates process execution to the isolated runtime. It never imports plugin code into the core backend.
+## Operations and data
 
-## Lifecycle and failure states
+| Operation | Package behavior | Plugin-owned data |
+| --- | --- | --- |
+| Install | Validate, review permissions, create installation identity, start and check health | Create a namespace |
+| Configure/approve | Review declared scopes; configure through the plugin's own application page | Preserve |
+| Enable | Enable and start the installed package | Preserve |
+| Start | Start an enabled, stopped package | Preserve |
+| Stop | Stop execution while retaining enablement; remain stopped after restart | Preserve |
+| Disable | Stop execution and persist disabled preference | Preserve, including grants and secrets |
+| Update | Validate/stage a newer release, approve new scopes, switch and verify | Preserve |
+| Rollback | Switch to a retained package, verify and retain its predecessor | Preserve |
+| Reinstall | Revalidate and replace the exact installed version/digest; never follow a newer URL release | Preserve |
+| Reinstall with purge | Explicit confirmation, erase owned state and grants, replace exact package | Purge |
+| Uninstall | Stop and remove package, retained versions, staged download and installation records | Purge |
 
-The manager distinguishes discovery, validation, installation, starting/running, stopping/disabling, install/start/stop failures, unhealthy state, and quarantine. Invalid or incompatible manifests never activate. Installation failures and runtime stop failures remain observable failure states instead of being silently rewritten as successful lifecycle transitions.
+Normal restart, stop/start, disable/enable, update, rollback and reinstall preserve endpoint configuration, credentials, profiles and imported history stored through the supported plugin APIs. Package history is separate from plugin data history. Host security audit records remain host-owned records after uninstall. A package rollback cannot reverse a plugin's own destructive data migration; administrators should back up the runtime volume before major upgrades.
 
-Repeated start, install, stop, or health failures reach the configured quarantine threshold; quarantine disables the plugin, stops its runtime process when one is running, and requires explicit administrator recovery.
+Selecting an already installed plugin produces an explicit update/reinstall/replace/cancel choice. Replace is a separately reviewed package identity change; it receives no inherited grants. Duplicate installation never silently succeeds or fails.
 
-## Health and recovery
+## Activation and interrupted transactions
 
-Health checks track consecutive failures and reset the counter after a successful check. Recovery clears lifecycle failure counters only; it does not change capability grants, compatibility decisions, or package integrity requirements.
+Every acquisition path uses the canonical installer. It validates archive paths and limits, canonical payload SHA-256, publisher signatures, compatibility, dependencies and host route ownership. A prepared runtime transaction cannot execute before PostgreSQL permission decisions commit. The same database transaction writes a durable lifecycle commit receipt.
 
-## Runtime and security boundaries
+For an enabled predecessor, activation stops it, atomically publishes the candidate, starts it and checks process health after a startup grace period. Only successful verification commits package history. A failed replacement stops the candidate, withdraws its new grants, restores grants removed by that transaction, restores the prior package and restarts it. An intentionally stopped predecessor remains stopped after a successful switch. Disabled predecessors remain disabled.
 
-Execution is delegated through the isolated runtime boundary from #267. The lifecycle manager does not import plugin code or bypass gateway authorization. Package integrity is checked before installation.
+Runtime restart never starts a pending transaction. Host startup retries reconciliation while the runtime is coming online: a missing database receipt proves preparation did not commit, while a committed receipt allows activation/health verification or safe rollback. Ambiguous responses therefore do not cause the host to guess whether grants committed. Failures remain visible in diagnostics.
 
-## Safe mode and diagnostics
+## Manager pages and application pages
 
-Global plugin safe mode prevents activation while keeping the core application available for diagnosis. Startup activation contains individual plugin failures so a broken extension cannot block core startup. Structured lifecycle logs provide bounded administrator diagnostics without exposing plugin secrets.
+Settings → Plugins offers Installed, Updates Available, Available to Install and All. All includes installed plugins plus enabled catalogues, deduplicated by plugin ID. Search and publisher-supplied tag filters apply to these views. Details include identity, description/icon/publisher, installed and available versions, lifecycle/runtime state, permissions and host risk classifications, history, update policy, logs and destructive controls.
 
-## Application integration
+The Plugin Manager Settings tab controls lifecycle, permissions, package retention and update policy. A plugin-provided application page contains its actual functionality and configuration, such as Jellyfin endpoint/server/profile settings and sync actions. The detail page links to that application page when the plugin provides one.
 
-The application exposes the lifecycle endpoints under /api/plugins and delegates execution to plugin-runtime through src/backend/src/plugin_api/runtime_client.py. The runtime persists enabled state in its plugin volume and restores enabled packages after restart. Plugin failures are returned as contained lifecycle errors and do not make core application startup depend on plugin health.
+## Contribution execution
 
+Contributions execute only while an installation is enabled, compatible and running. Stop/disable prevent backend route execution, event polling, notification-provider delivery and supervised workers. Reserved routes remain owned by the installed package. Navigation, settings contributions, dialogs, overlays, contextual actions, extensions and replacements disappear when execution or the relevant grant is unavailable.
 
-## Installation and activation
+The frontend refreshes observations every five seconds and after local manager operations. Server checks enforce revocation immediately on the next request. Removing privileged native frontend code reloads the browser realm to terminate retained JavaScript.
 
-The canonical installer records the administrator's explicit permission choices and resolves dependencies before preparing a package in the runtime. Prepared installations remain disabled until permission decisions commit and the runtime transaction completes. New installations then start automatically and receive a health check; updates restart only when the predecessor was enabled. Failed activation remains observable as `failed_activation` or `unhealthy`. Runtime start and stop preserve installation identity, publisher trust, and acquisition source metadata. `running` is reported only while the isolated plugin process is alive; an enabled plugin whose process exits is reported as `failed` rather than falsely as healthy.
-
-An interrupted installation transaction remains disabled across runtime restarts and cannot be enabled before completion. See [Plugin updates](plugin-updates.md) for transaction recovery and grant-retention rules.
-
-## Contribution lifecycle
-
-Contributions execute only while their installation is enabled, compatible and running. Starting, stopping, failed, disabled and quarantined plugins retain reserved backend routes, but cannot execute them. Their navigation, Settings contributions, overlays, dialogs, contextual actions, page extensions and replacements disappear. Event polling, provider registration/discovery/delivery, and supervised workers also stop. Provider records and grants remain available for reactivation of the same installation.
-
-The frontend reconciles lifecycle state every five seconds and after local Plugin Manager operations. Server execution checks take effect immediately. Removing a privileged native frontend bundle reloads the frontend to terminate its JavaScript realm; native cleanup callbacks alone cannot stop arbitrary retained code. Stop/disable preserve quarantine.
-
-Duplicate IDs within a plugin document and duplicate route paths are rejected. IDs are scoped to their plugin. Replacement conflicts resolve by ascending order, plugin ID, then contribution ID using lexicographic comparisons. Plugin host-route claims cannot overlap existing plugins or the application's registered routes, including catchalls; disabled and quarantined owners still reserve their declarations.
+See [Permissions](plugin-permissions.md), [Updates](plugin-updates.md), [Runtime isolation](plugin-runtime.md), [Storage](plugin-storage.md) and [Management tokens](plugin-management-api.md).

@@ -8,7 +8,7 @@ permission requests, never grant access.
 1. The Plugin Manager statically verifies an uploaded package and displays its identity, publisher trust, dependencies, UI contribution summary, and every requested capability before installation.
 2. An administrator explicitly allows or denies each capability in the contextual install dialog. Permissions default to denied.
 3. The package is uploaded again for installation, re-verified, and rejected if the approved capability keys do not match its manifest.
-4. Later requests (for example, permissions introduced by an update) are reviewed in that plugin's **Settings → Permissions** tab.
+4. New update permissions are reviewed on the staged update while the current version remains active. Active-package permission requests and re-grants are reviewed in that plugin's **Settings → Permissions** tab.
 5. Active grants can be revoked at any time from the same dialog.
 6. Grants are scoped to the plugin installation and may be narrowed to a user or device.
 
@@ -24,7 +24,9 @@ The authorization function requires exact plugin, installation, and capability-v
 
 `plugin_id` identifies software, while `installation_id` identifies one installed lifecycle instance. Grants belong to the installation and do not transfer to a different package or installation merely because it declares the same `plugin_id`. An in-place update can retain grants only when the candidate has the same plugin ID and the same verified publisher key. Unsigned or otherwise unverified updates may remain in the same lifecycle instance, but all existing grants are revoked and every requested permission receives a fresh review. A verified publisher change is blocked as a potential takeover and requires a new installation/review boundary.
 
-Update review compares the previous manifest requests, candidate requests, current grants, and newly requested grants as exact capability/version identities. Retained grants stay scoped to the installation, removed requests have their grants revoked, and every newly requested capability creates a pending request. Additions are never copied into the grant set automatically.
+Update review compares the previous manifest requests, candidate requests, current grants, and newly requested grants as exact capability/version identities. Retained grants stay scoped to the installation and removed requests have their grants revoked. A candidate with additions is staged for explicit review; resolved requests are recorded when that review commits. Denial retains the working release.
+
+Revoked exact scopes deny access even when a parent grant would otherwise authorize them. This applies to APIs and UI contributions. Restart, disable/enable, reinstall and rollback preserve revocation. An administrator can explicitly re-grant a scope declared by the active package without reinstalling. Rollback does not recreate permissions removed by intervening versions.
 
 
 ## Audit and security
@@ -58,6 +60,8 @@ The permission layer is intentionally independent of transport. Gateway authenti
 
 ## Permission risk display
 The administrator approval view uses the canonical registry's low, medium, high, and critical risk bands. `api.full`, privileged host routes, and `frontend.native` are explicitly marked highly privileged. Risk is returned by the backend with the capability's category, parent, and children.
+
+The host owns this registry; manifests cannot classify their own risk. Approval shows total requested scopes and coloured Critical, High, Medium and Low risk counts. Each subtree displays its scope count and aggregate risk bubbles. Existing scope names and versions remain authoritative.
 
 Risk is a presentation aid for administrator review; it never changes authorization. The gateway still requires an explicit grant and applies the same default-deny policy regardless of the displayed risk.
 

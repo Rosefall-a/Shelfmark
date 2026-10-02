@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { activePluginDocuments } from "../../state/pluginExtensions";
+import PermissionRiskSummary from "./PermissionRiskSummary.vue";
 import type {
   PluginPermissionGrant,
   PluginPermissionRequest,
@@ -11,7 +11,6 @@ import type {
   UiAction,
   UiValues,
 } from "../../services/pluginUi";
-import PluginUiHost from "./PluginUiHost.vue";
 
 const props = defineProps<{
   plugin: PluginSummary;
@@ -33,14 +32,17 @@ const emit = defineEmits<{
   approve: [requestId: string];
   deny: [requestId: string];
   refresh: [];
+  update: [];
+  operation: [operation: string, purge?: boolean];
+  autoUpdate: [mode: string];
+  grant: [key: string];
+  deleteHistory: [id: string];
 }>();
 
 type Tab = "overview" | "settings" | "permissions" | "diagnostics";
 const tab = ref<Tab>("overview");
 const closeButton = ref<HTMLButtonElement | null>(null);
-const contributionsActive = computed(() =>
-  Boolean(activePluginDocuments.value[props.plugin.plugin_id]),
-);
+const permissions = computed(() => props.plugin.permission_details ?? []);
 
 watch(
   () => props.plugin.plugin_id,
@@ -69,8 +71,24 @@ watch(
         <header class="dialog-header">
           <div>
             <p class="eyebrow">Plugin settings</p>
+            <img
+              v-if="plugin.icon"
+              :src="plugin.icon"
+              alt=""
+              width="48"
+              height="48"
+            />
             <h2 id="plugin-dialog-title">{{ plugin.name }}</h2>
             <p>{{ plugin.plugin_id }} · v{{ plugin.version }}</p>
+            <p>{{ plugin.description }}</p>
+            <p>
+              Publisher:
+              {{
+                plugin.trust?.publisher_identity ??
+                plugin.publisher ??
+                "Unverified"
+              }}
+            </p>
           </div>
           <button
             ref="closeButton"
@@ -128,6 +146,49 @@ watch(
             </dl>
             <div class="actions">
               <button
+                v-if="
+                  plugin.available_update?.update_available ||
+                  plugin.staged_update
+                "
+                :disabled="busy"
+                @click="emit('update')"
+              >
+                Review update
+                {{
+                  plugin.available_update?.available_version ??
+                  plugin.staged_update?.available_version
+                }}
+              </button>
+              <button
+                v-if="plugin.enabled"
+                :disabled="busy"
+                @click="
+                  emit(
+                    'operation',
+                    plugin.status === 'running' ? 'stop' : 'start',
+                  )
+                "
+              >
+                {{ plugin.status === "running" ? "Stop" : "Start" }}
+              </button>
+              <button :disabled="busy" @click="emit('operation', 'reinstall')">
+                Reinstall this release
+              </button>
+              <button
+                class="danger"
+                :disabled="busy"
+                @click="emit('operation', 'reinstall', true)"
+              >
+                Reinstall and purge data
+              </button>
+              <button
+                class="danger"
+                :disabled="busy"
+                @click="emit('operation', 'uninstall')"
+              >
+                Uninstall and purge data
+              </button>
+              <button
                 v-if="plugin.enabled"
                 type="button"
                 :disabled="busy"
@@ -158,18 +219,83 @@ watch(
           </section>
 
           <section v-else-if="tab === 'settings'" class="panel">
-            <PluginUiHost
-              v-if="document && contributionsActive"
-              :document="document"
-              @save="emit('save', $event)"
-              @action="(item, values) => emit('action', item, values)"
-            />
-            <p v-else class="state">
-              This plugin does not expose configurable settings or actions.
+            <h3>Plugin Manager settings</h3>
+            <label
+              >Automatic updates
+              <select
+                :value="plugin.automatic_updates ?? 'follow'"
+                :disabled="busy || plugin.source?.type !== 'catalogue'"
+                @change="
+                  emit('autoUpdate', ($event.target as HTMLSelectElement).value)
+                "
+              >
+                <option value="follow">Follow global setting</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </label>
+            <p v-if="plugin.source?.type !== 'catalogue'">
+              Automatic tracking requires a catalogue installation.
             </p>
+            <RouterLink :to="`/plugins/${encodeURIComponent(plugin.plugin_id)}`"
+              >Open plugin application pages and configuration</RouterLink
+            >
+            <h3>Retained package versions</h3>
+            <p>
+              Version history is separate from plugin data. Rollback preserves
+              data and does not restore revoked grants.
+            </p>
+            <article
+              v-for="version in plugin.history ?? []"
+              :key="version.id"
+              class="grant"
+            >
+              <strong>v{{ version.version }}</strong>
+              <button
+                :disabled="busy"
+                @click="emit('operation', `rollback/${version.id}`)"
+              >
+                Roll back
+              </button>
+              <button
+                class="danger"
+                :disabled="busy"
+                @click="emit('deleteHistory', version.id)"
+              >
+                Delete retained package
+              </button>
+            </article>
           </section>
 
           <section v-else-if="tab === 'permissions'" class="panel">
+            <PermissionRiskSummary :permissions="permissions" />
+            <article
+              v-for="permission in permissions"
+              :key="permission.key"
+              class="grant"
+            >
+              <div>
+                <strong>{{ permission.title }}</strong
+                ><small
+                  >{{ permission.capability }} ·
+                  {{ permission.risk }} risk</small
+                >
+              </div>
+              <button
+                v-if="
+                  !grants.some(
+                    (grant) =>
+                      grant.active &&
+                      `${grant.capability}:v${grant.capability_version}` ===
+                        permission.key,
+                  )
+                "
+                :disabled="busy"
+                @click="emit('grant', permission.key)"
+              >
+                Review and grant
+              </button>
+            </article>
             <p class="state">
               Permissions are enforced by the gateway and can be revoked
               immediately.
@@ -233,6 +359,53 @@ watch(
           </section>
 
           <section v-else class="panel diagnostics">
+            <dl class="diagnostic-summary">
+              <div>
+                <dt>Runtime availability</dt>
+                <dd>
+                  {{
+                    plugin.runtime_available === false
+                      ? "Unavailable"
+                      : "Available"
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Isolation</dt>
+                <dd>{{ plugin.runtime?.mechanism ?? "Unknown" }}</dd>
+              </div>
+              <div>
+                <dt>Bubblewrap</dt>
+                <dd>
+                  {{
+                    plugin.runtime?.bubblewrap_available
+                      ? "Usable"
+                      : "Unavailable"
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Sandbox</dt>
+                <dd>
+                  {{
+                    plugin.runtime?.sandbox_available
+                      ? "Active"
+                      : "Reduced isolation"
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>Last error</dt>
+                <dd>
+                  {{
+                    plugin.last_error ??
+                    plugin.last_update_error ??
+                    plugin.runtime?.last_error ??
+                    "None"
+                  }}
+                </dd>
+              </div>
+            </dl>
             <div class="diagnostic-heading">
               <h3>Runtime diagnostics</h3>
               <button type="button" :disabled="busy" @click="emit('refresh')">
@@ -319,6 +492,7 @@ watch(
 .dialog-header p,
 h3 {
   margin: 0;
+  color: var(--ui-text);
 }
 .eyebrow {
   color: #d68a34 !important;

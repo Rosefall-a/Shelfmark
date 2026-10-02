@@ -59,6 +59,15 @@ validation fails.
 Deployment backups must include the persistent plugin-runtime storage
 volume. Plugin data remains independent from executable/package versions.
 
+Configuration lives outside the executable package in the runtime volume's
+`.configuration` directory. Legacy package-local `.settings.json` values migrate
+before replacement. Secrets, profiles and imported history remain in the plugin
+namespace. Restart, stop/start, disable/enable, update, rollback and reinstall
+preserve these stores. Uninstall and explicitly confirmed reinstall-with-purge
+remove both. Package-history deletion never touches plugin data. Purging removes
+host permission requests, grants, scoped clients and provider registrations;
+host security audit records remain host-owned records.
+
 ## Availability and lifecycle
 
 Storage unavailable/failing operations return a storage error to the plugin;

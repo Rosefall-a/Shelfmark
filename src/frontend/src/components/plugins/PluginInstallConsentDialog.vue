@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import PermissionRiskSummary from "./PermissionRiskSummary.vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import type {
   PluginInstallConfirmation,
   PluginInstallPermission,
@@ -7,6 +10,11 @@ import type {
 } from "../../services/plugins";
 
 const props = defineProps<{ preview: PluginInstallPreview; busy: boolean }>();
+const readme = computed(() =>
+  DOMPurify.sanitize(
+    marked.parse(props.preview.readme ?? "", { async: false }),
+  ),
+);
 const emit = defineEmits<{
   cancel: [];
   confirm: [confirmation: PluginInstallConfirmation];
@@ -18,9 +26,10 @@ const dangerousConfirmed = ref(false);
 const adminPassword = ref("");
 const expandedCategories = ref(new Set<string>());
 const cancelButton = ref<HTMLButtonElement | null>(null);
+const content = ref<HTMLElement | null>(null);
 
 watch(
-  () => props.preview.plugin_id,
+  () => [props.preview.plugin_id, props.preview.version, props.preview.digest],
   async () => {
     approved.value = new Set();
     trustAccepted.value = props.preview.trust_status === "trusted";
@@ -31,6 +40,7 @@ watch(
     );
     await nextTick();
     cancelButton.value?.focus();
+    content.value?.scrollTo({ top: 0 });
   },
   { immediate: true },
 );
@@ -164,6 +174,7 @@ function close() {
     <div class="modal-backdrop" @click.self="close" @keydown.esc="close">
       <section
         class="consent-dialog"
+        ref="content"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plugin-consent-title"
@@ -171,6 +182,13 @@ function close() {
         <header>
           <div>
             <p class="eyebrow">Plugin installation</p>
+            <img
+              v-if="preview.icon"
+              :src="preview.icon"
+              alt=""
+              width="48"
+              height="48"
+            />
             <h2 id="plugin-consent-title">Review {{ preview.name }}</h2>
             <p class="identity">
               {{ preview.plugin_id }} · v{{ preview.version }}
@@ -180,6 +198,10 @@ function close() {
             trustLabel
           }}</span>
         </header>
+        <details v-if="readme" class="readme">
+          <summary>Plugin documentation</summary>
+          <article v-html="readme" />
+        </details>
 
         <p v-if="preview.description" class="description">
           {{ preview.description }}
@@ -276,6 +298,7 @@ function close() {
           <p v-if="!preview.permissions.length" class="empty">
             This plugin requests no host permissions.
           </p>
+          <PermissionRiskSummary :permissions="preview.permissions" />
           <article
             v-for="category in permissionCategories"
             :key="category.name"
@@ -289,6 +312,7 @@ function close() {
               >
                 {{ expandedCategories.has(category.name) ? "▾" : "▸" }}
                 {{ category.name }}
+                — {{ category.permissions.length }} scopes
               </button>
               <label>
                 <input
@@ -310,6 +334,7 @@ function close() {
                 Approve subtree
               </label>
             </header>
+            <PermissionRiskSummary :permissions="category.permissions" />
             <div v-if="expandedCategories.has(category.name)">
               <label
                 v-for="permission in category.permissions"
@@ -480,6 +505,10 @@ h2,
 h3,
 p {
   margin-top: 0;
+}
+h2,
+h3 {
+  color: var(--ui-text);
 }
 .eyebrow {
   margin-bottom: 4px;

@@ -17,9 +17,23 @@ Preview and package validation never execute plugin code. Activation happens onl
 
 Enabled plugins may add host-owned sidebar routes under `/plugins/{plugin_id}/{page_id}`. Native extensions can appear only in allowlisted host slots. A custom frontend runs in a sandboxed iframe and cannot access host cookies, local storage, Vue state, or the host DOM.
 
-Plugin settings, permissions, and diagnostics are in the plugin's own settings dialog. Permissions are grouped into expandable categories; selecting a parent selects its requested descendants. Secrets are write-only: saving replaces the value, but neither the browser nor later API responses can read it back.
+Plugin Manager settings control lifecycle, permissions, update policy, versions and diagnostics. Plugin-provided application pages contain their functionality and server/profile configuration. Permissions show total scopes and coloured host-classified risk counts; selecting a parent selects its requested descendants. Secrets are write-only: saving replaces the value, but neither the browser nor later API responses can read it back.
+
+Browse Installed, Updates Available, Available to Install and All, with search and plugin-supplied tag filters. All includes enabled catalogues and installed plugins. Selecting an installed plugin for installation offers update/reinstall/replace/cancel explicitly.
 
 ## Revoking or removing access
+
+Stop/start, disable/enable, restart, update, rollback and normal reinstall preserve
+plugin data, configuration and secrets. Reinstall replaces the exact installed
+release; it never selects a newer release automatically. Uninstall and confirmed
+reinstall-with-purge erase owned state. Revoked permissions can be explicitly
+granted again without reinstalling.
+
+Automatic installation has global and per-plugin controls and applies only to
+catalogue installations. Individual releases may opt out. Downloaded updates
+remain distinct from installed versions, new scopes require approval while the
+old version runs, and failed activation restores the previous package. Retained
+package history is configurable and independent of plugin data.
 
 Revoking a grant takes effect on the next gateway request. Disable stops the plugin and removes its pages/slots. Uninstall stops it, removes its package and private plugin storage, and revokes its notification-provider registrations. Updates are previewed before replacement, show changelog/dependency/permission changes, and cannot silently acquire newly requested permissions. Administrators can check configured sources for updates; available updates appear in the existing notification feed.
 

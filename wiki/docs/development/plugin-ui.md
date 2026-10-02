@@ -8,7 +8,7 @@ different host boundary.
 
 The v1 contract covers settings fields, validation, secrets, select options, actions, tables, dialogs, menus, and pages. Secret values are write-only and never included in schema defaults.
 
-Installed plugins are managed through a per-plugin dialog with Overview, Settings, Permissions, and Diagnostics tabs. That Settings tab is the plugin's configuration area. A plugin may separately contribute a Settings application section with `settings_sections`; this is normal application navigation and does not move configuration or permission management out of the Plugin Manager.
+Installed plugins are managed through a per-plugin dialog with Overview, Settings, Permissions, and Diagnostics tabs. Its Settings tab controls Plugin Manager update policy and package history. Plugin-provided application pages contain the plugin's functionality and endpoint/profile configuration; the manager links to these pages when available. A plugin may contribute a Settings application section using `settings_sections`; this remains separate from manager permissions, lifecycle and runtime administration.
 
 ## Navigation and host extensions
 
@@ -31,7 +31,7 @@ An extension references a page in the same UI document. The host renders that pa
 The contribution document also defines Settings sections, overlays, dialogs,
 contextual actions, plugin routes, and page replacements. A Settings contribution
 uses its contribution ID directly, so `id: sessions` renders at
-`/settings?section=sessions`. This is separate from the plugin's configuration in
+`/settings?section=sessions`. This is separate from manager configuration in
 Plugin Manager and separate from `/plugins/<plugin-id>/sessions`.
 
 Replacements are page-specific and capability-specific: replacing Home requires

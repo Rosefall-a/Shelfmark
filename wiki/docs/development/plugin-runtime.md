@@ -29,6 +29,25 @@ local token. Deployments must always set a unique `PLUGIN_RUNTIME_TOKEN`;
 
 ## Development fallback: `NONBUBBLE_ENV`
 
+At startup the runtime executes a real Bubblewrap namespace probe. Its health
+response reports probe status, Bubblewrap usability, active isolation mechanism,
+sandbox availability, reduced-isolation policy and probe error. Plugin Settings
+displays this report when first opened; details and diagnostics show process
+status and errors. An unavailable runtime is never reported as fully isolated.
+
+A failed probe blocks plugin start unless the existing explicit fallback is
+enabled. Administrators can continue inspecting Plugin Manager and using the
+core application and follow its help link here. Fallback reports reduced
+process isolation even if the Bubblewrap binary itself is usable.
+
+Inspect probe stderr and runtime container logs, ensure Bubblewrap is installed
+in the image, and check host user-namespace and container security policies.
+Linux user-namespace/AppArmor restrictions and incompatible container policies
+can prevent namespace creation. Adjust deployment policy for that operating
+system, recreate the runtime and confirm a successful startup probe before
+relying on per-plugin isolation. Binary presence or a running Docker container
+does not prove Bubblewrap works.
+
 If bubblewrap cannot run in a development/test environment, set `NONBUBBLE_ENV=true` on the **Plugin Runtime** service. Plugin processes are then launched directly rather than through the per-plugin bubblewrap namespace/filesystem sandbox. Resource limits, environment filtering, package verification, permissions, and the authenticated gateway still apply, as does the outer Docker/container boundary, but the per-plugin bwrap isolation does not.
 
 This is a **development troubleshooting escape hatch, not a production security mode**. Do not enable it when running untrusted plugins. Remove the variable or set it to a false value to restore normal bubblewrap isolation. Accepted true values are `1`, `true`, `yes`, and `on`, case-insensitive.

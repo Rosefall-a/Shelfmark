@@ -16,11 +16,34 @@ Permissions are shown as an expandable hierarchy. Approving a parent approves it
 
 ## Sources and updates
 
+The manager provides Installed, Updates Available, Available to Install and All
+views with search and plugin-supplied tag filters. All combines enabled catalogues
+and installed identities without duplicate installed entries. Browse plugin
+metadata and readable README content before approval; upload and arbitrary URL
+acquisition remain available under advanced installation sources.
+
+Global automatic installation defaults off. Per-plugin policy follows or overrides
+it. The daily plugin-update scheduled task still discovers and stages catalogue
+releases when automatic installation is disabled. Each release may independently
+opt out. New permissions require explicit approval while the old version stays
+active. Failed activation restores the previous package and reports the failure.
+Details provide update/reinstall/rollback controls and configurable package history.
+See [update behavior](../development/plugin-updates.md).
+
 Uploads, direct URLs, and catalogue entries all use the same inspection and confirmation lifecycle. The official catalogue is enabled by default. Additional catalogue records retain their priority, enabled state, trust/provenance metadata, last successful check, and last error. Catalogue trust never bypasses package verification.
 
 Installed URL/catalogue plugins retain source metadata for update checks. The update review shows release notes, dependency changes, and the exact permission delta before replacement. New permissions default to denied. Unverified updates inherit no prior grants and require every requested permission to be reviewed again. A discovered update can be reviewed and applied from its recorded source, and availability is also added to the existing administrator notification feed.
 
 ## Diagnostics and recovery
+
+Stop retains enablement but leaves the plugin stopped after restart. Disable
+retains data, configuration, secrets and grants. Reinstall preserves these and
+replaces the exact release. Uninstall and confirmed reinstall-with-purge erase
+owned state. Manager configuration and plugin-provided application configuration
+are separate. The runtime capability notice accurately reports Bubblewrap or
+reduced process isolation. See [lifecycle](../development/plugin-lifecycle.md),
+[runtime troubleshooting](../development/plugin-runtime.md) and
+[remote management tokens](../development/plugin-management-api.md).
 
 The Diagnostics tab shows process state, last exit code, and up to 200 structured events. Secret-, token-, password-, and webhook-shaped values are redacted. Disable a misbehaving plugin before investigating. Revocation blocks subsequent gateway calls; uninstall additionally removes package/private storage and provider registrations.
 
