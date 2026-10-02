@@ -920,6 +920,54 @@ class PluginRegistry:
         self.supervisor.execution_allowed = self._execution_allowed
         self._installation_lock = self._operation_lock
         self.root.mkdir(mode=0o750, parents=True, exist_ok=True)
+        self._recover_publication()
+
+    def _transaction_backup(self, plugin_id: str, pending: dict[str, Any]) -> Path | None:
+        name = pending.get("backup")
+        if name is None:
+            return None
+        if not re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(name)):
+            raise RuntimePolicyError("plugin transaction backup path is invalid")
+        backup = self.root / name
+        if not backup.is_dir() and pending.get("history_id"):
+            history_id = str(UUID(pending["history_id"]))
+            backup = self.root / ".history" / plugin_id / history_id
+        return backup
+
+    def _recover_publication(self) -> None:
+        """Finish filesystem recovery before any interrupted package can execute."""
+        state = self._state()
+        for plugin_id, current in list(state.items()):
+            if not isinstance(current, dict):
+                continue
+            pending = current.get("pending_installation") or {}
+            if not (pending.get("publication_pending") or pending.get("rollback_pending")):
+                continue
+            if not _PLUGIN_ID.fullmatch(plugin_id):
+                raise RuntimePolicyError("plugin transaction identity is invalid")
+            target = self.root / plugin_id
+            backup = self._transaction_backup(plugin_id, pending)
+            previous = pending.get("previous_state")
+            if backup is not None and backup.is_dir():
+                if target.exists():
+                    shutil.rmtree(target)
+                backup.rename(target)
+            elif previous is not None:
+                manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+                if manifest["integrity"]["sha256"] != pending.get("previous_digest"):
+                    raise RuntimePolicyError("plugin predecessor cannot be recovered safely")
+            elif target.exists():
+                shutil.rmtree(target)
+            if previous is None:
+                state.pop(plugin_id, None)
+            else:
+                state[plugin_id] = previous
+            self._save_state(state)
+            for name in (pending.get("staging"), f".rejected-{plugin_id}-{pending['operation_id']}"):
+                if name:
+                    if not re.fullmatch(r"\.(?:install|rejected)-[A-Za-z0-9._-]+", str(name)):
+                        raise RuntimePolicyError("plugin transaction temporary path is invalid")
+                    shutil.rmtree(self.root / name, ignore_errors=True)
 
     def _state(self) -> dict[str, Any]:
         with self._state_lock:
@@ -1568,8 +1616,6 @@ class PluginRegistry:
             self.supervisor._settings(
                 plugin_id
             )  # Migrate data before replacing its package.
-            self._transition(plugin_id, enabled=False, status="stopping")
-            self.supervisor.stop(plugin_id)
         staging = (
             self.root / f".install-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
         )
@@ -1597,15 +1643,6 @@ class PluginRegistry:
                     self.root
                     / f".backup-{plugin_id}-{os.getpid()}-{threading.get_ident()}"
                 )
-                target.rename(backup)
-                try:
-                    staging.rename(target)
-                except Exception:
-                    backup.rename(target)
-                    raise
-            else:
-                staging.rename(target)
-            published = True
             if replace and isinstance(previous_state, dict):
                 next_state = dict(previous_state)
                 next_state["status"] = (
@@ -1634,7 +1671,26 @@ class PluginRegistry:
                     "operation_id": operation_id,
                     "previous_state": previous_state,
                     "backup": backup.name if backup is not None else None,
+                    "staging": staging.name,
+                    "publication_pending": True,
+                    "previous_digest": self.package(plugin_id)[1]["integrity"]["sha256"]
+                    if backup is not None else None,
                 }
+                self._save_state(state)
+            # Journal the blocked transaction before stopping or moving packages.
+            self.supervisor.stop(plugin_id)
+            if backup is not None:
+                target.rename(backup)
+                try:
+                    staging.rename(target)
+                except Exception:
+                    backup.rename(target)
+                    raise
+            else:
+                staging.rename(target)
+            published = True
+            if operation_id is not None:
+                state[plugin_id]["pending_installation"]["publication_pending"] = False
             self._save_state(state)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
@@ -1642,6 +1698,11 @@ class PluginRegistry:
                 shutil.rmtree(target, ignore_errors=True)
                 if backup is not None:
                     backup.rename(target)
+            if previous_state is None:
+                state.pop(plugin_id, None)
+            else:
+                state[plugin_id] = previous_state
+            self._save_state(state)
             raise
         if backup is not None and operation_id is None:
             shutil.rmtree(backup, ignore_errors=True)
@@ -1673,12 +1734,8 @@ class PluginRegistry:
                 or pending.get("operation_id") != operation_id
             ):
                 raise RuntimePolicyError("plugin installation operation does not match")
-            backup_name = pending.get("backup")
-            backup = self.root / backup_name if backup_name else None
-            if backup is not None and (
-                not re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(backup_name))
-                or not backup.is_dir()
-            ):
+            backup = self._transaction_backup(plugin_id, pending)
+            if backup is not None and not backup.is_dir():
                 raise RuntimePolicyError("plugin installation backup is unavailable")
             if commit:
                 current = dict(current)
@@ -1694,6 +1751,8 @@ class PluginRegistry:
             # candidate code with the predecessor's still-authorized grants.
             previous_state = pending.get("previous_state")
             target = self.root / plugin_id
+            pending["rollback_pending"] = True
+            self._save_state(state)
             if backup is not None:
                 rejected = self.root / f".rejected-{plugin_id}-{operation_id}"
                 target.rename(rejected)
@@ -1730,12 +1789,8 @@ class PluginRegistry:
                 or pending.get("operation_id") != operation_id
             ):
                 raise RuntimePolicyError("plugin activation operation does not match")
-            backup_name = pending.get("backup")
-            backup = self.root / backup_name if backup_name else None
-            if backup is not None and (
-                not re.fullmatch(r"\.backup-[A-Za-z0-9._-]+", str(backup_name))
-                or not backup.is_dir()
-            ):
+            backup = self._transaction_backup(plugin_id, pending)
+            if backup is not None and not backup.is_dir():
                 raise RuntimePolicyError("plugin activation backup is unavailable")
             if not commit:
                 self.supervisor.stop(plugin_id)
@@ -1745,15 +1800,18 @@ class PluginRegistry:
                 self._save_state(state)
                 self.finish_installation(plugin_id, operation_id, commit=False)
                 return
-            current.pop("pending_activation")
             if backup is not None:
                 manifest = json.loads(
                     (backup / "manifest.json").read_text(encoding="utf-8")
                 )
-                history_id = str(uuid4())
+                history_id = pending.get("history_id") or str(uuid4())
+                pending["history_id"] = history_id
+                self._save_state(state)
                 history_root = self.root / ".history" / plugin_id
                 history_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-                backup.rename(history_root / history_id)
+                destination = history_root / history_id
+                if backup != destination:
+                    backup.rename(destination)
                 history = list(current.get("history", []))
                 history.insert(
                     0,
@@ -1765,6 +1823,7 @@ class PluginRegistry:
                     },
                 )
                 current["history"] = history
+            current.pop("pending_activation")
             state[plugin_id] = current
             self._save_state(state)
 

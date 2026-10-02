@@ -30,6 +30,8 @@ For an enabled predecessor, activation stops it, atomically publishes the candid
 
 Runtime restart never starts a pending transaction. Host startup retries reconciliation while the runtime is coming online: a missing database receipt proves preparation did not commit, while a committed receipt allows activation/health verification or safe rollback. Ambiguous responses therefore do not cause the host to guess whether grants committed. Failures remain visible in diagnostics.
 
+The runtime journals publication before stopping or renaming packages. An interruption before preparation acknowledgement restores the predecessor and its enabled preference before runtime startup. Package-history moves and rollback renames are also journalled and recoverable. Host recovery and new installations are serialized in the supported single-process host deployment so recovery cannot abort an installation in progress.
+
 ## Manager pages and application pages
 
 Settings → Plugins offers Installed, Updates Available, Available to Install and All. All includes installed plugins plus enabled catalogues, deduplicated by plugin ID. Search and publisher-supplied tag filters apply to these views. Details include identity, description/icon/publisher, installed and available versions, lifecycle/runtime state, permissions and host risk classifications, history, update policy, logs and destructive controls.
