@@ -409,6 +409,43 @@ class PluginSupervisor:
         payload = request.get("payload", {})
         if not isinstance(payload, dict):
             raise RuntimePolicyError("gateway payload must be an object")
+        # Host-owned opt-in records cannot be forged through plugin storage.
+        if method.startswith("storage.") and str(payload.get("key", "")).startswith("host/"):
+            raise RuntimePolicyError("host storage namespace is reserved")
+        if method == "storage.keys" and str(payload.get("prefix", "")).startswith("host/"):
+            raise RuntimePolicyError("host storage namespace is reserved")
+        if method in {"tasks.subscribe", "tasks.unsubscribe", "tasks.subscribers", "tasks.request"}:
+            self._authorize_capability(plugin_id, "tasks.background", user_id=user_id,
+                                       request_id=request["request_id"])
+            storage = self._storage(plugin_id)
+            if method in {"tasks.subscribe", "tasks.unsubscribe"}:
+                if user_id is None:
+                    raise RuntimePolicyError("background subscriptions require an authenticated action")
+                key = "host/tasks/" + str(UUID(user_id))
+                if method == "tasks.subscribe":
+                    storage.put(key, json.dumps({"user_id": user_id}).encode())
+                else:
+                    storage.delete(key)
+                return {"payload": {"subscribed": method == "tasks.subscribe"}}
+            if method == "tasks.subscribers":
+                keys = list(storage.keys("host/tasks/"))
+                limit = max(1, min(int(payload.get("limit", 100)), 100))
+                offset = max(0, int(payload.get("offset", 0)))
+                return {"payload": {"users": [key.removeprefix("host/tasks/")
+                                               for key in sorted(keys)[offset:offset + limit]],
+                                    "total": len(keys)}}
+            target = str(UUID(str(payload.get("user_id", ""))))
+            if storage.get("host/tasks/" + target) is None:
+                raise RuntimePolicyError("user has not subscribed to this plugin's background tasks")
+            # A reviewed, bounded operation with its own live target-user grant.
+            if payload.get("method") != "media.sync" or payload.get("capability") != "media.write":
+                raise RuntimePolicyError("unsupported background operation")
+            self._authorize_capability(plugin_id, "tasks.background", user_id=target,
+                                       request_id=request["request_id"])
+            return self._dispatch_gateway_request(plugin_id, {
+                **request, "method": payload["method"], "capability": payload["capability"],
+                "payload": payload.get("payload", {}),
+            }, user_id=target)
         local_capability = {
             "storage.put": "plugin.storage",
             "storage.get": "plugin.storage",
@@ -455,9 +492,9 @@ class PluginSupervisor:
         if method == "storage.keys":
             return {
                 "payload": {
-                    "keys": list(
-                        self._storage(plugin_id).keys(str(payload.get("prefix", "")))
-                    )
+                    "keys": [key for key in
+                             self._storage(plugin_id).keys(str(payload.get("prefix", "")))
+                             if not key.startswith("host/")]
                 }
             }
         if not self.gateway_url or len(self.gateway_token) < 32:
@@ -2244,11 +2281,14 @@ class PluginRegistry:
 
     def storage_put(self, plugin_id: str, key: str, value: str) -> None:
         self.package(plugin_id)
+        if key.startswith("host/"):
+            raise RuntimePolicyError("host storage namespace is reserved")
         self.supervisor._storage(plugin_id).put(key, value.encode())
 
     def storage_keys(self, plugin_id: str, prefix: str = "") -> list[str]:
         self.package(plugin_id)
-        return list(self.supervisor._storage(plugin_id).keys(prefix))
+        return [key for key in self.supervisor._storage(plugin_id).keys(prefix)
+                if not key.startswith("host/")]
 
     def health(self, plugin_id: str) -> bool:
         self.package(plugin_id)

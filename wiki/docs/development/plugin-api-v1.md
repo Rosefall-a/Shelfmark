@@ -65,3 +65,89 @@ Dependencies support required/optional dependencies, semantic-version constraint
 See [Plugin capability APIs](plugin-capabilities.md) for the current method map and domain-specific limits, and [Plugin backend routes](plugin-backend-routes.md) for authenticated HTTP integration.
 
 Scoped game documents: see [document transport, format policy and security tests](plugin-documents.md).
+
+## Provider media synchronization, background subscriptions and outbound JSON
+
+These are additive **Plugin API v1** operations on the existing gateway. They do
+not change package format, SDK, gateway transport or installation identity.
+
+| Operation | Capability | Scope |
+| --- | --- | --- |
+| `media.sync` | `media.write` | Authenticated caller's existing Movies/TV/Anime domain records |
+| `network.request` | `network.outbound` | Bounded JSON GET through the host, outside worker network isolation |
+| `tasks.subscribe`, `tasks.unsubscribe` | `tasks.background` | Explicit authenticated UI action's own user; a worker cannot subscribe another user |
+| `tasks.subscribers` | `tasks.background` | Plugin's opted-in user IDs; bounded offset/limit, maximum 100 |
+| `tasks.request` | `tasks.background` | Delegates only `media.sync`/`media.write` to a subscribed target, checking target background and media grants live |
+
+### Media sync contract
+
+`media.sync` accepts one bounded DTO: `source`, `source_scope`, `external_id`,
+`media_type` (`movie`, `tv_show`, `anime`), `title`, optional `genres`,
+`runtime_minutes`, `poster_url`, `played`, `in_progress`, `expected_revision`,
+`inventory_complete`, and at most 100 `episodes`. Each episode contains
+`external_id`, `season` (including zero for specials), `number`, `watched`, optional
+`title`, and optional `removed`. Unknown fields and invalid bounds are rejected.
+
+The host derives a deterministic UUID from plugin ID, authenticated user, source,
+source scope and external ID. This uses the existing media primary key rather than
+introducing another provider database. The plugin stores its external mapping and
+returned host ID. Source scope must distinguish server/account namespaces. Names
+and category changes do not alter this ID. Identical titles remain distinct.
+Upserts serialize by identity using a transaction advisory lock.
+
+A successful response returns `id`, `created`, `status`, `revision`. Revision is a
+SHA-256 digest of actual watch status, episode flags and season counts. An existing
+item requires its last returned revision. Local watch changes return
+`conflict=local_watch_state_changed` and the current revision, without mutation.
+A plugin may use that revision only after explicit user resolution. Local deletion
+returns `locally_deleted`; a category change returns `category_changed` instead of
+creating another record or dropping local notes/references. Do not silently adopt
+unrelated existing records by title. Locked metadata, notes, ratings, favorites
+and rewatch history remain protected. Legacy `media.import` remains available.
+
+Films map played to WATCHED; unwatched positions imply IN_PROGRESS, otherwise
+WATCHLIST. Episodic media writes real episode flags and derives season counters.
+Completion requires an explicitly finalized, nonempty complete inventory with
+all episodes watched. Until finalization, a partial watched inventory is
+IN_PROGRESS. A root object's existence or played flag does not complete a series.
+Episode removal is explicit and bounded; it retains unrelated local fields.
+
+### Background consent and lifecycle
+
+Subscriptions are runtime-owned records in a protected `host/tasks/` storage
+namespace. Plugin storage operations cannot read/write those records or list their
+keys. Registration gets identity from the authenticated action context, not a
+payload-supplied user ID. Delegated work uses the existing private HTTP bridge,
+then the public gateway checks the target's media grant. Unsubscribed targets,
+revoked grants, arbitrary methods, and nested delegation are rejected. Normal
+reinstall/update/rollback retains subscription/storage state; purge/uninstall
+removes it through the existing lifecycle. Installing a different plugin never
+inherits another plugin's subscriptions.
+
+`tasks.request` payload is `{user_id, method: "media.sync", capability:
+"media.write", payload: <media DTO>}`. A background grant does not grant media
+access or authorize arbitrary impersonation. The target needs both grants.
+
+### Outbound JSON
+
+`network.request` accepts `{url, headers?}` and performs only HTTP(S) GET. It uses
+normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
+limit. URLs cannot contain embedded credentials or fragments. Header names are
+restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
+are enforced. The generic transport treats those headers as opaque strings and
+contains no provider behavior. Responses are `{status: 200, data: <object/array>}`
+or a safe `{status, error}` for HTTP/connection failures. Malformed/oversized JSON
+is rejected. No arbitrary response headers/bodies are returned on errors.
+
+Network grants remain explicit, high-risk egress authorization; the administrator
+chooses appropriate destinations. This operation enables isolated workers to use
+HTTP without changing their sandbox policy. It does not proxy playback.
+
+### Existing media actions
+
+Use `frontend.page.extend` with `media.detail.after-header` and an authenticated
+`frontend.context.media` action. The existing `external_navigation` action flag
+now also applies to contextual buttons: a `redirect_url` is accepted only when
+that flag is declared and the target is credential-free HTTP(S). Failed actions
+show an unavailable/error message. Native plugins can render normal HTTP links.
+Native contributions remount when the authenticated resource context changes, preventing a previous media item's action destination from remaining visible. There is no provider-specific button or media action in core.
