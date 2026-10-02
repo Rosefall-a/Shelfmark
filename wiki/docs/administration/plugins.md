@@ -1,5 +1,7 @@
 # Plugin administration
 
+![Package and permission review](../assets/plugin-manager-review.png)
+
 Only administrators can install, update, enable, disable, retry, inspect diagnostics, revoke all grants, or uninstall plugins.
 
 ## Review rules

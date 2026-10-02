@@ -312,7 +312,8 @@ function close() {
               >
                 {{ expandedCategories.has(category.name) ? "▾" : "▸" }}
                 {{ category.name }}
-                — {{ category.permissions.length }} scopes
+                — {{ category.permissions.length }}
+                {{ category.permissions.length === 1 ? "scope" : "scopes" }}
               </button>
               <label>
                 <input
@@ -471,6 +472,42 @@ function close() {
 </template>
 
 <style scoped>
+.readme {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.readme :deep(h1) {
+  font-size: 1.5rem;
+  margin: 18px 0 12px;
+  color: var(--ui-text);
+}
+.readme :deep(h2),
+.readme :deep(h3) {
+  color: var(--ui-text);
+  margin: 18px 0 10px;
+}
+.readme :deep(p) {
+  margin: 10px 0;
+}
+.readme :deep(img) {
+  max-width: 100%;
+}
+.readme :deep(pre) {
+  overflow: auto;
+  padding: 12px;
+  background: #0d0d0d;
+  border-radius: 8px;
+}
+.readme :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+.readme :deep(td),
+.readme :deep(th) {
+  padding: 8px;
+  border: 1px solid var(--ui-border);
+  text-align: left;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;

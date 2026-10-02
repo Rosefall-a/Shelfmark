@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import {
   managerEntries,
   type ManagerView,
@@ -101,16 +99,6 @@ const managerSettings = ref({ automatic_updates: false, retained_versions: 1 });
 const stagedTarget = ref<string | null>(null);
 const grantTarget = ref<string | null>(null);
 const duplicate = ref<PluginSummary | null>(null);
-const readme = computed(() => {
-  const entry = catalog.value.find(
-    (item) => item.plugin_id === installPreview.value?.plugin_id,
-  );
-  return DOMPurify.sanitize(
-    marked.parse(installPreview.value?.readme ?? entry?.readme ?? "", {
-      async: false,
-    }),
-  );
-});
 const entries = computed(() =>
   managerEntries(
     plugins.value,
@@ -420,6 +408,10 @@ async function previewCatalogEntry(entry: PluginCatalogEntry) {
     release_notes: entry.release_notes,
     changelog_url: entry.changelog_url,
   });
+  if (installPreview.value) {
+    installPreview.value.readme ??= entry.readme;
+    installPreview.value.icon ??= entry.icon;
+  }
 }
 
 function cancelInstall() {
@@ -1050,6 +1042,13 @@ onMounted(() => {
       >
         <header>
           <div>
+            <img
+              v-if="plugin.icon"
+              :src="plugin.icon"
+              alt=""
+              width="48"
+              height="48"
+            />
             <h3>{{ plugin.name }}</h3>
             <span>{{ plugin.plugin_id }} · v{{ plugin.version }}</span>
           </div>
@@ -1061,6 +1060,14 @@ onMounted(() => {
               ? "Compatible with the current host."
               : `Incompatible: ${plugin.compatibility_reason}`
           }}
+        </p>
+        <p v-if="plugin.staged_update" class="muted">
+          Staged v{{
+            plugin.staged_update.available_version ??
+            plugin.staged_update.version
+          }}
+          · {{ plugin.staged_update.status.replaceAll("_", " ") }} · Installed
+          release remains v{{ plugin.version }}
         </p>
         <dl>
           <div>
@@ -1085,7 +1092,7 @@ onMounted(() => {
             Manage plugin
           </button>
           <label class="file-button"
-            >Update<input
+            >Upload update<input
               type="file"
               accept="*/*"
               :disabled="action === plugin.plugin_id"
@@ -1148,10 +1155,6 @@ onMounted(() => {
         </section>
       </div></Teleport
     >
-    <details v-if="installPreview && readme" class="readme">
-      <summary>Plugin README</summary>
-      <article v-html="readme" />
-    </details>
     <PluginSettingsDialog
       v-if="selected"
       :plugin="selected"
@@ -1360,13 +1363,46 @@ h2 {
 button,
 .file-button {
   cursor: pointer;
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 8px 12px;
+  color: var(--ui-text);
+  background: #242424;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+button:hover,
+.file-button:hover {
+  border-color: var(--ui-accent);
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+input:not([type="checkbox"]):not([type="file"]),
+select {
+  font: inherit;
+  padding: 8px 10px;
+  color: var(--ui-text);
+  background: #171717;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  min-width: 0;
+}
+.manager-filters input {
+  flex: 1;
+}
+.primary {
+  background: var(--ui-accent-soft);
+  border-color: var(--ui-accent-line);
+}
+.plugin img {
+  border-radius: 8px;
+  margin-bottom: 8px;
 }
 .file-button {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border: 1px solid #555;
-  border-radius: 4px;
 }
 .file-button input {
   display: none;
