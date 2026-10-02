@@ -40,6 +40,11 @@ loaded into the Vue host only when the enabled installation has
 declared by this document. The host owns registration, stylesheet,
 failure-isolation, and cleanup lifecycle.
 
+Native component instances are scoped to the plugin ID and page ID. Switching
+pages unmounts the previous instance and mounts a fresh one, even when both pages
+register the same component. Changes to context within the same page preserve
+the instance. Page navigation does not reactivate the native bundle.
+
 Declared action confirmation is handled in both modes and enforced on the host
 action endpoint. Requests use strict boolean `confirmed` (default false). Native
 `host.runAction` returns `{ cancelled: true }` when confirmation is declined.

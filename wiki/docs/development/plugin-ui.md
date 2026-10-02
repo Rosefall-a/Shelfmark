@@ -85,6 +85,12 @@ registration table and stylesheet links. Disable, uninstall, update, permission
 revocation, or activation failure removes those registrations and styles. Render
 and cleanup errors are isolated so they cannot take down the application shell.
 
+Component instances belong to a plugin ID and page ID. Switching between native
+pages (including Settings sections) unmounts the previous page and creates a new
+instance, even if both pages share a component. Use Vue's unmount lifecycle to
+clean up page-local resources. Context updates within the same page retain the
+instance, and page navigation does not reactivate the bundle.
+
 Native CSS is loaded only from the separately permissioned native asset endpoint.
 This supports a future trusted theme plugin without changing the meaning or CSP of
 the sandboxed `frontend` bundle.
