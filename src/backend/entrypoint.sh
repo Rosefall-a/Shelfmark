@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-
+  
 echo "Starting application..."
 
 # Brings the database up to date: waits for it, adopts a database made by an
