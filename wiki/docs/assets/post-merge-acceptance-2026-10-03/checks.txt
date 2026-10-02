@@ -241,4 +241,3 @@ Final companion-target regression suite (tested ddec72e; exact tree of merge 546
 Production image: sha256:24feed350e5ce51b162f29bb705d8b05b4a88facb9656591a2a44cc7f7674555
 Runtime image: sha256:f71d4971fd8f3e57e9fa217f78d75abc5349f0b77fbf479d7d27f212974e0321
 Both built from host 31e97fcd0b9217a9398d052bf99613e69cba9174 Git archive.
-
