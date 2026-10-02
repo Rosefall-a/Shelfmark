@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { formatDisplayDate } from "../utils/dates";
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useWindowVirtualizer } from "@tanstack/vue-virtual";
@@ -9,6 +8,7 @@ import GameFormModal from "../components/GameFormModal.vue";
 import BulkEditModal from "../components/BulkEditModal.vue";
 import RandomGamePicker from "../components/RandomGamePicker.vue";
 import { activePriority, priorityLabel } from "../utils/priority";
+import { formatDisplayDate } from "../utils/dates";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import {
   fetchGames,
@@ -36,17 +36,19 @@ import { usePrompt } from "../state/dialog";
 const prompt = usePrompt();
 
 type ViewMode = "cards" | "list" | "detail" | "shelves";
-type SortBy =
-  | "name"
-  | "name_desc"
-  | "recent"
-  | "rating"
-  | "playtime"
-  | "last_played"
-  | "neglected"
-  | "priority"
-  | "release"
-  | "length";
+const SORT_KEYS = [
+  "name",
+  "name_desc",
+  "recent",
+  "rating",
+  "playtime",
+  "last_played",
+  "neglected",
+  "priority",
+  "release",
+  "length",
+] as const;
+type SortBy = (typeof SORT_KEYS)[number];
 type AchievementsFilter = "all" | "has" | "none";
 type MissingFilter = "none" | "playtime" | "rating" | "tags" | "description";
 type CardDensity = "compact" | "cozy" | "large";
@@ -495,18 +497,7 @@ if (
 const querySort = route.query.sort;
 if (
   typeof querySort === "string" &&
-  [
-    "name",
-    "name_desc",
-    "recent",
-    "rating",
-    "playtime",
-    "last_played",
-    "neglected",
-    "priority",
-    "release",
-    "length",
-  ].includes(querySort)
+  (SORT_KEYS as readonly string[]).includes(querySort)
 ) {
   sortBy.value = querySort as SortBy;
 }
@@ -2738,8 +2729,7 @@ watch(viewMode, (mode) => {
 .first-use-hint-dismiss:hover {
   background: rgba(214, 138, 52, 0.24);
 }
-/* on a phone the Select button can sit near the right edge, where a tip
-   hanging off it ran off the screen: show it along the bottom instead */
+/* anchored to Select, the tip ran off a phone screen */
 @media (max-width: 600px) {
   .first-use-hint {
     position: fixed;

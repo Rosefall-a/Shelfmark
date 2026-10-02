@@ -2810,13 +2810,7 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{
-                noteSaving
-                  ? "Saving…"
-                  : editingNoteName
-                    ? "Save changes"
-                    : "Create note"
-              }}
+              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
             </button>
           </div>
         </div>
@@ -4237,8 +4231,7 @@ function formatPlaytime(minutes: number) {
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
-  /* the top padding keeps a title long enough to grow the hero clear of
-     the menu and back buttons floating over its top edge */
+  /* clear of the floating menu/back buttons */
   padding: 72px 24px 28px;
   display: flex;
   flex-direction: column;
@@ -4248,8 +4241,7 @@ function formatPlaytime(minutes: number) {
 .hero-inner h1 {
   margin: 0;
   font-size: 2.4rem;
-  /* the page's inherited line height is a fixed 23px (16px/145% on
-     :root), so a long title's wrapped lines were drawn over each other */
+  /* the inherited line height is a fixed 23px */
   line-height: 1.15;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
 }
@@ -4560,8 +4552,7 @@ function formatPlaytime(minutes: number) {
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  /* a bigger tap target than the text alone, without moving it: the
-     negative margin gives back the padding's room */
+  /* larger tap target without moving the text */
   padding: 6px 4px;
   margin: -6px -4px;
 }

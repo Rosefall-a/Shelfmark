@@ -1,7 +1,4 @@
-/* The app only has a dark theme. These used to be light values with a
-   dark override under prefers-color-scheme: dark, so on a device set to
-   light mode every h1/h2 turned near-black on the dark pages and unstyled
-   form controls, date pickers and scrollbars turned white. */
+/* dark only: the app has no light theme */
 :root {
   --text: #9ca3af;
   --text-h: #f3f4f6;
@@ -411,11 +408,4 @@ html.high-contrast .confirm-dialog {
 html.high-contrast :focus-visible {
   outline: 3px solid #ffb454 !important;
   outline-offset: 2px !important;
-}
-
-/* Edge draws its own password-reveal eye (and a clear button) inside
-   password fields, on top of the app's own show-password control. */
-input::-ms-reveal,
-input::-ms-clear {
-  display: none;
 }

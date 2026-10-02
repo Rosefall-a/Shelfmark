@@ -119,8 +119,7 @@ function pick() {
     picked.value?.id,
   );
   nothingMatched.value = picked.value === null;
-  // on a phone the filters fill the dialog and the pick, which sits just
-  // above the buttons, lands below them: scroll down to it
+  // the pick sits at the bottom of the dialog, below the fold on a phone
   void nextTick(() => {
     if (dialogEl.value) dialogEl.value.scrollTop = dialogEl.value.scrollHeight;
   });
@@ -241,7 +240,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
         Favour higher-priority games
       </label>
 
-      <!-- the live region stays in the page so each new pick is announced -->
       <div aria-live="polite">
         <div v-if="picked" class="picked">
           <img :src="picked.coverImageUrl" alt="" class="picked-cover" />
@@ -390,7 +388,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   font-size: 0.8rem;
   text-transform: capitalize;
 }
-/* the buttons stay in view while the filters scroll on a short screen */
 .picker-actions {
   position: sticky;
   bottom: -22px;

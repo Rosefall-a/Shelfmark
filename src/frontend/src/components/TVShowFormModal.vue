@@ -199,9 +199,7 @@ async function submit() {
     };
     const saved = props.show
       ? await updateTVShow(props.show.id, {
-          // fields this form doesn't show (note, rewatches, priority, dates,
-          // countries, the other ratings...) keep their saved values instead
-          // of being reset to empty by the update
+          // keep the fields this form doesn't show
           ...tvShowToInput(props.show),
           ...input,
         })
@@ -445,8 +443,6 @@ async function remove() {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  /* above the page's sticky back button and top bar, which sat on top of
-     the form */
   z-index: var(--ui-z-modal);
   background: rgba(8, 6, 4, 0.72);
   display: flex;
@@ -577,8 +573,6 @@ async function remove() {
   flex-wrap: wrap;
   gap: 12px;
 }
-/* side by side when they fit, wrapping on a phone rather than squeezing a
-   date field until its value is cut off */
 .field-row > .field {
   flex: 1 1 120px;
 }

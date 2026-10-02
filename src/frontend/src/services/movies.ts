@@ -2,6 +2,7 @@ import { failedRequest } from "./apiError";
 import type { PaginatedResponse } from "../types/pagination";
 import type { Movie, MovieStatus } from "../types/movie";
 
+
 // The exact shape FastAPI sends, snake_case, matching the Python model
 // field-for-field. Nothing outside this file should ever see raw backend
 // data directly.
@@ -128,13 +129,7 @@ export async function fetchMoviesPage(
   offset = 0,
   limit = 100,
   search = "",
-): Promise<{
-  items: Movie[];
-  total: number;
-  offset: number;
-  limit: number;
-  statusCounts: Record<string, number>;
-}> {
+): Promise<{ items: Movie[]; total: number; offset: number; limit: number; statusCounts: Record<string, number> }> {
   const params = new URLSearchParams({
     skip: String(offset),
     limit: String(limit),
@@ -143,10 +138,7 @@ export async function fetchMoviesPage(
   const response = await fetch(`/api/movie/list?${params}`, {
     credentials: "include",
   });
-  const page = await handle<PaginatedResponse<BackendMovie>>(
-    response,
-    "fetch movies",
-  );
+  const page = await handle<PaginatedResponse<BackendMovie>>(response, "fetch movies");
   return {
     items: page.items.map(mapBackendMovie),
     total: page.total,

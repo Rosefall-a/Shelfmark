@@ -125,8 +125,7 @@ const stepIndex = computed(() => tabs.value.indexOf(activeTab.value));
 const isLastStep = computed(() => stepIndex.value === tabs.value.length - 1);
 const metadataApplied = ref(false);
 
-// on a phone the tabs scroll sideways: keep the current step's tab in view
-// as Next and Back move through them
+// keep the current step's tab in view when the tab row scrolls (phones)
 const tabsEl = ref<HTMLElement | null>(null);
 watch(activeTab, () =>
   nextTick(() =>
@@ -1239,13 +1238,8 @@ async function submit() {
   font-size: 0.85rem;
   color: #ccc;
   flex: 1;
-  /* lets a row's fields share a narrow modal instead of each insisting on
-     its input's default width and pushing the row off the right edge */
   min-width: 0;
 }
-/* a field on its own in a tab is as tall as its content: flex: 1 above is
-   for sharing a row, in the tab's column it stretched Format on
-   Ownership down the whole panel */
 .tab-panel > .field {
   flex: none;
 }
@@ -1297,7 +1291,6 @@ async function submit() {
   flex-wrap: wrap;
   gap: 12px;
 }
-/* up to four fields side by side, wrapping to two a row on a phone */
 .field-row > .field {
   flex: 1 1 150px;
 }
@@ -1469,7 +1462,6 @@ async function submit() {
     padding-left: 12px;
     padding-right: 12px;
   }
-  /* the step count gets its own line so the buttons fit on the next */
   .modal-actions {
     flex-wrap: wrap;
     padding: 12px 16px;

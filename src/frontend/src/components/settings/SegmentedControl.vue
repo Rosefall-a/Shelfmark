@@ -28,8 +28,6 @@ const emit = defineEmits<{
 <style scoped>
 .segmented-control {
   display: inline-flex;
-  /* wraps rather than running off a phone screen when there are more
-     options than fit on one line */
   flex-wrap: wrap;
   max-width: 100%;
   box-sizing: border-box;
