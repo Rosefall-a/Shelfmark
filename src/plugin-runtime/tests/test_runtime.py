@@ -132,11 +132,14 @@ def _package_bytes(
     native_frontend: bool = False,
     version: str = "1.0.0",
     inline_assets: object = False,
+    distribution: dict | None = None,
 ) -> bytes:
     files = {
         "plugin.py": b"def main():\n    return None\n",
         "sdk/plugin_protocol.py": b"API_VERSION = 1\n",
     }
+    if distribution is not None:
+        files["distribution.json"] = json.dumps(distribution).encode()
     if frontend:
         files["frontend/index.html"] = b"<!doctype html><html><body>ok</body></html>"
     if native_frontend:
@@ -178,6 +181,23 @@ def _package_bytes(
         for name, data in files.items():
             archive.writestr("payload/" + name, data)
     return output.getvalue()
+
+
+def test_installed_release_metadata_survives_registry_restart(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "workers", tmp_path / "storage")
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    registry.install_package(
+        _package_bytes(distribution={
+            "schema_version": 1, "version": "1.0.0", "tags": ["media", "integration"],
+            "automatic_update": False, "release_notes": "Manual release",
+        }), "release.utp", installation_id=str(uuid.uuid4()),
+    )
+    restored = PluginRegistry(registry.root, supervisor).list()[0]
+    assert restored["tags"] == ["media", "integration"]
+    assert restored["automatic_update"] is False
+    assert restored["release_notes"] == "Manual release"
 
 
 def test_runtime_rejects_invalid_utf8_archive_name(tmp_path):

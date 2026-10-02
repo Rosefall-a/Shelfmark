@@ -227,6 +227,24 @@ async def gate(monkeypatch, tmp_path):
 
     async def http_transport(request):
         events.append("acquire")
+        if request.url.host == "catalogue.example":
+            with zipfile.ZipFile(io.BytesIO(remote["package"])) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+            return httpx.Response(
+                200,
+                json={
+                    "version": 1,
+                    "plugins": [
+                        {
+                            "plugin_id": manifest["plugin_id"],
+                            "name": manifest["name"],
+                            "version": manifest["version"],
+                            "url": "https://packages.example/download",
+                            "sha256": manifest["integrity"]["sha256"],
+                        }
+                    ],
+                },
+            )
         return httpx.Response(200, content=remote["package"])
 
     original_async_client = httpx.AsyncClient
