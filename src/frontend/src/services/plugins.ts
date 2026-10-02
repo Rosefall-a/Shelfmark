@@ -338,6 +338,13 @@ export const fetchPluginCatalogFromSource = (source: string) =>
     `/api/plugins/catalog?source=${encodeURIComponent(source)}`,
   );
 
+const remotePluginSource = (source: Partial<PluginSourceMetadata>) => ({
+  source_type: source.type === "catalogue" ? "catalogue" : "url",
+  catalogue_url: source.catalogue_url,
+  release_notes: source.release_notes,
+  changelog_url: source.changelog_url,
+});
+
 export const previewPluginInstallUrl = async (
   url: string,
   source: Partial<PluginSourceMetadata> = {},
@@ -352,7 +359,7 @@ export const previewPluginInstallUrl = async (
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, ...source }),
+    body: JSON.stringify({ url, ...remotePluginSource(source) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -388,7 +395,7 @@ export const installPluginFromUrl = async (
       expected_digest: expectedDigest,
       admin_password: confirmation.adminPassword,
       confirm_dangerous: confirmation.confirmDangerous ?? false,
-      ...source,
+      ...remotePluginSource(source),
     }),
   });
   if (response.status === 409) {
@@ -458,7 +465,7 @@ export const previewPluginUpdateUrl = async (
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, ...source }),
+      body: JSON.stringify({ url, ...remotePluginSource(source) }),
     },
   );
   if (!response.ok)
@@ -529,7 +536,7 @@ export const updatePluginFromUrl = async (
         expected_digest: expectedDigest,
         admin_password: confirmation.adminPassword,
         confirm_dangerous: confirmation.confirmDangerous ?? false,
-        ...source,
+        ...remotePluginSource(source),
       }),
     },
   );
