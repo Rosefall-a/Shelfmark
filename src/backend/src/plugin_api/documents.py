@@ -123,8 +123,14 @@ def document_path(data_root: Path, user_id: object, folder: str | None, filename
     return path
 
 
-def read_representation(path: Path) -> tuple[bytes, str, str, str]:
-    """Read once, bounded even if the file grows; validate before returning any chunk."""
+def read_representation(path: Path, max_bytes: int = MAX_DOCUMENT_BYTES) -> tuple[bytes, str, str, str]:
+    """Read and validate a document using the requested preview ceiling.
+
+    max_bytes == 0 means unlimited for callers that explicitly opt in;
+    legacy callers retain the original 5 MiB ceiling.
+    """
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise DocumentAccessError("invalid", "Invalid document size limit.", 400)
     try:
         with path.open("rb") as handle:
             signature = handle.read(5)
@@ -139,11 +145,14 @@ def read_representation(path: Path) -> tuple[bytes, str, str, str]:
                 raise DocumentAccessError(
                     "unsupported", "This document format is not supported.", 415
                 )
-            data = signature + handle.read(MAX_DOCUMENT_BYTES + 1 - len(signature))
+            if max_bytes == 0:
+                data = signature + handle.read()
+            else:
+                data = signature + handle.read(max_bytes + 1 - len(signature))
     except OSError as exc:
         raise DocumentAccessError("server", "Could not read document.", 500) from exc
-    if len(data) > MAX_DOCUMENT_BYTES:
-        raise DocumentAccessError("oversized", "Document exceeds the 5 MiB Plugin API limit.", 413)
+    if max_bytes and len(data) > max_bytes:
+        raise DocumentAccessError("oversized", "Document exceeds the configured Plugin API preview limit.", 413)
     if is_pdf:
         media_type, document_format = "application/pdf", "pdf"
     elif suffix in OFFICE_TYPES:
