@@ -70,14 +70,16 @@ class MetadataProvider(Protocol):
 
     api_version: str
 
-    async def search(
-        self, request: MetadataProviderRequest
-    ) -> list[MetadataCandidate]:
+    async def search(self, request: MetadataProviderRequest) -> list[MetadataCandidate]:
         """Return normalized candidates; selection remains core-owned."""
 
 
 __all__ = [
-    "API_VERSION", "MetadataCandidate", "MetadataProvider",
-    "MetadataProviderRequest", "NotificationProvider", "NotificationRequest",
+    "API_VERSION",
+    "MetadataCandidate",
+    "MetadataProvider",
+    "MetadataProviderRequest",
+    "NotificationProvider",
+    "NotificationRequest",
     "NotificationResult",
 ]

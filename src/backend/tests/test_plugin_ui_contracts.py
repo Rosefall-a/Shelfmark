@@ -88,7 +88,9 @@ def test_document_accepts_versioned_native_primitives() -> None:
                 capability=CapabilityRef(name=Capability.PLUGIN_SETTINGS, version=1),
             ),
         ),
-        pages=(UiPage(id="settings", title="Settings", settings=("general",), actions=("refresh",)),),
+        pages=(
+            UiPage(id="settings", title="Settings", settings=("general",), actions=("refresh",)),
+        ),
         menus=(UiMenuItem(id="settings", label="Settings", page_id="settings"),),
     )
     assert document.schema_version.value == "v1"

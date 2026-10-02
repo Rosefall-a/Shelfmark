@@ -7,23 +7,40 @@ import pytest
 
 from src.plugin_api.contracts import ApiVersion
 from src.plugin_api.gateway_auth import (
-    ApplicationIdentity, BootstrapRequest, CredentialError, CredentialKind,
-    GatewayAuthenticator, GatewayIdentity, InMemoryCredentialStore, ReplayError,
+    ApplicationIdentity,
+    BootstrapRequest,
+    CredentialError,
+    CredentialKind,
+    GatewayAuthenticator,
+    GatewayIdentity,
+    InMemoryCredentialStore,
+    ReplayError,
 )
 
 
 def make_auth(now: datetime | None = None) -> tuple[GatewayAuthenticator, datetime]:
     current = now or datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
     clock = lambda: current
-    return GatewayAuthenticator(ApplicationIdentity(), GatewayIdentity(),
-                                store=InMemoryCredentialStore(clock=clock),
-                                secret=b"x" * 32, clock=clock), current
+    return GatewayAuthenticator(
+        ApplicationIdentity(),
+        GatewayIdentity(),
+        store=InMemoryCredentialStore(clock=clock),
+        secret=b"x" * 32,
+        clock=clock,
+    ), current
 
 
-def request_for(auth: GatewayAuthenticator, credential: str, now: datetime, nonce=None) -> BootstrapRequest:
-    return BootstrapRequest(application_id=auth.application.application_id, gateway_id=auth.gateway.gateway_id,
-                            nonce=nonce or uuid4(), issued_at=now, credential=credential,
-                            supported_versions=(ApiVersion.V1,))
+def request_for(
+    auth: GatewayAuthenticator, credential: str, now: datetime, nonce=None
+) -> BootstrapRequest:
+    return BootstrapRequest(
+        application_id=auth.application.application_id,
+        gateway_id=auth.gateway.gateway_id,
+        nonce=nonce or uuid4(),
+        issued_at=now,
+        credential=credential,
+        supported_versions=(ApiVersion.V1,),
+    )
 
 
 def test_bootstrap_binds_application_and_gateway_identity() -> None:
@@ -37,7 +54,9 @@ def test_bootstrap_binds_application_and_gateway_identity() -> None:
 def test_bootstrap_rejects_wrong_identity_and_replay() -> None:
     auth, now = make_auth()
     credential = auth.issue_bootstrap_credential(now=now)
-    wrong_identity = request_for(auth, credential, now).model_copy(update={"application_id": uuid4()})
+    wrong_identity = request_for(auth, credential, now).model_copy(
+        update={"application_id": uuid4()}
+    )
     with pytest.raises(CredentialError):
         auth.bootstrap(wrong_identity)
     valid = wrong_identity.model_copy(update={"application_id": auth.application.application_id})

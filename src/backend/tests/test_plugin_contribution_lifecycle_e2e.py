@@ -115,10 +115,12 @@ async def test_lifecycle_revokes_all_host_execution_boundaries(tmp_path, monkeyp
             "frontend.native",
         )
     ]
+
     async def scalars(statement):
         if "plugin_permission_grants" in str(statement):
             return []
         return SimpleNamespace(all=lambda: [registration])
+
     db.scalars.side_effect = scalars
     app = FastAPI()
     app.include_router(plugins.router)

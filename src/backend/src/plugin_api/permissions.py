@@ -44,7 +44,9 @@ class AuthorizationDecision(ContractModel):
     reason: str = Field(min_length=1, max_length=512)
 
 
-def authorize_request(context: RequestContext, grants: tuple[PermissionGrant, ...]) -> AuthorizationDecision:
+def authorize_request(
+    context: RequestContext, grants: tuple[PermissionGrant, ...]
+) -> AuthorizationDecision:
     """Apply default-deny authorization to an authenticated request."""
     if context.user is None or not context.user.authenticated:
         return AuthorizationDecision(
@@ -55,19 +57,26 @@ def authorize_request(context: RequestContext, grants: tuple[PermissionGrant, ..
     for grant in grants:
         if not grant.active:
             continue
-        if grant.plugin_id != context.plugin.plugin_id or grant.installation_id != context.plugin.installation_id:
+        if (
+            grant.plugin_id != context.plugin.plugin_id
+            or grant.installation_id != context.plugin.installation_id
+        ):
             continue
         if grant.capability.version != requested.version or not capability_implies(
             grant.capability.name, requested.name
         ):
             continue
         if grant.user_id is not None and (
-            context.user is None or not context.user.authenticated or grant.user_id != context.user.user_id
+            context.user is None
+            or not context.user.authenticated
+            or grant.user_id != context.user.user_id
         ):
             continue
         if grant.device_id is not None and grant.device_id != context.device_id:
             continue
-        return AuthorizationDecision(decision=PermissionDecision.ALLOWED, reason="matching capability grant is active")
+        return AuthorizationDecision(
+            decision=PermissionDecision.ALLOWED, reason="matching capability grant is active"
+        )
     return AuthorizationDecision(
         decision=PermissionDecision.DENIED,
         reason="no active grant matches plugin, installation, capability and scope",
@@ -97,14 +106,23 @@ class IssuedClientCredential:
 
 
 def issue_client_credential(
-    *, plugin_id: str, installation_id: UUID, user_id: UUID, device_id: UUID, name: str,
+    *,
+    plugin_id: str,
+    installation_id: UUID,
+    user_id: UUID,
+    device_id: UUID,
+    name: str,
     now: datetime | None = None,
 ) -> IssuedClientCredential:
     """Create a high-entropy credential bound to user/device/plugin identity."""
     issued_at = now or datetime.now(timezone.utc)
     client = ClientIdentity(
-        plugin_id=plugin_id, installation_id=installation_id, user_id=user_id,
-        device_id=device_id, name=name, created_at=issued_at,
+        plugin_id=plugin_id,
+        installation_id=installation_id,
+        user_id=user_id,
+        device_id=device_id,
+        name=name,
+        created_at=issued_at,
     )
     return IssuedClientCredential(
         client=client,
@@ -113,7 +131,11 @@ def issue_client_credential(
 
 
 __all__ = [
-    "AuthorizationDecision", "ClientIdentity", "IssuedClientCredential",
-    "PermissionDecision", "PermissionGrant", "authorize_request",
+    "AuthorizationDecision",
+    "ClientIdentity",
+    "IssuedClientCredential",
+    "PermissionDecision",
+    "PermissionGrant",
+    "authorize_request",
     "issue_client_credential",
 ]

@@ -1,4 +1,5 @@
 """Validation coverage for the first Plugin API integration examples."""
+
 import asyncio
 from datetime import datetime, timezone
 from uuid import UUID
@@ -59,11 +60,7 @@ def plugin_context(
         application_id=UUID(int=1),
         gateway_id=UUID(int=2),
         plugin=plugin,
-        user=(
-            {"user_id": user_id, "authenticated": True}
-            if user_id is not None
-            else None
-        ),
+        user=({"user_id": user_id, "authenticated": True} if user_id is not None else None),
         requested_capability=CapabilityRef(name=capability),
     )
 
@@ -105,12 +102,8 @@ async def test_metadata_provider_returns_normalized_results() -> None:
     )
     provider = MetadataValidationPlugin(
         candidates=(
-            MetadataCandidate(
-                external_id="g-1", title="Example Game", provider="validation"
-            ),
-            MetadataCandidate(
-                external_id="g-2", title="Other", provider="validation"
-            ),
+            MetadataCandidate(external_id="g-1", title="Example Game", provider="validation"),
+            MetadataCandidate(external_id="g-2", title="Other", provider="validation"),
         )
     )
     gateway = ValidationGateway(
@@ -120,9 +113,7 @@ async def test_metadata_provider_returns_normalized_results() -> None:
 
     results = await gateway.search_metadata(
         plugin_context(plugin, Capability.GAMES_READ, USER_A),
-        MetadataProviderRequest(
-            request_id=UUID(int=41), user_id=USER_A, query="example"
-        ),
+        MetadataProviderRequest(request_id=UUID(int=41), user_id=USER_A, query="example"),
     )
 
     assert [item.external_id for item in results] == ["g-1"]
@@ -162,10 +153,7 @@ def test_discord_scopes_events_and_uses_plugin_storage() -> None:
 
     assert len(discord.received_events()) == 1
     assert discord.received_events()[0].user_id == USER_A
-    assert (
-        gateway.storage["discord.validation"]["users/discord-123"]
-        == str(USER_A).encode()
-    )
+    assert gateway.storage["discord.validation"]["users/discord-123"] == str(USER_A).encode()
 
 
 @pytest.mark.asyncio
@@ -254,9 +242,11 @@ def test_plugin_storage_is_namespaced() -> None:
         b"b",
     )
 
-    assert gateway.storage_get(
-        plugin_context(plugin_a, Capability.PLUGIN_STORAGE, USER_A), "secret"
-    ) == b"a"
-    assert gateway.storage_get(
-        plugin_context(plugin_b, Capability.PLUGIN_STORAGE, USER_A), "secret"
-    ) == b"b"
+    assert (
+        gateway.storage_get(plugin_context(plugin_a, Capability.PLUGIN_STORAGE, USER_A), "secret")
+        == b"a"
+    )
+    assert (
+        gateway.storage_get(plugin_context(plugin_b, Capability.PLUGIN_STORAGE, USER_A), "secret")
+        == b"b"
+    )

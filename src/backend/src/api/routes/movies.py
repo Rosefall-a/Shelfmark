@@ -169,6 +169,7 @@ async def list_movies(
         status_counts=status_counts,
     )
 
+
 @router.get("/get/{movie_id}", response_model=MovieRead)
 async def get_movie(
     movie_id: UUID,

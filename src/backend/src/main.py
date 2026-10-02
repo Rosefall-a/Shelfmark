@@ -139,7 +139,9 @@ async def start_session_retention_loop() -> None:
                     await purge_old_sessions(db)
             except Exception:
                 import logging
+
                 logging.getLogger(__name__).exception("Session retention cleanup failed")
+
     asyncio.create_task(loop())
 
 
@@ -164,6 +166,7 @@ async def start_jobs_loop() -> None:
                 logging.getLogger(__name__).exception("Plugin transaction recovery failed")
                 await asyncio.sleep(5)
         await run_jobs_loop()
+
     asyncio.create_task(recover_and_start_jobs())
 
 

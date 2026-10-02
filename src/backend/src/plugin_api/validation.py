@@ -1,4 +1,5 @@
 """Contract-level validation gateway used by integration examples."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -39,15 +40,15 @@ class ValidationGateway:
     grants: tuple[PermissionGrant, ...]
     notifications: dict[str, NotificationProvider] = field(default_factory=dict)
     metadata: dict[str, MetadataProvider] = field(default_factory=dict)
-    storage: dict[str, dict[str, bytes]] = field(
-        default_factory=lambda: defaultdict(dict)
-    )
+    storage: dict[str, dict[str, bytes]] = field(default_factory=lambda: defaultdict(dict))
     subscriptions: dict[str, EventSubscription] = field(default_factory=dict)
     settings: dict[str, dict[str, str]] = field(default_factory=lambda: defaultdict(dict))
     events: dict[str, list[EventEnvelope[dict[str, Any]]]] = field(
         default_factory=lambda: defaultdict(list)
     )
-    _event_rate: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list), init=False, repr=False)
+    _event_rate: dict[str, list[float]] = field(
+        default_factory=lambda: defaultdict(list), init=False, repr=False
+    )
 
     def _authorize(self, context: RequestContext, capability: Capability) -> None:
         requested = context.requested_capability
@@ -77,9 +78,7 @@ class ValidationGateway:
             raise ValidationGatewayError("metadata provider is not registered")
         return await provider.search(request)
 
-    def subscribe(
-        self, context: RequestContext, subscription: EventSubscription
-    ) -> None:
+    def subscribe(self, context: RequestContext, subscription: EventSubscription) -> None:
         self._authorize(context, Capability.EVENTS_SUBSCRIBE)
         self.subscriptions[context.plugin.plugin_id] = subscription
         self._event_rate[context.plugin.plugin_id] = []
@@ -112,7 +111,11 @@ class ValidationGateway:
                 grant.plugin_id == context.plugin.plugin_id
                 and grant.installation_id == context.plugin.installation_id
                 and grant.capability.name is context.requested_capability.name
-                and (grant.user_id is None or context.user is not None and grant.user_id == context.user.user_id)
+                and (
+                    grant.user_id is None
+                    or context.user is not None
+                    and grant.user_id == context.user.user_id
+                )
             )
         )
 
@@ -152,15 +155,9 @@ class MetadataValidationPlugin(MetadataProvider):
     api_version: str = "v1"
     candidates: tuple[MetadataCandidate, ...] = ()
 
-    async def search(
-        self, request: MetadataProviderRequest
-    ) -> list[MetadataCandidate]:
+    async def search(self, request: MetadataProviderRequest) -> list[MetadataCandidate]:
         needle = request.query.casefold()
-        return [
-            candidate
-            for candidate in self.candidates
-            if needle in candidate.title.casefold()
-        ]
+        return [candidate for candidate in self.candidates if needle in candidate.title.casefold()]
 
 
 @dataclass
@@ -182,11 +179,7 @@ class DiscordValidationPlugin:
             application_id=UUID(int=1),
             gateway_id=UUID(int=2),
             plugin=self.plugin,
-            user=(
-                {"user_id": user_id, "authenticated": True}
-                if user_id is not None
-                else None
-            ),
+            user=({"user_id": user_id, "authenticated": True} if user_id is not None else None),
             requested_capability=CapabilityRef(name=capability),
         )
 
@@ -234,9 +227,7 @@ class PlayniteValidationPlugin:
     def validate_scoped_identity(self, user_id: UUID) -> RequestContext:
         return self.context(Capability.GAMES_READ, user_id)
 
-    async def sync_game(
-        self, user_id: UUID, game: GameRepresentation
-    ) -> GameRepresentation:
+    async def sync_game(self, user_id: UUID, game: GameRepresentation) -> GameRepresentation:
         context = self.context(Capability.GAMES_WRITE, user_id)
         self.gateway._authorize(context, Capability.GAMES_WRITE)
         return game

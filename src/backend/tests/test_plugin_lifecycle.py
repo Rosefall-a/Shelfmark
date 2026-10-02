@@ -21,9 +21,13 @@ from src.plugin_api.updates import TrustedPublisher, canonical_payload_digest
 
 def manifest_data(plugin_id: str = "example.plugin", app_range: str = "*") -> dict:
     return {
-        "plugin_id": plugin_id, "name": "Example", "version": "1.0.0",
-        "entrypoint": "plugin:main", "sdk_version_range": "*",
-        "application_version_range": app_range, "integrity": {"sha256": "a" * 64},
+        "plugin_id": plugin_id,
+        "name": "Example",
+        "version": "1.0.0",
+        "entrypoint": "plugin:main",
+        "sdk_version_range": "*",
+        "application_version_range": app_range,
+        "integrity": {"sha256": "a" * 64},
     }
 
 
@@ -56,13 +60,19 @@ class AlwaysValidVerifier:
 
 def manager(runtime: FakeRuntime, **kwargs) -> PluginLifecycleManager:
     return PluginLifecycleManager(
-        sdk_version="1.0.0", application_version="1.0.0", runtime=runtime,
-        installer=NoopPackageInstaller(), verifier=AlwaysValidVerifier(), **kwargs,
+        sdk_version="1.0.0",
+        application_version="1.0.0",
+        runtime=runtime,
+        installer=NoopPackageInstaller(),
+        verifier=AlwaysValidVerifier(),
+        **kwargs,
     )
 
 
 def discover(manager: PluginLifecycleManager, tmp_path: Path, data: dict | None = None) -> None:
-    path = tmp_path / f"{data.get('plugin_id', 'example.plugin') if data else 'example.plugin'}.json"
+    path = (
+        tmp_path / f"{data.get('plugin_id', 'example.plugin') if data else 'example.plugin'}.json"
+    )
     path.write_text(json.dumps(data or manifest_data()), encoding="utf-8")
     manager.discover([path])
 
@@ -385,7 +395,9 @@ def test_lifecycle_verifier_accepts_signed_v1_package_and_rejects_tampering(tmp_
         verifier=verifier,
     )
     record = lifecycle.discover_package(package)
-    assert asyncio.run(lifecycle.install(record.manifest.plugin_id)).state == LifecycleState.INSTALLED
+    assert (
+        asyncio.run(lifecycle.install(record.manifest.plugin_id)).state == LifecycleState.INSTALLED
+    )
 
     tampered = tmp_path / "tampered.utp"
     with zipfile.ZipFile(tampered, "w") as archive:

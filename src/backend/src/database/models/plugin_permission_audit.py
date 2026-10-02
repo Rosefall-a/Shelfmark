@@ -18,7 +18,9 @@ class PluginPermissionAudit(Base):
     __tablename__ = "plugin_permission_audit"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    request_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True, index=True)
+    request_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True, index=True
+    )
     plugin_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     installation_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, index=True)
     capability: Mapped[str] = mapped_column(String(128), nullable=False)

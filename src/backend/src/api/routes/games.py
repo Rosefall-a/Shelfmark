@@ -1056,9 +1056,17 @@ async def create_game_note(
     except FileExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "note_already_exists", "message": f'A note titled "{normalized_name}" already exists.'},
+            detail={
+                "error": "note_already_exists",
+                "message": f'A note titled "{normalized_name}" already exists.',
+            },
         ) from exc
-    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
+    return {
+        "game_id": str(game_id),
+        "note_name": normalized_name,
+        "path": str(note_path),
+        "status": "saved",
+    }
 
 
 @router.put(
@@ -1076,9 +1084,16 @@ async def update_game_note(
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     if not note_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.')
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.'
+        )
     note_path.write_text(payload.content, encoding="utf-8")
-    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
+    return {
+        "game_id": str(game_id),
+        "note_name": normalized_name,
+        "path": str(note_path),
+        "status": "saved",
+    }
 
 
 @router.patch(
@@ -1098,18 +1113,31 @@ async def rename_game_note(
     source_path = _game_note_path(game, source_name)
     destination_path = _game_note_path(game, destination_name)
     if not source_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{source_name}" was not found.')
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{source_name}" was not found.'
+        )
     if source_name == destination_name:
-        return {"game_id": str(game_id), "note_name": source_name, "path": str(source_path), "status": "saved"}
+        return {
+            "game_id": str(game_id),
+            "note_name": source_name,
+            "path": str(source_path),
+            "status": "saved",
+        }
     try:
         os.link(source_path, destination_path)
     except FileExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "note_already_exists", "message": f'A note titled "{destination_name}" already exists.'},
+            detail={
+                "error": "note_already_exists",
+                "message": f'A note titled "{destination_name}" already exists.',
+            },
         ) from exc
     except OSError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The note could not be renamed.",
+        ) from exc
     try:
         source_path.unlink()
     except OSError as exc:
@@ -1117,8 +1145,16 @@ async def rename_game_note(
             destination_path.unlink()
         except OSError:
             pass
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
-    return {"game_id": str(game_id), "note_name": destination_name, "path": str(destination_path), "status": "saved"}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The note could not be renamed.",
+        ) from exc
+    return {
+        "game_id": str(game_id),
+        "note_name": destination_name,
+        "path": str(destination_path),
+        "status": "saved",
+    }
 
 
 @router.get(

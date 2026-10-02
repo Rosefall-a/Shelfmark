@@ -109,7 +109,9 @@ async def dispatch_gateway_request(
     payload: dict[str, Any],
     capability_version: int = 1,
 ) -> dict[str, Any]:
-    required_capability = capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
+    required_capability = (
+        capability if method == "capabilities.check" else _METHOD_CAPABILITIES.get(method)
+    )
     if required_capability is None:
         raise ValueError(f"unsupported plugin gateway method: {method}")
     try:
@@ -133,8 +135,36 @@ async def dispatch_gateway_request(
 
     if method == "media.list":
         limit = max(1, min(int(payload.get("limit", 100)), 200))
-        media = (await db.execute(select(Movie).where(Movie.user_id == user_id, Movie.deleted_at.is_(None)).order_by(Movie.sort_title, Movie.title).limit(limit))).scalars().all()
-        return {"media": [{"id": str(item.id), "title": item.title, "media_type": "movie", "runtime_minutes": item.runtime_minutes, "poster_url": item.poster_url, "status": item.status.value if hasattr(item.status, "value") else str(item.status), "play_count": item.rewatches, "release_date": item.release_date.isoformat() if item.release_date else None, "updated_at": item.updated_at} for item in media]}
+        media = (
+            (
+                await db.execute(
+                    select(Movie)
+                    .where(Movie.user_id == user_id, Movie.deleted_at.is_(None))
+                    .order_by(Movie.sort_title, Movie.title)
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "media": [
+                {
+                    "id": str(item.id),
+                    "title": item.title,
+                    "media_type": "movie",
+                    "runtime_minutes": item.runtime_minutes,
+                    "poster_url": item.poster_url,
+                    "status": item.status.value
+                    if hasattr(item.status, "value")
+                    else str(item.status),
+                    "play_count": item.rewatches,
+                    "release_date": item.release_date.isoformat() if item.release_date else None,
+                    "updated_at": item.updated_at,
+                }
+                for item in media
+            ]
+        }
 
     if method == "games.list":
         limit = max(1, min(int(payload.get("limit", 50)), 200))
@@ -256,7 +286,9 @@ async def dispatch_gateway_request(
             document_id = UUID(str(payload.get("document_id", "")))
         except ValueError as exc:
             if "chunk_bytes" in payload:
-                return DocumentAccessError("invalid", "document_id must be a UUID", 400).representation()
+                return DocumentAccessError(
+                    "invalid", "document_id must be a UUID", 400
+                ).representation()
             raise ValueError("document_id must be a UUID") from exc
         row = await owned_document(db, user_id, document_id)
         if row is None:
@@ -269,14 +301,19 @@ async def dispatch_gateway_request(
             max_bytes = payload.get("max_bytes", MAX_DOCUMENT_BYTES)
             if type(max_bytes) is not int or max_bytes < 0:
                 raise DocumentAccessError("invalid", "Invalid document size limit.", 400)
-            data, media_type, document_format, digest = read_representation(path, max_bytes=max_bytes)
+            data, media_type, document_format, digest = read_representation(
+                path, max_bytes=max_bytes
+            )
             if "chunk_bytes" in payload:
                 offset = payload.get("offset", 0)
                 chunk_bytes = payload["chunk_bytes"]
                 if (
-                    not isinstance(offset, int) or isinstance(offset, bool)
-                    or not isinstance(chunk_bytes, int) or isinstance(chunk_bytes, bool)
-                    or not 0 <= offset <= len(data) or not 1 <= chunk_bytes <= MAX_CHUNK_BYTES
+                    not isinstance(offset, int)
+                    or isinstance(offset, bool)
+                    or not isinstance(chunk_bytes, int)
+                    or isinstance(chunk_bytes, bool)
+                    or not 0 <= offset <= len(data)
+                    or not 1 <= chunk_bytes <= MAX_CHUNK_BYTES
                 ):
                     raise DocumentAccessError("invalid", "Invalid document chunk range.", 400)
                 expected_digest = payload.get("content_sha256")
@@ -285,7 +322,7 @@ async def dispatch_gateway_request(
                 document = _document_dto(game, item, path).model_copy(
                     update={"media_type": media_type, "size_bytes": len(data)}
                 )
-                chunk = data[offset:offset + chunk_bytes]
+                chunk = data[offset : offset + chunk_bytes]
                 return DocumentChunkRepresentation(
                     document=document,
                     encoding="base64",
@@ -320,9 +357,18 @@ async def dispatch_gateway_request(
             title = str(item.get("title", "")).strip()
             if not title:
                 continue
-            movie = await db.scalar(select(Movie).where(Movie.user_id == user_id, Movie.deleted_at.is_(None), Movie.source == "jellyfin", Movie.title == title))
+            movie = await db.scalar(
+                select(Movie).where(
+                    Movie.user_id == user_id,
+                    Movie.deleted_at.is_(None),
+                    Movie.source == "jellyfin",
+                    Movie.title == title,
+                )
+            )
             if movie is None:
-                movie = Movie(user_id=user_id, title=title, sort_title=title.lower(), source="jellyfin")
+                movie = Movie(
+                    user_id=user_id, title=title, sort_title=title.lower(), source="jellyfin"
+                )
                 db.add(movie)
             movie.runtime_minutes = item.get("runtime_minutes")
             movie.genres = list(item.get("genres") or [])
@@ -330,7 +376,9 @@ async def dispatch_gateway_request(
                 movie.poster_url = str(item["poster_url"])
             if item.get("played"):
                 movie.status = MovieStatus.WATCHED
-            imported.append({"id": str(movie.id), "title": movie.title, "external_id": item.get("external_id")})
+            imported.append(
+                {"id": str(movie.id), "title": movie.title, "external_id": item.get("external_id")}
+            )
         await db.commit()
         return {"imported": imported}
 
@@ -338,15 +386,86 @@ async def dispatch_gateway_request(
         limit = max(1, min(int(payload.get("limit", 50)), 200))
         since = max(0, int(payload.get("since", 0)))
         events: list[dict[str, Any]] = []
-        games = (await db.execute(select(Game).where(Game.user_id == user_id, Game.deleted_at.is_(None), Game.updated_at > since).order_by(Game.updated_at).limit(limit))).scalars().all()
+        games = (
+            (
+                await db.execute(
+                    select(Game)
+                    .where(
+                        Game.user_id == user_id, Game.deleted_at.is_(None), Game.updated_at > since
+                    )
+                    .order_by(Game.updated_at)
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
         for game in games:
-            events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:game.updated:{game.id}:{game.updated_at}")), "event_type": "game.updated", "event_version": 1, "occurred_at": game.updated_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"game_id": str(game.id), "title": game.title, "updated_at": game.updated_at}})
+            events.append(
+                {
+                    "event_id": str(
+                        uuid5(
+                            NAMESPACE_URL, f"plugin-event:game.updated:{game.id}:{game.updated_at}"
+                        )
+                    ),
+                    "event_type": "game.updated",
+                    "event_version": 1,
+                    "occurred_at": game.updated_at,
+                    "source": "unnamed-tracking",
+                    "user_id": str(user_id),
+                    "payload": {
+                        "game_id": str(game.id),
+                        "title": game.title,
+                        "updated_at": game.updated_at,
+                    },
+                }
+            )
         if len(events) < limit:
-            media_items = (await db.execute(select(MediaItem).join(Game, Game.id == MediaItem.game_id).where(Game.user_id == user_id, MediaItem.deleted_at.is_(None), MediaItem.created_at > since).order_by(MediaItem.created_at).limit(limit - len(events)))).scalars().all()
+            media_items = (
+                (
+                    await db.execute(
+                        select(MediaItem)
+                        .join(Game, Game.id == MediaItem.game_id)
+                        .where(
+                            Game.user_id == user_id,
+                            MediaItem.deleted_at.is_(None),
+                            MediaItem.created_at > since,
+                        )
+                        .order_by(MediaItem.created_at)
+                        .limit(limit - len(events))
+                    )
+                )
+                .scalars()
+                .all()
+            )
             for item in media_items:
-                events.append({"event_id": str(uuid5(NAMESPACE_URL, f"plugin-event:media.added:{item.id}:{item.created_at}")), "event_type": "media.added", "event_version": 1, "occurred_at": item.created_at, "source": "unnamed-tracking", "user_id": str(user_id), "payload": {"media_id": str(item.id), "game_id": str(item.game_id), "kind": item.kind, "filename": item.filename, "created_at": item.created_at}})
+                events.append(
+                    {
+                        "event_id": str(
+                            uuid5(
+                                NAMESPACE_URL,
+                                f"plugin-event:media.added:{item.id}:{item.created_at}",
+                            )
+                        ),
+                        "event_type": "media.added",
+                        "event_version": 1,
+                        "occurred_at": item.created_at,
+                        "source": "unnamed-tracking",
+                        "user_id": str(user_id),
+                        "payload": {
+                            "media_id": str(item.id),
+                            "game_id": str(item.game_id),
+                            "kind": item.kind,
+                            "filename": item.filename,
+                            "created_at": item.created_at,
+                        },
+                    }
+                )
         events.sort(key=lambda event: int(event["occurred_at"]))
-        return {"events": events[:limit], "cursor": max([since, *[int(event["occurred_at"]) for event in events]])}
+        return {
+            "events": events[:limit],
+            "cursor": max([since, *[int(event["occurred_at"]) for event in events]]),
+        }
 
     if method == "notifications.send":
         title = str(payload.get("title", "")).strip()

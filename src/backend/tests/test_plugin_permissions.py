@@ -20,7 +20,9 @@ from src.plugin_api.permissions import (
 
 def make_context(*, user_id=None, device_id=None):
     return RequestContext(
-        request_id=uuid4(), application_id=uuid4(), gateway_id=uuid4(),
+        request_id=uuid4(),
+        application_id=uuid4(),
+        gateway_id=uuid4(),
         plugin=PluginIdentity(plugin_id="example.plugin", installation_id=uuid4(), version="1.0.0"),
         user=UserContext(user_id=user_id, authenticated=True) if user_id else None,
         device_id=device_id,
@@ -30,9 +32,13 @@ def make_context(*, user_id=None, device_id=None):
 
 def make_grant(context, *, user_id=None, device_id=None, revoked_at=None):
     return PermissionGrant(
-        plugin_id=context.plugin.plugin_id, installation_id=context.plugin.installation_id,
-        capability=context.requested_capability, user_id=user_id, device_id=device_id,
-        granted_at=datetime.now(timezone.utc), revoked_at=revoked_at,
+        plugin_id=context.plugin.plugin_id,
+        installation_id=context.plugin.installation_id,
+        capability=context.requested_capability,
+        user_id=user_id,
+        device_id=device_id,
+        granted_at=datetime.now(timezone.utc),
+        revoked_at=revoked_at,
     )
 
 
@@ -66,8 +72,11 @@ def test_revocation_is_enforced():
 def test_client_credential_is_high_entropy_and_bound_to_identity():
     user_id, installation_id, device_id = uuid4(), uuid4(), uuid4()
     issued = issue_client_credential(
-        plugin_id="playnite.integration", installation_id=installation_id,
-        user_id=user_id, device_id=device_id, name="Gaming PC",
+        plugin_id="playnite.integration",
+        installation_id=installation_id,
+        user_id=user_id,
+        device_id=device_id,
+        name="Gaming PC",
     )
     assert issued.client.user_id == user_id
     assert issued.client.installation_id == installation_id
@@ -90,6 +99,7 @@ def test_plugin_installation_mismatch_is_denied():
         update={"plugin": context.plugin.model_copy(update={"installation_id": uuid4()})}
     )
     assert authorize_request(other, (grant,)).decision is PermissionDecision.DENIED
+
 
 def test_parent_grant_authorizes_children_but_leaf_grant_does_not_authorize_parent():
     context = make_context(user_id=uuid4())

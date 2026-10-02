@@ -30,7 +30,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     for column in ("plugin_id", "installation_id", "user_id"):
-        op.create_index("ix_plugin_permission_requests_" + column, "plugin_permission_requests", [column])
+        op.create_index(
+            "ix_plugin_permission_requests_" + column, "plugin_permission_requests", [column]
+        )
 
     op.create_table(
         "plugin_permission_grants",
@@ -47,7 +49,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     for column in ("plugin_id", "installation_id", "user_id", "device_id"):
-        op.create_index("ix_plugin_permission_grants_" + column, "plugin_permission_grants", [column])
+        op.create_index(
+            "ix_plugin_permission_grants_" + column, "plugin_permission_grants", [column]
+        )
 
     op.create_table(
         "plugin_permission_audit",
@@ -84,7 +88,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("token_hash"),
     )
     for column in ("plugin_id", "installation_id", "user_id", "device_id"):
-        op.create_index("ix_plugin_client_identities_" + column, "plugin_client_identities", [column])
+        op.create_index(
+            "ix_plugin_client_identities_" + column, "plugin_client_identities", [column]
+        )
 
 
 def downgrade() -> None:
@@ -92,11 +98,17 @@ def downgrade() -> None:
         op.drop_index("ix_plugin_permission_audit_" + column, table_name="plugin_permission_audit")
     op.drop_table("plugin_permission_audit")
     for column in ("device_id", "user_id", "installation_id", "plugin_id"):
-        op.drop_index("ix_plugin_client_identities_" + column, table_name="plugin_client_identities")
+        op.drop_index(
+            "ix_plugin_client_identities_" + column, table_name="plugin_client_identities"
+        )
     op.drop_table("plugin_client_identities")
     for column in ("device_id", "user_id", "installation_id", "plugin_id"):
-        op.drop_index("ix_plugin_permission_grants_" + column, table_name="plugin_permission_grants")
+        op.drop_index(
+            "ix_plugin_permission_grants_" + column, table_name="plugin_permission_grants"
+        )
     op.drop_table("plugin_permission_grants")
     for column in ("user_id", "installation_id", "plugin_id"):
-        op.drop_index("ix_plugin_permission_requests_" + column, table_name="plugin_permission_requests")
+        op.drop_index(
+            "ix_plugin_permission_requests_" + column, table_name="plugin_permission_requests"
+        )
     op.drop_table("plugin_permission_requests")

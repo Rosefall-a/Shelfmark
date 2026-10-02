@@ -1408,8 +1408,11 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
             stage = {
                 **update,
                 "digest": manifest.integrity.sha256,
-                "status": "denied" if denied else (
-                    "awaiting_permissions" if plan.permissions.newly_requested_grants
+                "status": "denied"
+                if denied
+                else (
+                    "awaiting_permissions"
+                    if plan.permissions.newly_requested_grants
                     else "downloaded"
                 ),
             }
@@ -2160,7 +2163,8 @@ async def plugin_frontend(
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
     media_type = {".css": "text/css", ".js": "text/javascript", ".html": "text/html"}.get(
-        Path(asset_path).suffix.lower(), mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+        Path(asset_path).suffix.lower(),
+        mimetypes.guess_type(asset_path)[0] or "application/octet-stream",
     )
     csp = _PLUGIN_FRONTEND_CSP
     if media_type == "text/html":
@@ -2195,7 +2199,9 @@ async def plugin_frontend(
     )
 
 
-@router.api_route("/{plugin_id}/capabilities/documents/{document_id}/download", methods=["GET", "HEAD"])
+@router.api_route(
+    "/{plugin_id}/capabilities/documents/{document_id}/download", methods=["GET", "HEAD"]
+)
 async def plugin_document_download(
     plugin_id: str,
     document_id: UUID,

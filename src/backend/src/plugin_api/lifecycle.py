@@ -236,8 +236,12 @@ class PluginLifecycleManager:
     def _now() -> datetime:
         return datetime.now(timezone.utc)
 
-    def _log(self, level: str, event: str, plugin_id: str | None, message: str, failure_count: int = 0) -> None:
-        self._logs.append(LifecycleLog(self._now(), level, event, plugin_id, message, failure_count))
+    def _log(
+        self, level: str, event: str, plugin_id: str | None, message: str, failure_count: int = 0
+    ) -> None:
+        self._logs.append(
+            LifecycleLog(self._now(), level, event, plugin_id, message, failure_count)
+        )
 
     def discover(self, manifest_paths: list[Path]) -> tuple[PluginRecord, ...]:
         """Discover manifests without importing or executing plugin code."""
@@ -280,14 +284,18 @@ class PluginLifecycleManager:
         )
         record = PluginRecord(manifest=verified.manifest, package_path=package_path, state=state)
         self._records[record.manifest.plugin_id] = record
-        self._log("info", "package_discovered", record.manifest.plugin_id, "verified package discovered")
+        self._log(
+            "info", "package_discovered", record.manifest.plugin_id, "verified package discovered"
+        )
         return record
 
     def _validate_manifest(self, data: dict, package_path: Path) -> PluginRecord:
         manifest = PluginManifest.model_validate(data)
         from .contracts import evaluate_manifest_compatibility
 
-        decision = evaluate_manifest_compatibility(manifest, self.sdk_version, self.application_version)
+        decision = evaluate_manifest_compatibility(
+            manifest, self.sdk_version, self.application_version
+        )
         if decision.status == CompatibilityStatus.INVALID:
             raise ValueError(decision.reason)
         state = (
@@ -328,7 +336,9 @@ class PluginLifecycleManager:
 
     def health(self, plugin_id: str) -> PluginHealth:
         record = self._get(plugin_id)
-        return PluginHealth(record.state, record.consecutive_failures, record.last_checked_at, record.last_error)
+        return PluginHealth(
+            record.state, record.consecutive_failures, record.last_checked_at, record.last_error
+        )
 
     def logs(self, plugin_id: str | None = None) -> tuple[LifecycleLog, ...]:
         return tuple(log for log in self._logs if plugin_id is None or log.plugin_id == plugin_id)
@@ -360,7 +370,11 @@ class PluginLifecycleManager:
     async def uninstall(self, plugin_id: str) -> None:
         """Stop and fully remove one plugin installation and its owned data."""
         record = self._get(plugin_id)
-        if record.state in {LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY}:
+        if record.state in {
+            LifecycleState.RUNNING,
+            LifecycleState.STARTING,
+            LifecycleState.UNHEALTHY,
+        }:
             stopped = await self.stop(plugin_id)
             if stopped.state in {LifecycleState.FAILED_STOP, LifecycleState.QUARANTINED}:
                 raise RuntimeError(f"plugin {plugin_id} could not be stopped for uninstall")
@@ -376,7 +390,12 @@ class PluginLifecycleManager:
                 if result is not None:
                     await result
             except Exception as exc:
-                self._log("error", "storage_cleanup_failed", plugin_id, f"plugin storage cleanup failed: {exc}")
+                self._log(
+                    "error",
+                    "storage_cleanup_failed",
+                    plugin_id,
+                    f"plugin storage cleanup failed: {exc}",
+                )
                 raise RuntimeError(f"plugin storage cleanup failed: {exc}") from exc
         self._records.pop(plugin_id, None)
         self._log("info", "uninstalled", plugin_id, "plugin and owned data removed")
@@ -399,8 +418,11 @@ class PluginLifecycleManager:
             record.enabled = False
             return await self.stop(plugin_id)
         if record.state in {
-            LifecycleState.RUNNING, LifecycleState.STARTING, LifecycleState.UNHEALTHY,
-            LifecycleState.FAILED_START, LifecycleState.FAILED_STOP,
+            LifecycleState.RUNNING,
+            LifecycleState.STARTING,
+            LifecycleState.UNHEALTHY,
+            LifecycleState.FAILED_START,
+            LifecycleState.FAILED_STOP,
         }:
             record.enabled = False
             result = await self.stop(plugin_id)
@@ -489,8 +511,11 @@ class PluginLifecycleManager:
                 return record
             return record
         record.state = (
-            LifecycleState.QUARANTINED if quarantined
-            else LifecycleState.STOPPED if record.enabled else LifecycleState.DISABLED
+            LifecycleState.QUARANTINED
+            if quarantined
+            else LifecycleState.STOPPED
+            if record.enabled
+            else LifecycleState.DISABLED
         )
         self._log("info", "stopped", plugin_id, "plugin stopped")
         return record
@@ -558,13 +583,27 @@ class PluginLifecycleManager:
                 except Exception as exc:
                     record.state = LifecycleState.QUARANTINED
                     record.last_error = f"plugin quarantine stop failed: {exc}"
-                    self._log("error", "quarantine_stop_failed", plugin_id, record.last_error, record.consecutive_failures)
+                    self._log(
+                        "error",
+                        "quarantine_stop_failed",
+                        plugin_id,
+                        record.last_error,
+                        record.consecutive_failures,
+                    )
                 else:
                     record.state = LifecycleState.QUARANTINED
-                    self._log("error", "quarantined", plugin_id, "plugin quarantined and stopped after repeated failures", record.consecutive_failures)
+                    self._log(
+                        "error",
+                        "quarantined",
+                        plugin_id,
+                        "plugin quarantined and stopped after repeated failures",
+                        record.consecutive_failures,
+                    )
             else:
                 record.state = LifecycleState.UNHEALTHY
-                self._log("error", "unhealthy", plugin_id, record.last_error, record.consecutive_failures)
+                self._log(
+                    "error", "unhealthy", plugin_id, record.last_error, record.consecutive_failures
+                )
         return self.health(plugin_id)
 
     async def health_check_all(self) -> tuple[PluginHealth, ...]:
@@ -610,7 +649,9 @@ class PluginLifecycleManager:
                 record.state = LifecycleState.FAILED_START
             elif event == "stop_failed":
                 record.state = LifecycleState.FAILED_STOP
-            self._log("error", event, record.manifest.plugin_id, message, record.consecutive_failures)
+            self._log(
+                "error", event, record.manifest.plugin_id, message, record.consecutive_failures
+            )
 
     def _get(self, plugin_id: str) -> PluginRecord:
         try:
@@ -621,7 +662,9 @@ class PluginLifecycleManager:
     @staticmethod
     def _require_state(record: PluginRecord, state: LifecycleState) -> None:
         if record.state != state:
-            raise RuntimeError(f"plugin {record.manifest.plugin_id} must be {state}, got {record.state}")
+            raise RuntimeError(
+                f"plugin {record.manifest.plugin_id} must be {state}, got {record.state}"
+            )
 
 
 __all__ = [

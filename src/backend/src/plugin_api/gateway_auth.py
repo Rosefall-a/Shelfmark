@@ -119,8 +119,12 @@ class InMemoryCredentialStore:
         if record is None:
             return
         self._credentials[credential_id] = CredentialRecord(
-            credential_id=record.credential_id, kind=record.kind, subject_id=record.subject_id,
-            digest=record.digest, issued_at=record.issued_at, expires_at=record.expires_at,
+            credential_id=record.credential_id,
+            kind=record.kind,
+            subject_id=record.subject_id,
+            digest=record.digest,
+            issued_at=record.issued_at,
+            expires_at=record.expires_at,
             revoked_at=revoked_at,
         )
 
@@ -137,8 +141,12 @@ class GatewayAuthenticator:
     """Authenticate the core application to one explicitly identified gateway."""
 
     def __init__(
-        self, application: ApplicationIdentity, gateway: GatewayIdentity, *,
-        store: CredentialStore | None = None, secret: bytes,
+        self,
+        application: ApplicationIdentity,
+        gateway: GatewayIdentity,
+        *,
+        store: CredentialStore | None = None,
+        secret: bytes,
         clock: Callable[[], datetime] | None = None,
         clock_skew: timedelta = timedelta(seconds=30),
         bootstrap_ttl: timedelta = timedelta(minutes=10),
@@ -167,20 +175,32 @@ class GatewayAuthenticator:
     def _digest(self, credential_secret: str) -> bytes:
         return hmac.new(self._secret, credential_secret.encode("ascii"), hashlib.sha256).digest()
 
-    def _issue(self, *, kind: CredentialKind, subject_id: UUID, ttl: timedelta, now: datetime) -> str:
+    def _issue(
+        self, *, kind: CredentialKind, subject_id: UUID, ttl: timedelta, now: datetime
+    ) -> str:
         credential_id = uuid4()
         credential_secret = secrets.token_urlsafe(48)
-        self._store.save(CredentialRecord(
-            credential_id=credential_id, kind=kind, subject_id=subject_id,
-            digest=self._digest(credential_secret), issued_at=now, expires_at=now + ttl,
-        ))
+        self._store.save(
+            CredentialRecord(
+                credential_id=credential_id,
+                kind=kind,
+                subject_id=subject_id,
+                digest=self._digest(credential_secret),
+                issued_at=now,
+                expires_at=now + ttl,
+            )
+        )
         return f"pm1.{kind.value}.{credential_id}.{credential_secret}"
 
     def issue_bootstrap_credential(self, *, now: datetime | None = None) -> str:
         """Issue a bounded bootstrap credential for this application."""
         current = now or self._clock()
-        return self._issue(kind=CredentialKind.BOOTSTRAP, subject_id=self.application.application_id,
-                           ttl=self._bootstrap_ttl, now=current)
+        return self._issue(
+            kind=CredentialKind.BOOTSTRAP,
+            subject_id=self.application.application_id,
+            ttl=self._bootstrap_ttl,
+            now=current,
+        )
 
     def _parse(self, token: str) -> tuple[CredentialKind, UUID, str]:
         parts = token.split(".")
@@ -195,7 +215,9 @@ class GatewayAuthenticator:
             raise CredentialError("invalid gateway credential")
         return kind, credential_id, parts[3]
 
-    def _authenticate(self, token: str, *, kind: CredentialKind, subject_id: UUID, now: datetime) -> CredentialRecord:
+    def _authenticate(
+        self, token: str, *, kind: CredentialKind, subject_id: UUID, now: datetime
+    ) -> CredentialRecord:
         parsed_kind, credential_id, credential_secret = self._parse(token)
         if parsed_kind is not kind:
             raise CredentialError("credential kind is not valid for this operation")
@@ -219,44 +241,82 @@ class GatewayAuthenticator:
             raise CredentialError("gateway identity does not match gateway configuration")
         if abs((now - request.issued_at).total_seconds()) > self._clock_skew.total_seconds():
             raise CredentialError("bootstrap request timestamp is outside the allowed skew")
-        self._authenticate(request.credential, kind=CredentialKind.BOOTSTRAP,
-                           subject_id=self.application.application_id, now=now)
+        self._authenticate(
+            request.credential,
+            kind=CredentialKind.BOOTSTRAP,
+            subject_id=self.application.application_id,
+            now=now,
+        )
         if not self._store.mark_nonce_used(request.nonce, now + self._bootstrap_ttl):
             raise ReplayError("bootstrap nonce has already been used")
         if ApiVersion.V1 not in request.supported_versions:
             raise CredentialError("no compatible Plugin API version")
-        credential = self._issue(kind=CredentialKind.SESSION, subject_id=self.application.application_id,
-                                 ttl=self._session_ttl, now=now)
-        return GatewayHandshake(application_id=self.application.application_id, gateway_id=self.gateway.gateway_id,
-                                selected_version=ApiVersion.V1, credential=credential,
-                                issued_at=now, expires_at=now + self._session_ttl)
+        credential = self._issue(
+            kind=CredentialKind.SESSION,
+            subject_id=self.application.application_id,
+            ttl=self._session_ttl,
+            now=now,
+        )
+        return GatewayHandshake(
+            application_id=self.application.application_id,
+            gateway_id=self.gateway.gateway_id,
+            selected_version=ApiVersion.V1,
+            credential=credential,
+            issued_at=now,
+            expires_at=now + self._session_ttl,
+        )
 
     def authenticate_session(self, token: str, *, now: datetime | None = None) -> GatewayHandshake:
         """Validate a core session credential and return its authenticated identities."""
         current = now or self._clock()
-        record = self._authenticate(token, kind=CredentialKind.SESSION,
-                                    subject_id=self.application.application_id, now=current)
-        return GatewayHandshake(application_id=self.application.application_id, gateway_id=self.gateway.gateway_id,
-                                selected_version=ApiVersion.V1, credential=token,
-                                issued_at=record.issued_at, expires_at=record.expires_at)
+        record = self._authenticate(
+            token,
+            kind=CredentialKind.SESSION,
+            subject_id=self.application.application_id,
+            now=current,
+        )
+        return GatewayHandshake(
+            application_id=self.application.application_id,
+            gateway_id=self.gateway.gateway_id,
+            selected_version=ApiVersion.V1,
+            credential=token,
+            issued_at=record.issued_at,
+            expires_at=record.expires_at,
+        )
 
-    def rotate_credential(self, token: str, *, kind: CredentialKind, now: datetime | None = None) -> str:
+    def rotate_credential(
+        self, token: str, *, kind: CredentialKind, now: datetime | None = None
+    ) -> str:
         """Revoke a valid credential and issue a replacement for the same application."""
         current = now or self._clock()
-        record = self._authenticate(token, kind=kind, subject_id=self.application.application_id, now=current)
+        record = self._authenticate(
+            token, kind=kind, subject_id=self.application.application_id, now=current
+        )
         self._store.revoke(record.credential_id, current)
         ttl = self._bootstrap_ttl if kind is CredentialKind.BOOTSTRAP else self._session_ttl
         return self._issue(kind=kind, subject_id=record.subject_id, ttl=ttl, now=current)
 
-    def revoke_credential(self, token: str, *, kind: CredentialKind, now: datetime | None = None) -> None:
+    def revoke_credential(
+        self, token: str, *, kind: CredentialKind, now: datetime | None = None
+    ) -> None:
         """Revoke a valid credential after verifying its kind and application binding."""
         current = now or self._clock()
-        record = self._authenticate(token, kind=kind, subject_id=self.application.application_id, now=current)
+        record = self._authenticate(
+            token, kind=kind, subject_id=self.application.application_id, now=current
+        )
         self._store.revoke(record.credential_id, current)
 
 
 __all__ = [
-    "ApplicationIdentity", "BootstrapRequest", "CredentialError", "CredentialKind",
-    "CredentialRecord", "CredentialStore", "GatewayAuthenticator", "GatewayHandshake",
-    "GatewayIdentity", "InMemoryCredentialStore", "ReplayError",
+    "ApplicationIdentity",
+    "BootstrapRequest",
+    "CredentialError",
+    "CredentialKind",
+    "CredentialRecord",
+    "CredentialStore",
+    "GatewayAuthenticator",
+    "GatewayHandshake",
+    "GatewayIdentity",
+    "InMemoryCredentialStore",
+    "ReplayError",
 ]
