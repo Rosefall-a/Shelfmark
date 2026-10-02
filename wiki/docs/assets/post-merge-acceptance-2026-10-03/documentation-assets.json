@@ -1,0 +1,20 @@
+[
+  {
+    "repository": "host-accepted",
+    "local_links_checked": 121,
+    "image_references_checked": 8,
+    "missing": []
+  },
+  {
+    "repository": "plugins-security",
+    "local_links_checked": 135,
+    "image_references_checked": 35,
+    "missing": []
+  },
+  {
+    "repository": "playnite",
+    "local_links_checked": 24,
+    "image_references_checked": 0,
+    "missing": []
+  }
+]

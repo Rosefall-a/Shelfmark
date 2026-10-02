@@ -1,0 +1,190 @@
+[
+  {
+    "repo": "Rosefall-a/unnamed_tracking_app",
+    "releases": [
+      {
+        "tag": "v0.0.1-alpha.1",
+        "published": "2026-09-24T05:00:37Z",
+        "draft": false,
+        "prerelease": true,
+        "assets": []
+      }
+    ]
+  },
+  {
+    "repo": "Rosefall-a/unnamed_tracking_app_plugins",
+    "releases": [
+      {
+        "tag": "v0.0.0-R",
+        "published": "2026-09-30T02:55:38Z",
+        "draft": false,
+        "prerelease": false,
+        "assets": [
+          {
+            "name": "example.discord-delivery-provider-1.0.0.utp",
+            "size": 5011,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.discord-delivery-provider-1.0.0.utp"
+          },
+          {
+            "name": "example.help-button-1.0.0.utp",
+            "size": 2295,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.help-button-1.0.0.utp"
+          },
+          {
+            "name": "example.jellyfin-media-sync-1.1.0.utp",
+            "size": 5615,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.jellyfin-media-sync-1.1.0.utp"
+          },
+          {
+            "name": "example.metadata-curator-1.0.0.utp",
+            "size": 2117,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.metadata-curator-1.0.0.utp"
+          },
+          {
+            "name": "example.playtime-report-1.0.0.utp",
+            "size": 2185,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.playtime-report-1.0.0.utp"
+          },
+          {
+            "name": "example.recently-played-notifier-1.0.0.utp",
+            "size": 2162,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.recently-played-notifier-1.0.0.utp"
+          },
+          {
+            "name": "example.scoped-document-viewer-1.2.0.utp",
+            "size": 5054,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.scoped-document-viewer-1.2.0.utp"
+          },
+          {
+            "name": "example.self-service-session-manager-1.1.0.utp",
+            "size": 4679,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.self-service-session-manager-1.1.0.utp"
+          },
+          {
+            "name": "example.ui-api-1.0.0.utp",
+            "size": 1391,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.ui-api-1.0.0.utp"
+          },
+          {
+            "name": "example.ui-playground-1.0.0.utp",
+            "size": 5197,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-R/example.ui-playground-1.0.0.utp"
+          }
+        ]
+      },
+      {
+        "tag": "v0.0.0-Q",
+        "published": "2026-09-30T00:56:18Z",
+        "draft": false,
+        "prerelease": false,
+        "assets": [
+          {
+            "name": "example.discord-delivery-provider-1.0.0.utp",
+            "size": 5011,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.discord-delivery-provider-1.0.0.utp"
+          },
+          {
+            "name": "example.metadata-curator-1.0.0.utp",
+            "size": 2117,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.metadata-curator-1.0.0.utp"
+          },
+          {
+            "name": "example.playtime-report-1.0.0.utp",
+            "size": 2185,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.playtime-report-1.0.0.utp"
+          },
+          {
+            "name": "example.recently-played-notifier-1.0.0.utp",
+            "size": 2162,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.recently-played-notifier-1.0.0.utp"
+          },
+          {
+            "name": "example.scoped-document-viewer-1.0.0.utp",
+            "size": 4727,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.scoped-document-viewer-1.0.0.utp"
+          },
+          {
+            "name": "example.self-service-session-manager-1.0.0.utp",
+            "size": 4493,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.self-service-session-manager-1.0.0.utp"
+          },
+          {
+            "name": "example.ui-api-1.0.0.utp",
+            "size": 1391,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.ui-api-1.0.0.utp"
+          },
+          {
+            "name": "example.ui-playground-1.0.0.utp",
+            "size": 5197,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-Q/example.ui-playground-1.0.0.utp"
+          }
+        ]
+      },
+      {
+        "tag": "v0.0.0-P",
+        "published": "2026-09-29T17:38:42Z",
+        "draft": false,
+        "prerelease": false,
+        "assets": [
+          {
+            "name": "example.metadata-curator-1.0.0.utp",
+            "size": 2117,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-P/example.metadata-curator-1.0.0.utp"
+          },
+          {
+            "name": "example.playtime-report-1.0.0.utp",
+            "size": 2185,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-P/example.playtime-report-1.0.0.utp"
+          },
+          {
+            "name": "example.recently-played-notifier-1.0.0.utp",
+            "size": 2162,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-P/example.recently-played-notifier-1.0.0.utp"
+          },
+          {
+            "name": "example.ui-api-1.0.0.utp",
+            "size": 1391,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-P/example.ui-api-1.0.0.utp"
+          },
+          {
+            "name": "example.ui-playground-1.0.0.utp",
+            "size": 5189,
+            "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/releases/download/v0.0.0-P/example.ui-playground-1.0.0.utp"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "repo": "Rosefall-a/UnnamedTrackingPlaynite",
+    "releases": [
+      {
+        "tag": "v0.2.0-beta.3",
+        "published": "2026-10-02T14:29:41Z",
+        "draft": false,
+        "prerelease": false,
+        "assets": []
+      },
+      {
+        "tag": "v0.2.0-beta.2",
+        "published": "2026-10-01T13:34:34Z",
+        "draft": false,
+        "prerelease": true,
+        "assets": []
+      },
+      {
+        "tag": "v0.2.0-beta.1",
+        "published": "2026-09-24T04:54:19Z",
+        "draft": false,
+        "prerelease": true,
+        "assets": [
+          {
+            "name": "UnnamedTrackingPlaynite-0.2.0.pext",
+            "size": 55371,
+            "url": "https://github.com/Rosefall-a/UnnamedTrackingPlaynite/releases/download/v0.2.0-beta.1/UnnamedTrackingPlaynite-0.2.0.pext"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "captured_from": "Actual production-built host SPA and installed native plugin UI; local synthetic Jellyfin fixture, not the live server",
+  "host_commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+  "plugins_commit": "3ae180545906c87b14d6d55c0a54f6408de492e9",
+  "browser": "Chromium via repository Playwright scripts",
+  "visual_inspection": "Three report images inspected; credential control is empty",
+  "images": {
+    "permission-review.png": "f03ebbc48d2e330effac4f2729301b4b0042396f27fb2bc64e5b208e77260c85",
+    "jellyfin-admin-settings.png": "9478b179e24c6f57d573086f382ea875ee392582de677022d62f46df4baede78",
+    "jellyfin-watch-now.png": "f9fc05f3931cd990763ff7e11a5a81e8991d9de2d5e52d49861eb5fe1f37ff62"
+  }
+}

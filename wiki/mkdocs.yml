@@ -74,5 +74,6 @@ nav:
       - Plugin Integration Validation: development/plugin-validation.md
       - Installed-plugin Conformance: development/plugin-conformance.md
       - Plugin Lifecycle Verification: development/plugin-integration-verification.md
+      - Post-merge Acceptance (2026-10-03): development/post-merge-acceptance-2026-10-03.md
       - Documentation Review Checklist: development/documentation-review.md
       - Contributing: development/contributing.md

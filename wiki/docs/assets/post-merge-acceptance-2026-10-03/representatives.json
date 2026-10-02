@@ -1,0 +1,23 @@
+{
+  "host_commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+  "plugins_commit": "3ae180545906c87b14d6d55c0a54f6408de492e9",
+  "passed": [
+    "Official catalogue discovery, consent, signed install and healthy workers for all six representatives",
+    "Stateful Playtime Report uses the real scoped host game library",
+    "Actual installed document worker: finite setting rejects; zero reads complete five-MiB-plus file through authenticated chunks",
+    "Document setting survives real stop/start, disable/enable and retaining reinstall",
+    "Actual Session Manager confirms revocation, invalidates the other authenticated session and retains the current one",
+    "All six representatives stop/start, disable/enable, retain reinstall, purge and uninstall through public host API"
+  ],
+  "versions": {
+    "example.ui-api": "1.1.0",
+    "example.help-button": "2.1.0",
+    "example.playtime-report": "1.1.0",
+    "example.scoped-document-viewer": "1.7.0",
+    "example.jellyfin-media-sync": "3.0.0",
+    "example.self-service-session-manager": "2.2.0"
+  },
+  "document_chunks": 214,
+  "document_bytes": 5242881,
+  "status": "passed"
+}

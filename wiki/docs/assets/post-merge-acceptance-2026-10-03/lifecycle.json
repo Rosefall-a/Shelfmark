@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "plugin_id": "example.jellyfin-media-sync",
+  "browser": true,
+  "jellyfin_browser": true,
+  "host_commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+  "plugins_commit": "3ae180545906c87b14d6d55c0a54f6408de492e9",
+  "passed": [
+    "invalid package, manifest and digest rejected before execution",
+    "official packages, hashes, signatures, compatibility and catalogue metadata",
+    "live official package install, gateway readiness and native UI",
+    "signed generated package, host risk review, approval and isolation diagnostics",
+    "master config, approved user, mapped film/TV/anime, native completion, repeat sync and exact Watch Now",
+    "second-user delegation, administrator/identity denial and cross-user Watch Now isolation",
+    "installed native UI and media-page screenshots",
+    "operation, data and secrets, restart, offline inventory, stop/start, disable/enable and preserving reinstall",
+    "update without new scopes, rollback, staged new scopes, denial and explicit approval",
+    "failed real startup restores previous release, data and grants; update policy and history retention",
+    "revocation/regrant, management-token scope confinement, purge and uninstall"
+  ],
+  "package_version": "3.0.0",
+  "package_digest": "e7ce1d27788aa4156552149dbf00dbc54eb3ff45a2bb4ec67bee7e47032bae37"
+}

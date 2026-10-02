@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "host_commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+  "playnite_commit": "154f6d45e504c9b04f20e08b865278a2b6ebdc8c",
+  "platform": "Windows net462 CLI, unchanged production source; Playnite UI not used",
+  "passed": [
+    "connection",
+    "non-mutating preview",
+    "library create",
+    "artwork upload",
+    "durable GUID",
+    "rename and repeated update without duplicates",
+    "native BEATEN status",
+    "save upload/download restores bytes",
+    "cancellation"
+  ]
+}

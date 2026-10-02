@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "available": true,
+  "api_version": "v1",
+  "supported_api_versions": [
+    "v1"
+  ],
+  "transport": "http",
+  "plugin_transport": "json-lines",
+  "bubblewrap_available": false,
+  "sandbox_available": false,
+  "mechanism": "process",
+  "reduced_isolation_allowed": false,
+  "last_error": "bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.\n"
+}
