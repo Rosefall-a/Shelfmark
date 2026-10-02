@@ -528,6 +528,8 @@ async def test_gateway_version_correlation_and_structured_denial(boundary):
     request_id = str(uuid4())
     denied = await request(boundary, request_id=request_id)
     assert denied.status_code == 403
+    assert denied.headers["cache-control"] == "private, no-store"
+    assert denied.headers["x-content-type-options"] == "nosniff"
     error = denied.json()["error"]
     assert error["code"] == "forbidden"
     assert error["api_version"] == "v1" and error["request_id"] == request_id

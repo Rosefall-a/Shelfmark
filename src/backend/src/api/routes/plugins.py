@@ -2588,10 +2588,12 @@ async def plugin_gateway(
 ) -> dict[str, Any] | JSONResponse:
     def failure(status: int, code: ErrorCode, message: str) -> JSONResponse:
         envelope = ErrorEnvelope(code=code, message=message[:1024], request_id=payload.request_id)
-        return JSONResponse(
+        response = JSONResponse(
             status_code=status,
             content={"detail": message, "error": envelope.model_dump(mode="json")},
         )
+        _private_plugin_response(response)
+        return response
 
     if not runtime_token_is_valid(runtime_token):
         return failure(503, ErrorCode.UNAVAILABLE, "Plugin runtime gateway is not configured.")

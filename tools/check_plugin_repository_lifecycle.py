@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -22,12 +23,14 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from plugin_conformance import InstalledPluginConformance
 
 HOST = Path(__file__).resolve().parents[1]
 PLUGIN = "example.jellyfin-media-sync"
@@ -226,6 +229,29 @@ class Jellyfin(BaseHTTPRequestHandler):
 
 
 def acceptance(plugins_root, work, browser=False):
+    def revision(root):
+        # Exported source trees and Windows worktree mounts may lack usable Git metadata.
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    report = {
+        "schema_version": 1,
+        "status": "running",
+        "plugin_id": PLUGIN,
+        "browser": browser,
+        "host_commit": os.getenv("GITHUB_SHA") or revision(HOST),
+        "plugins_commit": revision(plugins_root),
+        "passed": [],
+    }
+
+    def checkpoint(name):
+        report["passed"].append(name)
+        (work / "conformance.json").write_text(json.dumps(report, indent=2) + "\n")
+
     root, signing_env = prepare_releases(plugins_root, work)
     entry = build(root, signing_env)
     host_port, runtime_port = available_port(), available_port()
@@ -315,27 +341,10 @@ def acceptance(plugins_root, work, browser=False):
                 )
             )
 
-            def request(method, path, expected=200, **kwargs):
-                response = client.request(method, "/api/plugins" + path, **kwargs)
-                assert response.status_code == expected, (
-                    path,
-                    response.status_code,
-                    response.text,
-                )
-                return response.json() if response.content else None
-
-            def current():
-                return next(
-                    item for item in request("GET", "") if item["plugin_id"] == PLUGIN
-                )
-
-            def action(name, values=None, expected=200):
-                return request(
-                    "POST",
-                    f"/{PLUGIN}/actions/{name}",
-                    expected,
-                    json={"values": values or {}, "confirmed": True},
-                )
+            conformance = InstalledPluginConformance(client, PLUGIN)
+            request = conformance.request
+            current = conformance.current
+            action = conformance.action
 
             def source(item):
                 return {
@@ -343,6 +352,39 @@ def acceptance(plugins_root, work, browser=False):
                     "source_type": "catalogue",
                     "catalogue_url": FIXTURE_BASE + "/list.json",
                 }
+
+            # Invalid packages pass through the same public static preview path.
+            request(
+                "POST",
+                "/install/preview",
+                400,
+                files={"file": ("invalid.utp", b"not an archive")},
+            )
+            candidate = root / "dist" / entry["package"]["filename"]
+            for mutation in ("manifest", "digest"):
+                buffer = io.BytesIO()
+                with (
+                    zipfile.ZipFile(candidate) as original,
+                    zipfile.ZipFile(buffer, "w") as invalid,
+                ):
+                    for name in original.namelist():
+                        content = original.read(name)
+                        if name == "manifest.json":
+                            manifest = json.loads(content)
+                            if mutation == "manifest":
+                                manifest["entrypoint"] = "../../host:main"
+                            else:
+                                manifest["integrity"]["sha256"] = "0" * 64
+                            content = json.dumps(manifest).encode()
+                        invalid.writestr(name, content)
+                request(
+                    "POST",
+                    "/install/preview",
+                    400,
+                    files={"file": ("invalid.utp", buffer.getvalue())},
+                )
+            assert not request("GET", "")
+            checkpoint("invalid package, manifest and digest rejected before execution")
 
             # Official transport is real and every catalogue package is inspected.
             official = request("GET", "/catalog")
@@ -366,6 +408,9 @@ def acceptance(plugins_root, work, browser=False):
                 f"Official distribution: {len(official)} live packages verified",
                 flush=True,
             )
+            checkpoint(
+                "official packages, hashes, signatures, compatibility and catalogue metadata"
+            )
             live_release = next(
                 item for item in official if item["plugin_id"] == PLUGIN
             )
@@ -387,6 +432,7 @@ def acceptance(plugins_root, work, browser=False):
                 json=live_source,
             )
             assert current()["status"] == "running" and current()["health"] == "healthy"
+            conformance.assert_ready()
             assert current()["version"] == live_release["version"]
             assert current()["source"]["type"] == "catalogue"
             assert request("GET", f"/{PLUGIN}/ui")["native_frontend"]
@@ -395,6 +441,7 @@ def acceptance(plugins_root, work, browser=False):
                 "Live official Jellyfin package installation and healthy startup: passed",
                 flush=True,
             )
+            checkpoint("live official package install, gateway readiness and native UI")
             request(
                 "POST",
                 "/catalogues",
@@ -459,6 +506,9 @@ def acceptance(plugins_root, work, browser=False):
                 "Install, consent, real startup, native UI assets and reduced isolation: passed",
                 flush=True,
             )
+            checkpoint(
+                "signed generated package, host risk review, approval and isolation diagnostics"
+            )
             config = {
                 "server_url": f"http://127.0.0.1:{jellyfin.server_port}",
                 "user_id": "a" * 32,
@@ -487,6 +537,16 @@ def acceptance(plugins_root, work, browser=False):
 
             runtime.send_signal(signal.SIGINT)
             runtime.wait(timeout=10)
+            offline = current()
+            assert offline["version"] == entry["version"]
+            assert (
+                offline["installation_id"] == original_identity and offline["enabled"]
+            )
+            assert offline["runtime_available"] is False
+            assert offline["runtime"]["sandbox_available"] is False
+            assert offline["runtime"]["mechanism"] == "unavailable"
+            if browser:
+                browser_check("offline")
             runtime = launch("runtime", runtime_port)
             wait_until(lambda: current()["status"] == "running")
             preserved()
@@ -495,15 +555,19 @@ def acceptance(plugins_root, work, browser=False):
             host = launch("host", host_port)
             wait_until(lambda: current()["status"] == "running")
             preserved()
-            request("POST", f"/{PLUGIN}/disable")
-            assert current()["status"] == "disabled"
-            request("POST", f"/{PLUGIN}/enable")
-            preserved()
-            request("POST", f"/{PLUGIN}/reinstall", json={})
+
+            def persistence_probe():
+                preserved()
+                return {p: (storage / p).read_bytes() for p in baseline}
+
+            conformance.preserving_lifecycle(persistence_probe)
             preserved()
             print(
                 "Jellyfin real sync, secrets, restart, disable/enable and preserving reinstall: passed",
                 flush=True,
+            )
+            checkpoint(
+                "operation, data and secrets, restart, offline inventory, stop/start, disable/enable and preserving reinstall"
             )
 
             metadata_path = root / "examples/jellyfin-media-sync/release.json"
@@ -568,6 +632,16 @@ def acceptance(plugins_root, work, browser=False):
             )
             assert current()["staged_update"]["status"] == "awaiting_permissions"
             staged_preview = request("POST", f"/{PLUGIN}/update/staged/preview")
+            assert "games.read" not in current()["granted_capabilities"]
+            denied = request(
+                "POST", f"/{PLUGIN}/update/staged", json={"confirmed": True}
+            )
+            assert denied["status"] == "denied"
+            assert automatic()["installed"] == 0
+            assert current()["staged_update"]["status"] == "denied"
+            assert current()["version"] == auto["version"]
+            assert "games.read" not in current()["granted_capabilities"]
+            preserved()
             request(
                 "POST",
                 f"/{PLUGIN}/update/staged",
@@ -579,6 +653,9 @@ def acceptance(plugins_root, work, browser=False):
             assert current()["version"] == staged["version"]
             preserved()
             failure = release(broken=True)
+            checkpoint(
+                "update without new scopes, rollback, staged new scopes, denial and explicit approval"
+            )
             assert automatic()["failed"] == 1
             assert (
                 current()["version"] == staged["version"]
@@ -598,6 +675,9 @@ def acceptance(plugins_root, work, browser=False):
             print(
                 "Update, rollback, permission staging, opt-out/opt-in, failed real startup, notification and retention: passed",
                 flush=True,
+            )
+            checkpoint(
+                "failed real startup restores previous release, data and grants; update policy and history retention"
             )
             request("POST", f"/{PLUGIN}/permissions/revoke")
             action("get-config", expected=403)
@@ -630,6 +710,48 @@ def acceptance(plugins_root, work, browser=False):
                         "/api/settings/appearance",
                     ):
                         assert remote.get(unrelated).status_code == 403
+                    for method, path, body in (
+                        ("POST", f"/{PLUGIN}/actions/status", {"values": {}}),
+                        ("GET", f"/{PLUGIN}/ui", None),
+                        ("PUT", f"/{PLUGIN}/settings", config),
+                        (
+                            "PUT",
+                            f"/{PLUGIN}/secrets/probe",
+                            {"key": "probe", "value": "denied"},
+                        ),
+                    ):
+                        response = remote.request(
+                            method, "/api/plugins" + path, json=body
+                        )
+                        assert response.status_code == 403, (
+                            scope,
+                            method,
+                            path,
+                            response.status_code,
+                        )
+                    assert (
+                        remote.post(
+                            "/api/auth/api-keys", json={"name": "denied"}
+                        ).status_code
+                        == 403
+                    )
+                    if scope in {"plugins.install", "plugins.update"}:
+                        # Operation scope alone cannot approve new privileges.
+                        path = (
+                            "/install/url"
+                            if scope == "plugins.install"
+                            else f"/{PLUGIN}/update/staged"
+                        )
+                        assert (
+                            remote.post(
+                                "/api/plugins" + path,
+                                params={"approved_permissions": ["games.read:v1"]},
+                                json=source(failure)
+                                if scope == "plugins.install"
+                                else {"approved_permissions": ["games.read:v1"]},
+                            ).status_code
+                            == 403
+                        )
                     for required, method, path, body in (
                         ("plugins.read", "GET", "", None),
                         (
@@ -676,6 +798,11 @@ def acceptance(plugins_root, work, browser=False):
                 "Revocation/regrant, remote token confinement, confirmed purge and uninstall: passed",
                 flush=True,
             )
+            checkpoint(
+                "revocation/regrant, management-token scope confinement, purge and uninstall"
+            )
+            report["status"] = "passed"
+            (work / "conformance.json").write_text(json.dumps(report, indent=2) + "\n")
     finally:
         jellyfin.shutdown()
         for process in reversed(processes):
@@ -713,7 +840,20 @@ def main():
             "Supply external plugins checkout and an empty work root"
         )
         args.work_root.mkdir(parents=True, exist_ok=False)
-        acceptance(args.plugins_root.resolve(), args.work_root.resolve(), args.browser)
+        try:
+            acceptance(
+                args.plugins_root.resolve(), args.work_root.resolve(), args.browser
+            )
+        except Exception as exc:
+            path = args.work_root / "conformance.json"
+            report = (
+                json.loads(path.read_text())
+                if path.exists()
+                else {"schema_version": 1, "passed": []}
+            )
+            report.update(status="failed", failure_type=type(exc).__name__)
+            path.write_text(json.dumps(report, indent=2) + "\n")
+            raise
 
 
 if __name__ == "__main__":

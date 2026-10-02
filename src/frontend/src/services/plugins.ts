@@ -40,6 +40,7 @@ export interface PluginSummary {
   publisher?: string | null;
   digest?: string;
   runtime_available?: boolean;
+  runtime_error?: string | null;
   runtime?: RuntimeCapabilities;
   last_error?: string | null;
   last_update_error?: string | null;
@@ -50,6 +51,10 @@ export interface PluginSummary {
   permission_details?: PluginInstallPermission[];
 }
 export interface RuntimeCapabilities {
+  api_version?: string;
+  supported_api_versions?: string[];
+  transport?: string;
+  plugin_transport?: string;
   bubblewrap_available: boolean | null;
   sandbox_available: boolean;
   mechanism: string;

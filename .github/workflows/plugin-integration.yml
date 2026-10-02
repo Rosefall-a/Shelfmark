@@ -55,6 +55,14 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Verify generated plugin packages against the current host contract
+        working-directory: .integration-plugins
+        run: |
+          python tools/build_packages.py
+          python tools/distribution.py --root .validation --check-source
+          python tools/verify_packages.py .validation/dist/*.utp
+          python tools/validate_packages.py .validation/dist/*.utp
+          python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
       - name: Install browser tooling from the plugin repository
         working-directory: .integration-plugins
         run: |
@@ -72,4 +80,5 @@ jobs:
           path: |
             ${{ runner.temp }}/plugin-acceptance/*.log
             ${{ runner.temp }}/plugin-acceptance/*.png
+            ${{ runner.temp }}/plugin-acceptance/conformance.json
           if-no-files-found: warn
