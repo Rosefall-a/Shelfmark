@@ -2,8 +2,11 @@
 
 import base64
 import hashlib
+import io
 import json
 import mimetypes
+import zipfile
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import httpx
@@ -13,7 +16,9 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from test_plugin_authorization_http import boundary as authorization_boundary
 from test_plugin_authorization_http import grant, request
 
-from src.database.models.game import Game
+from src.api.routes import games as game_routes
+from src.api.routes import plugins
+from src.database.models.game import Game, GameLink
 from src.database.models.game_file_item import GameFileItem
 from src.plugin_api import gateway
 from src.plugin_api.documents import (
@@ -33,8 +38,11 @@ def stored(boundary, tmp_path, monkeypatch):
         if isinstance(column.type, ARRAY):
             monkeypatch.setattr(column, "type", JSON())
     Game.__table__.create(boundary.session.bind)
+    GameLink.__table__.create(boundary.session.bind)
     GameFileItem.__table__.create(boundary.session.bind)
     monkeypatch.setattr(gateway, "_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(plugins, "_DOCUMENT_DATA_ROOT", tmp_path)
+    monkeypatch.setattr(game_routes, "_DATA_ROOT", tmp_path)
     games = []
     for user in boundary.users:
         game = Game(
@@ -291,6 +299,27 @@ def test_pr241_pdf_signature_overrides_extension(tmp_path, name):
 
 
 @pytest.mark.asyncio
+async def test_configurable_preview_limit_can_exceed_legacy_cap_and_be_unlimited(stored):
+    boundary, save, _ = stored
+    grant(boundary, "documents.read")
+    data = b"x" * (MAX_DOCUMENT_BYTES + 1024)
+    item = save(data=data)
+
+    bounded = await read(boundary, item.id, max_bytes=MAX_DOCUMENT_BYTES)
+    assert bounded.json()["payload"]["error"]["status_code"] == 413
+
+    extended = await read(
+        boundary, item.id, max_bytes=MAX_DOCUMENT_BYTES + 1024, offset=0
+    )
+    payload = extended.json()["payload"]
+    assert payload["document"]["size_bytes"] == len(data)
+    assert payload["complete"] is False
+
+    unlimited = await read(boundary, item.id, max_bytes=0, offset=0)
+    unlimited_payload = unlimited.json()["payload"]
+    assert unlimited_payload["document"]["size_bytes"] == len(data)
+    assert unlimited_payload["next_offset"] == 24576
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -309,3 +338,172 @@ async def test_invalid_chunk_request_is_explicit(stored, payload):
     result = (await read(boundary, **changes)).json()["payload"]
     assert result["error"]["status_code"] in {400, 409}
     assert len(json.dumps(result)) < 1024
+
+
+@pytest.mark.asyncio
+async def test_scoped_download_checks_owner_grants_and_safe_attachment(stored):
+    boundary, save, _ = stored
+    item = save("abcdefgh_active.svg", b"<svg onload='evil()'/>")
+    other = save(owner=1)
+    path = f"/api/plugins/audit.plugin/capabilities/documents/{item.id}/download"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        assert (await client.get(path)).status_code == 401
+        client.cookies.set("session", boundary.tokens[boundary.users[0].id])
+        assert (await client.get(path)).status_code == 403
+        permission = grant(boundary, "documents.read")
+        response = await client.get(path)
+        assert response.status_code == 200 and response.content == b"<svg onload='evil()'/>"
+        assert response.headers["content-type"] == "application/octet-stream"
+        assert response.headers["content-disposition"].startswith("attachment;")
+        assert "active.svg" in response.headers["content-disposition"]
+        assert response.headers["cache-control"] == "private, no-store"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        response = await client.head(path)
+        assert response.status_code == 200 and response.content == b""
+        for document_id in (other.id, uuid4()):
+            assert (
+                await client.get(path.replace(str(item.id), str(document_id)))
+            ).status_code == 404
+        unsafe = save("..%2fsecret.txt")
+        assert (await client.get(path.replace(str(item.id), str(unsafe.id)))).status_code == 400
+        permission.revoked_at = 1
+        boundary.session.commit()
+        assert (await client.get(path)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_game_docs_listing_supplies_the_indexed_reader_id(stored):
+    boundary, save, games = stored
+    item = save()
+    response = await game_routes.list_game_files(games[0].id, "doc", boundary.db, boundary.users[0])
+    assert response["files"][0]["id"] == str(item.id)
+    assert response["files"][0]["url"].endswith("/files/doc/abcdefgh_manual.txt")
+    with pytest.raises(plugins.HTTPException) as failure:
+        await game_routes.list_game_files(games[1].id, "doc", boundary.db, boundary.users[0])
+    assert failure.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authenticated_frontend_inlines_verified_css_and_scripts(stored):
+    boundary, _, _ = stored
+    ui = boundary.runtime.plugin_ui.return_value
+    ui["frontend"] = {"entry": "frontend/index.html", "inline_assets": True}
+    assets = {
+        "frontend/index.html": b'<link rel="stylesheet" href="./style.css"><script src="./app.js"></script>',
+        "frontend/style.css": b"body {margin: 0}",
+        "frontend/app.js": b"window.started=true;",
+    }
+    boundary.runtime.frontend_asset = AsyncMock(side_effect=lambda _plugin, path: assets[path])
+    path = "/api/plugins/audit.plugin/frontend/frontend/index.html"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app), base_url="http://test"
+    ) as client:
+        assert (await client.get(path)).status_code == 401
+        client.cookies.set("session", boundary.tokens[boundary.users[0].id])
+        response = await client.get(path)
+        assert response.status_code == 200
+        assert "body {margin: 0}" in response.text and "window.started=true" in response.text
+        assert " src=" not in response.text and " href=" not in response.text
+        nonce = response.text.split('nonce="')[1].split('"')[0]
+        assert f"'nonce-{nonce}'" in response.headers["content-security-policy"]
+        assert "'unsafe-eval'" not in response.headers["content-security-policy"]
+        assert "script-src 'unsafe-inline'" not in response.headers["content-security-policy"]
+        assert response.headers["cache-control"] == "private, no-store"
+        assert (
+            (await client.get(path.replace("index.html", "style.css")))
+            .headers["content-type"]
+            .startswith("text/css")
+        )
+
+
+@pytest.mark.asyncio
+async def test_oversized_preview_still_allows_scoped_original_download(stored):
+    boundary, save, _ = stored
+    item = save("abcdefgh_big.pdf", b"%PDF-" + b"x" * MAX_DOCUMENT_BYTES)
+    grant(boundary, "documents.read")
+    assert (await read(boundary, item.id)).json()["payload"]["error"]["status_code"] == 413
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=boundary.app),
+        base_url="http://test",
+        cookies={"session": boundary.tokens[boundary.users[0].id]},
+    ) as client:
+        response = await client.head(
+            f"/api/plugins/audit.plugin/capabilities/documents/{item.id}/download"
+        )
+        assert response.status_code == 200
+        assert int(response.headers["content-length"]) > MAX_DOCUMENT_BYTES
+
+
+def office_archive(files):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("suffix", ["docx", "pptx", "odt", "odp"])
+def test_office_previews_validate_safe_containers(tmp_path, suffix):
+    from src.plugin_api.documents import OFFICE_TYPES
+
+    files = {"[Content_Types].xml": b"<Types/>"}
+    if suffix in {"docx", "pptx"}:
+        files["word/document.xml" if suffix == "docx" else "ppt/presentation.xml"] = b"<document/>"
+    else:
+        files.update(
+            {"content.xml": b"<document-content/>", "mimetype": OFFICE_TYPES["." + suffix].encode()}
+        )
+    path = tmp_path / ("manual." + suffix)
+    path.write_bytes(office_archive(files))
+    assert read_representation(path)[1:3] == (OFFICE_TYPES["." + suffix], suffix)
+    for name, value in (
+        ("../secret.xml", b"<evil/>"),
+        ("word/vbaProject.bin", b"macro"),
+        (
+            "word/document.xml",
+            b'<!DOCTYPE doc [<!ENTITY evil SYSTEM "file:///etc/passwd">]><doc>&evil;</doc>',
+        ),
+        ("invalid.xml", b"<malformed"),
+    ):
+        malicious = {**files, name: value}
+        path.write_bytes(office_archive(malicious))
+        with pytest.raises(DocumentAccessError):
+            read_representation(path)
+
+
+def test_office_xml_entities_cannot_hide_in_utf16(tmp_path):
+    path = tmp_path / "manual.docx"
+    path.write_bytes(
+        office_archive(
+            {
+                "[Content_Types].xml": b"<Types/>",
+                "word/document.xml": '<!DOCTYPE doc [<!ENTITY x "evil">]><doc>&x;</doc>'.encode(
+                    "utf-16"
+                ),
+            }
+        )
+    )
+    with pytest.raises(DocumentAccessError):
+        read_representation(path)
+
+
+def test_office_zip_bombs_and_macros_are_rejected(tmp_path):
+    path = tmp_path / "manual.docx"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"x" * (2 * 1024 * 1024 + 1))
+    path.write_bytes(buffer.getvalue())
+    with pytest.raises(DocumentAccessError):
+        read_representation(path)
+    path.write_bytes(
+        office_archive(
+            {
+                "[Content_Types].xml": b'<Types><Override ContentType="macroEnabled"/></Types>',
+                "word/document.xml": b"<document/>",
+            }
+        )
+    )
+    with pytest.raises(DocumentAccessError):
+        read_representation(path)

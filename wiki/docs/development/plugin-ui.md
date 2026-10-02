@@ -104,3 +104,9 @@ scope described above. Sandboxed frontend actions use the same declared action
 table. If an action declares `confirmation`, the host displays that confirmation
 before dispatch, including for iframe requests. Secret fields are excluded from
 ordinary settings saves and use the separate write-only secret operation.
+
+## Opaque sandbox asset delivery
+
+An opt-in `frontend.inline_assets: true` manifest flag lets a verified package use classic scripts and CSS in a cookie-isolated iframe. The authenticated entry response resolves only relative package assets within `frontend/`, embeds them with a fresh CSP nonce, and escapes raw-text closing tags. Limits are 32 assets and 8 MiB combined content. External URLs, traversal, query/fragment sources and module scripts are rejected. Asset endpoints remain authenticated; no origin/native privilege or unsafe-eval grant is added. The default remains false for existing frontends.
+
+Game Docs reader declarations, document context and the original-download bridge are described in [Scoped document API](plugin-documents.md).

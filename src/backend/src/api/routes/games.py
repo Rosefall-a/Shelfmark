@@ -906,6 +906,7 @@ async def list_game_files(
     return {
         "files": [
             {
+                "id": str(item.id),
                 "filename": item.filename,
                 "size": (game_dir / _game_file_subdir(kind) / item.filename).stat().st_size
                 if (game_dir / _game_file_subdir(kind) / item.filename).is_file()

@@ -53,3 +53,9 @@ action endpoint. Requests use strict boolean `confirmed` (default false). Native
 
 See [Custom plugin frontend sandbox design](plugin-ui-sandbox.md). The authenticated
 gateway remains the application boundary for both executable modes.
+
+## Opaque sandbox asset delivery
+
+An opt-in `frontend.inline_assets: true` manifest flag lets a verified package use classic scripts and CSS in a cookie-isolated iframe. The authenticated entry response resolves only relative package assets within `frontend/`, embeds them with a fresh CSP nonce, and escapes raw-text closing tags. Limits are 32 assets and 8 MiB combined content. External URLs, traversal, query/fragment sources and module scripts are rejected. Asset endpoints remain authenticated; no origin/native privilege or unsafe-eval grant is added. The default remains false for existing frontends.
+
+Game Docs reader declarations, document context and the original-download bridge are described in [Scoped document API](plugin-documents.md).

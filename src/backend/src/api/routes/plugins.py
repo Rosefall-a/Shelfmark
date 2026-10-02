@@ -9,10 +9,10 @@ import json
 import logging
 import mimetypes
 import os
+import secrets
 import socket
 import tempfile
 import time
-import secrets
 import zipfile
 from functools import lru_cache
 from pathlib import Path
@@ -38,7 +38,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 
 from src.api.routes.session_manager import upload_geoip
 from src.core.auth import get_current_admin, get_current_user, hash_token, verify_password
@@ -81,6 +81,8 @@ from src.plugin_api.contracts import (
     PermissionDeclaration,
     parse_semver,
 )
+from src.plugin_api.documents import DocumentAccessError, document_path, owned_document
+from src.plugin_api.frontend_assets import inline_frontend_assets
 from src.plugin_api.gateway import dispatch_gateway_request, runtime_token_is_valid
 from src.plugin_api.grants import has_capability_grant, installation_is_executable
 from src.plugin_api.installer import (
@@ -113,6 +115,7 @@ _MAX_PLUGIN_ROUTE_ENVELOPE_BYTES = 64 * 1024
 _GEOIP_UPLOAD_FILE = File(...)
 _PLUGIN_DB = Depends(get_db)
 _PLUGIN_ADMIN = Depends(get_plugin_manager_admin)
+_DOCUMENT_DATA_ROOT = Path("/data/users")
 
 
 class PluginSettingsIn(BaseModel):
@@ -1692,6 +1695,12 @@ def _filter_ui_document(
                 for item in document.contextual_actions
                 if permitted(context_capabilities[item.location.value])
             ),
+            "document_readers": (
+                document.document_readers
+                if permitted(Capability.FRONTEND_CONTEXT_DOCUMENTS)
+                and permitted(Capability.DOCUMENTS_READ)
+                else ()
+            ),
             "routes": authorized_routes,
             "page_replacements": tuple(
                 item
@@ -2150,14 +2159,66 @@ async def plugin_frontend(
         raise HTTPException(status_code=404, detail="Plugin frontend asset not found.") from exc
     except PluginRuntimeUnavailable as exc:
         raise _runtime_error(exc) from exc
-    media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+    media_type = {".css": "text/css", ".js": "text/javascript", ".html": "text/html"}.get(
+        Path(asset_path).suffix.lower(), mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+    )
+    csp = _PLUGIN_FRONTEND_CSP
+    if media_type == "text/html":
+        try:
+            ui = await _client.plugin_ui(quote(plugin_id, safe=""))
+        except PluginRuntimeRequestError as exc:
+            raise _runtime_request_error(exc) from exc
+        except PluginRuntimeUnavailable as exc:
+            raise _runtime_error(exc) from exc
+        frontend = ui.get("frontend", {})
+        if frontend.get("inline_assets") is True and frontend.get("entry") == asset_path:
+            nonce = secrets.token_urlsafe(24)
+
+            async def load_asset(path: str) -> bytes:
+                return await _client.frontend_asset(quote(plugin_id, safe=""), path)
+
+            try:
+                content = await inline_frontend_assets(content, asset_path, nonce, load_asset)
+            except (ValueError, PluginRuntimeRequestError) as exc:
+                raise HTTPException(422, "Invalid packaged frontend assets.") from exc
+            except PluginRuntimeUnavailable as exc:
+                raise _runtime_error(exc) from exc
+            csp = csp.replace("script-src 'self'", f"script-src 'nonce-{nonce}' 'self'")
     return Response(
         content=content,
         media_type=media_type,
         headers={
-            "Content-Security-Policy": _PLUGIN_FRONTEND_CSP,
+            "Content-Security-Policy": csp,
             "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
         },
+    )
+
+
+@router.api_route("/{plugin_id}/capabilities/documents/{document_id}/download", methods=["GET", "HEAD"])
+async def plugin_document_download(
+    plugin_id: str,
+    document_id: UUID,
+    db: AsyncSession = _PLUGIN_DB,
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    """Stream an owned original as an attachment, including unsupported preview types."""
+    _, capabilities = await _plugin_and_capabilities(plugin_id, db, user)
+    if "documents.read" not in capabilities:
+        raise HTTPException(403, "Permission documents.read has not been granted.")
+    row = await owned_document(db, user.id, document_id)
+    if row is None:
+        raise HTTPException(404, "Document not found.")
+    item, game = row
+    try:
+        path = document_path(_DOCUMENT_DATA_ROOT, user.id, game.folder_location, item.filename)
+    except DocumentAccessError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    return FileResponse(
+        path,
+        filename=item.filename.split("_", 1)[-1],
+        media_type="application/octet-stream",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

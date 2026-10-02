@@ -41,8 +41,10 @@ from src.plugin_api.contracts import (
 )
 from src.plugin_api.documents import (
     MAX_CHUNK_BYTES,
+    MAX_DOCUMENT_BYTES,
     DocumentAccessError,
     document_path,
+    owned_document,
     read_representation,
 )
 from src.plugin_api.grants import has_capability_grant
@@ -256,20 +258,7 @@ async def dispatch_gateway_request(
             if "chunk_bytes" in payload:
                 return DocumentAccessError("invalid", "document_id must be a UUID", 400).representation()
             raise ValueError("document_id must be a UUID") from exc
-        row = (
-            await db.execute(
-                select(GameFileItem, Game)
-                .options(raiseload("*"))
-                .join(Game, Game.id == GameFileItem.game_id)
-                .where(
-                    GameFileItem.id == document_id,
-                    GameFileItem.kind == "doc",
-                    GameFileItem.deleted_at.is_(None),
-                    Game.user_id == user_id,
-                    Game.deleted_at.is_(None),
-                )
-            )
-        ).one_or_none()
+        row = await owned_document(db, user_id, document_id)
         if row is None:
             if "chunk_bytes" in payload:
                 return DocumentAccessError("missing", "Document not found.", 404).representation()
@@ -277,7 +266,10 @@ async def dispatch_gateway_request(
         item, game = row
         try:
             path = _document_path(game, item)
-            data, media_type, document_format, digest = read_representation(path)
+            max_bytes = payload.get("max_bytes", MAX_DOCUMENT_BYTES)
+            if type(max_bytes) is not int or max_bytes < 0:
+                raise DocumentAccessError("invalid", "Invalid document size limit.", 400)
+            data, media_type, document_format, digest = read_representation(path, max_bytes=max_bytes)
             if "chunk_bytes" in payload:
                 offset = payload.get("offset", 0)
                 chunk_bytes = payload["chunk_bytes"]

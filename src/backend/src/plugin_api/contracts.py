@@ -161,7 +161,7 @@ class DocumentChunkRepresentation(DocumentContentRepresentation):
     """Additive bounded read transport that fits the runtime action/route limit."""
 
     content: str = Field(max_length=32_768)
-    format: str = Field(pattern=r"^(pdf|text|html)$")
+    format: str = Field(pattern=r"^(pdf|text|html|docx|pptx|odt|odp)$")
     offset: int = Field(ge=0)
     next_offset: int = Field(ge=0)
     complete: bool
@@ -484,6 +484,7 @@ class PluginFrontendDeclaration(ContractModel):
         max_length=255,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_./-]*$",
     )
+    inline_assets: bool = Field(default=False, strict=True)
 
 
 class PluginNativeFrontendDeclaration(ContractModel):
@@ -1049,6 +1050,23 @@ class UiPluginRoute(ContractModel):
     page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
 
 
+class UiDocumentReader(ContractModel):
+    """A scoped reader offered for game document rows, never arbitrary URLs."""
+
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    page_id: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    label: str = Field(min_length=1, max_length=64)
+    extensions: tuple[str, ...] = Field(default=("*",), min_length=1, max_length=64)
+    order: int = Field(default=0, ge=-1_000, le=1_000)
+
+    @field_validator("extensions")
+    @classmethod
+    def valid_extensions(cls, extensions: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not re.fullmatch(r"\*|\.[a-z0-9]{1,16}", value) for value in extensions):
+            raise ValueError("document reader extensions must be lowercase suffixes or *")
+        return extensions
+
+
 class UiPageReplacement(ContractModel):
     """A page-specific replacement with no replace-any-page escape hatch."""
 
@@ -1080,6 +1098,7 @@ class PluginUiDocument(ContractModel):
     contextual_actions: tuple[UiContextualAction, ...] = ()
     routes: tuple[UiPluginRoute, ...] = ()
     page_replacements: tuple[UiPageReplacement, ...] = ()
+    document_readers: tuple[UiDocumentReader, ...] = ()
 
     @model_validator(mode="after")
     def validate_references(self) -> "PluginUiDocument":
@@ -1112,6 +1131,7 @@ class PluginUiDocument(ContractModel):
             if route.path in page_ids and route.page_id != route.path:
                 raise ValueError("plugin route path conflicts with a page identifier")
         unique([item.id for item in self.page_replacements], "page replacement")
+        unique([item.id for item in self.document_readers], "document reader")
 
         action_set = set(action_ids)
         table_set = set(table_ids)
@@ -1164,6 +1184,8 @@ class PluginUiDocument(ContractModel):
             require_page(route.id, route.page_id)
         for replacement in self.page_replacements:
             require_page(replacement.id, replacement.page_id)
+        for reader in self.document_readers:
+            require_page(reader.id, reader.page_id)
         for dialog_contribution in self.dialog_contributions:
             if dialog_contribution.dialog_id not in dialog_set:
                 raise ValueError(

@@ -136,6 +136,13 @@ export interface UiPageReplacement {
   page_id: string;
   order: number;
 }
+export interface UiDocumentReader {
+  id: string;
+  page_id: string;
+  label: string;
+  extensions: string[];
+  order: number;
+}
 export const HOST_EXTENSION_SLOTS = [
   "home.after-widgets",
   "game.overview.after-header",
@@ -153,7 +160,7 @@ export interface UiExtension {
 }
 export interface PluginUiDocument {
   schema_version: "v1";
-  frontend?: { entry: string };
+  frontend?: { entry: string; inline_assets?: boolean };
   native_frontend?: { entry: string; styles: string[] };
   plugin_id: string;
   title: string;
@@ -171,6 +178,32 @@ export interface PluginUiDocument {
   contextual_actions?: UiContextualAction[];
   routes?: UiPluginRoute[];
   page_replacements?: UiPageReplacement[];
+  document_readers?: UiDocumentReader[];
+}
+
+export function pluginDocumentDownloadUrl(
+  pluginId: string,
+  documentId: string,
+): string {
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(documentId))
+    throw new Error("Invalid document identifier.");
+  return `/api/plugins/${encodeURIComponent(pluginId)}/capabilities/documents/${encodeURIComponent(documentId)}/download`;
+}
+
+export async function downloadPluginDocument(
+  pluginId: string,
+  documentId: string,
+): Promise<void> {
+  const url = pluginDocumentDownloadUrl(pluginId, documentId);
+  const response = await fetch(url, { method: "HEAD", credentials: "include" });
+  if (!response.ok) throw new PluginActionError(response.status);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  link.rel = "noopener noreferrer";
+  document.body.append(link);
+  link.click();
+  link.remove();
 }
 
 export type UiValue = string | number | boolean | string[];

@@ -102,6 +102,16 @@ export interface PluginContributions {
   contextualActions: PluginContextualActionContribution[];
   routes: PluginRouteContribution[];
   replacements: PluginPageReplacementContribution[];
+  documentReaders: PluginDocumentReaderContribution[];
+}
+
+export interface PluginDocumentReaderContribution {
+  pluginId: string;
+  contributionId: string;
+  pageId: string;
+  label: string;
+  extensions: string[];
+  order: number;
 }
 
 const emptyContributions = (): PluginContributions => ({
@@ -113,6 +123,7 @@ const emptyContributions = (): PluginContributions => ({
   contextualActions: [],
   routes: [],
   replacements: [],
+  documentReaders: [],
 });
 
 function hasCapability(plugin: PluginSummary, capability: string): boolean {
@@ -315,6 +326,22 @@ export function derivePluginContributions(
     contextualActions,
     routes,
     replacements,
+    documentReaders:
+      hasCapability(plugin, "frontend.context.documents") &&
+      hasCapability(plugin, "documents.read")
+        ? (document.document_readers ?? [])
+            .filter((item) =>
+              document.pages.some((page) => page.id === item.page_id),
+            )
+            .map((item) => ({
+              pluginId: plugin.plugin_id,
+              contributionId: item.id,
+              pageId: item.page_id,
+              label: item.label,
+              extensions: item.extensions,
+              order: item.order,
+            }))
+        : [],
   };
 }
 
@@ -326,6 +353,7 @@ const dialogState = ref<PluginDialogContribution[]>([]);
 const contextualActionState = ref<PluginContextualActionContribution[]>([]);
 const routeState = ref<PluginRouteContribution[]>([]);
 const replacementState = ref<PluginPageReplacementContribution[]>([]);
+const documentReaderState = ref<PluginDocumentReaderContribution[]>([]);
 let refreshVersion = 0;
 const documentState = ref<Record<string, PluginUiDocument>>({});
 export const activePluginDocuments = shallowReadonly(documentState);
@@ -353,6 +381,9 @@ function retainContributions(pluginIds: ReadonlySet<string>): void {
     pluginIds.has(item.pluginId),
   );
   replacementState.value = replacementState.value.filter((item) =>
+    pluginIds.has(item.pluginId),
+  );
+  documentReaderState.value = documentReaderState.value.filter((item) =>
     pluginIds.has(item.pluginId),
   );
   documentState.value = Object.fromEntries(
@@ -383,6 +414,23 @@ export const pluginDialogs = shallowReadonly(dialogState);
 export const pluginContextualActions = shallowReadonly(contextualActionState);
 export const pluginRoutes = shallowReadonly(routeState);
 export const pluginPageReplacements = shallowReadonly(replacementState);
+export const pluginDocumentReaders = shallowReadonly(documentReaderState);
+
+export function documentReaderUrl(
+  gameId: string,
+  file: { id?: string; filename: string },
+): string | undefined {
+  if (!file.id) return;
+  const suffix = file.filename
+    .slice(file.filename.lastIndexOf("."))
+    .toLowerCase();
+  const reader = documentReaderState.value.find(
+    (item) => item.extensions.includes("*") || item.extensions.includes(suffix),
+  );
+  if (!reader) return;
+  const query = new URLSearchParams({ document_id: file.id, game_id: gameId });
+  return `/plugins/${encodeURIComponent(reader.pluginId)}/${encodeURIComponent(reader.pageId)}?${query}`;
+}
 
 export function comparePluginContributions(
   first: { order: number; pluginId: string; contributionId: string },
@@ -498,6 +546,9 @@ export async function refreshPluginExtensions(): Promise<void> {
       );
     replacementState.value = contributions
       .flatMap((item) => item.replacements)
+      .sort(comparePluginContributions);
+    documentReaderState.value = contributions
+      .flatMap((item) => item.documentReaders)
       .sort(comparePluginContributions);
     // Publish lifecycle removal before waiting on privileged plugin code.
     await reconcileNativePlugins(nativeSources);

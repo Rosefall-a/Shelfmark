@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
 import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
+import { documentReaderUrl } from "../state/pluginExtensions";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -3713,13 +3714,14 @@ function formatPlaytime(minutes: number) {
                   <path d="M14 2v6h6" />
                 </svg>
                 <a
-                  :href="file.url"
+                  :href="documentReaderUrl(game.id, file) ?? file.url"
                   class="file-name"
                   target="_blank"
                   rel="noopener noreferrer"
                   >{{ displayFileName(file.filename) }}</a
                 >
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <a :href="file.url" download class="file-download">Download</a>
                 <button
                   type="button"
                   class="tile-remove-inline"
@@ -6099,6 +6101,15 @@ function formatPlaytime(minutes: number) {
   color: #777;
   font-size: 0.78rem;
   flex-shrink: 0;
+}
+.file-download {
+  color: #93c5fd;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.file-download:hover {
+  text-decoration: underline;
 }
 .tile-remove-inline {
   background: none;

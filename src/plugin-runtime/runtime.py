@@ -1446,6 +1446,11 @@ class PluginRegistry:
         self._validate_host_route_ownership(plugin_id, backend_routes)
         frontend = manifest.get("frontend")
         if frontend is not None:
+            if (
+                isinstance(frontend, dict)
+                and type(frontend.get("inline_assets", False)) is not bool
+            ):
+                raise RuntimePolicyError("frontend inline_assets must be a boolean")
             if not isinstance(frontend, dict) or not isinstance(
                 frontend.get("entry"), str
             ):
@@ -1890,6 +1895,8 @@ class PluginRegistry:
         frontend = manifest.get("frontend")
         if isinstance(frontend, dict) and frontend.get("entry"):
             document["frontend"] = {"entry": str(frontend["entry"])}
+            if frontend.get("inline_assets") is True:
+                document["frontend"]["inline_assets"] = True
         native_frontend = manifest.get("native_frontend")
         if isinstance(native_frontend, dict) and native_frontend.get("entry"):
             document["native_frontend"] = {
