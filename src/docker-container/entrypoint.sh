@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-
+  
 log() {
   printf '[ENTRYPOINT] %s\n' "$1"
 }
