@@ -87,7 +87,7 @@ const nativeHost = computed(() => ({
   <component
     :is="component"
     v-else-if="active && component"
-    :key="`${pluginId}:${pageId}`"
+    :key="`${pluginId}:${pageId}:${actionContext?.resource_id ?? ''}`"
     :plugin-id="pluginId"
     :page-id="pageId"
     :context="context ?? {}"

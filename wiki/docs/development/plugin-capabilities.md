@@ -60,3 +60,5 @@ Only methods present in the gateway dispatch table are callable; presenting a di
 Denied grants return 403 at the host boundary. Invalid, missing, or out-of-scope resource identifiers produce bounded validation/not-found errors without disclosing whether another user's resource exists. Plugin actions return structured JSON and a host-generated `request_id` suitable for correlating administrator diagnostics.
 
 One-shot action handlers use the same mediated request/response protocol as long-running plugins. They do not receive host credentials or a direct network connection.
+
+`media.sync`, `network.request`, and opt-in background task delegation use the existing `media.write`, `network.outbound`, and `tasks.background` grants. See [Plugin API v1](plugin-api-v1.md#provider-media-synchronization-background-subscriptions-and-outbound-json) for payloads, target-user consent and conflict handling.

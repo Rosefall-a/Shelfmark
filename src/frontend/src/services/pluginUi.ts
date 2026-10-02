@@ -522,3 +522,20 @@ export function buildInitialValues(document: PluginUiDocument): UiValues {
   }
   return values;
 }
+
+/** Honor only declared external navigation and credential-free HTTP(S) targets. */
+export function pluginExternalDestination(
+  action: UiAction,
+  result: Record<string, unknown>,
+): string | null {
+  if (!action.external_navigation || typeof result.redirect_url !== "string")
+    return null;
+  const url = new URL(result.redirect_url);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  )
+    throw new Error("Plugin returned an invalid external destination.");
+  return url.href;
+}

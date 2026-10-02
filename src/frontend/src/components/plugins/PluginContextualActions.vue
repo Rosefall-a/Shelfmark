@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import {
   approvePluginAction,
   dispatchPluginAction,
+  pluginExternalDestination,
   type PluginActionContext,
 } from "../../services/pluginUi";
 import {
@@ -37,13 +38,22 @@ async function run(index: number) {
   if (!approvePluginAction(contribution.action, window.confirm)) return;
   error.value = "";
   try {
-    await dispatchPluginAction(
+    const result = await dispatchPluginAction(
       contribution.pluginId,
       contribution.action.id,
       {},
       props.context,
       Boolean(contribution.action.confirmation),
     );
+    if (result.ok === false) {
+      error.value =
+        typeof result.error === "string"
+          ? result.error
+          : "Plugin action unavailable.";
+      return;
+    }
+    const destination = pluginExternalDestination(contribution.action, result);
+    if (destination) window.location.assign(destination);
   } catch (cause) {
     error.value =
       cause instanceof Error
