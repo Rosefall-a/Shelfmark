@@ -106,10 +106,10 @@ def serve_runtime(work, port):
 async def automatic_check():
     sys.path.insert(0, str(HOST / "src/backend"))
     from sqlalchemy import select
-    from src.main import app  # noqa: F401 - initialize the complete model registry
     from src.api.routes import plugins
     from src.database.models.user import User
     from src.database.session import SessionLocal
+    from src.main import app  # noqa: F401 - initialize the complete model registry
 
     configure_downloads(Path(os.environ["INTEGRATION_WORK_ROOT"]))
     async with SessionLocal() as db:
@@ -195,6 +195,7 @@ def build(root, env):
         [sys.executable, str(root / "tools/build_packages.py"), "--publish"],
         env=env,
         capture_output=True,
+        check=False,
         text=True,
     )
     assert result.returncode == 0, result.stderr
@@ -303,6 +304,7 @@ def acceptance(plugins_root, work, browser=False):
         result = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             capture_output=True,
+            check=False,
             text=True,
         )
         return result.stdout.strip() if result.returncode == 0 else None
@@ -313,7 +315,7 @@ def acceptance(plugins_root, work, browser=False):
         "plugin_id": PLUGIN,
         "browser": browser,
         "jellyfin_browser": bool(os.getenv("JELLYFIN_SCREENSHOT_DIR")),
-        "host_commit": os.getenv("GITHUB_SHA") or revision(HOST),
+        "host_commit": revision(HOST),
         "plugins_commit": revision(plugins_root),
         "passed": [],
     }
@@ -373,6 +375,7 @@ def acceptance(plugins_root, work, browser=False):
             [sys.executable, __file__, "--mode", "automatic"],
             env=env,
             capture_output=True,
+            check=False,
             text=True,
         )
         assert result.returncode == 0, result.stderr
@@ -388,6 +391,7 @@ def acceptance(plugins_root, work, browser=False):
             ],
             env={**env, "INTEGRATION_REVIEW": json.dumps(review or {})},
             capture_output=True,
+            check=False,
             text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
@@ -616,7 +620,6 @@ def acceptance(plugins_root, work, browser=False):
                 def synchronize():
                     assert action("sync-now")["queued"]
                     # Wait for a new completed attempt, not a stale previous status.
-                    before = action("status").get("finished_at", 0)
                     wait_until(
                         lambda: action("status").get("phase") == "syncing", timeout=20
                     )
@@ -868,7 +871,7 @@ def acceptance(plugins_root, work, browser=False):
                 "/manager-settings",
                 json={"automatic_updates": True, "retained_versions": 2},
             )
-            manual = release(automatic_update=False)
+            release(automatic_update=False)
             assert automatic()["installed"] == 0
             assert current()["version"] == second["version"]
             assert current()["staged_update"]["automatic_update"] is False
