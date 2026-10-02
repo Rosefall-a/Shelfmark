@@ -15,7 +15,9 @@ import { fetchWeeklyDigest } from "../services/stats";
 import type { WeeklyDigest } from "../services/stats";
 
 const router = useRouter();
-const hasHomeOverride = computed(() => pluginSlots.value.some((item) => item.slot === "home.replace"));
+const hasHomeOverride = computed(() =>
+  pluginSlots.value.some((item) => item.slot === "home.replace"),
+);
 
 const games = ref<Game[]>([]);
 const loading = ref(true);
@@ -414,8 +416,12 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 </script>
 
 <template>
-  <PluginExtensionSlot v-if="hasHomeOverride" slot-id="home.replace" :context="{ host_page: 'home' }" />
-    <main v-else class="home">
+  <PluginExtensionSlot
+    v-if="hasHomeOverride"
+    slot-id="home.replace"
+    :context="{ host_page: 'home' }"
+  />
+  <main v-else class="home">
     <div
       v-for="(layer, i) in bgLayers"
       :key="i"
@@ -991,7 +997,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
     </div>
   </main>
 </template>
-
 
 <style scoped>
 .home {

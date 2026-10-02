@@ -25,7 +25,9 @@ const error = ref<string | null>(null);
 const saved = ref(false);
 const providers = reactive<Record<string, string>>({});
 const configured = reactive<Record<string, boolean>>({});
-const deploymentSettings = ref<Awaited<ReturnType<typeof fetchDeploymentSettings>> | null>(null);
+const deploymentSettings = ref<Awaited<
+  ReturnType<typeof fetchDeploymentSettings>
+> | null>(null);
 
 onMounted(async () => {
   try {
@@ -95,8 +97,8 @@ async function save() {
                 ? 'password'
                 : 'text'
             "
-             :placeholder="
-              deploymentSettings?.provider_locks[key] ?? false
+            :placeholder="
+              (deploymentSettings?.provider_locks[key] ?? false)
                 ? 'Managed by deployment environment'
                 : configured[key]
                   ? 'Already saved — enter a new value to replace it'
