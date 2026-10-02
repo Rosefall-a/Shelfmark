@@ -1,5 +1,10 @@
 # Remote Plugin Manager API
 
+For uploaded package installation and updates, administrator reauthentication
+uses the multipart body field `admin_password`. Never put passwords in URL
+query parameters. URL-based package operations continue to use their JSON
+body. Query-only upload passwords are not accepted for dangerous grants.
+
 The backend provides instance-local groundwork for an external control plane;
 this repository does not provide a central website.
 

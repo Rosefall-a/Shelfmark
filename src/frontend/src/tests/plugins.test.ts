@@ -15,9 +15,35 @@ import {
   installPluginFromUrl,
   previewPluginUpdateUrl,
   updatePluginFromUrl,
+  updatePlugin,
 } from "../services/plugins";
 
 describe("plugin management service", () => {
+  it("sends administrator upload confirmation passwords only in multipart bodies", async () => {
+    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ status: "installed" }), {
+          status: 201,
+        }),
+    );
+    const file = new File([new Uint8Array([80, 75])], "example.utp");
+    const confirmation = {
+      approvedPermissions: ["frontend.native:v1"],
+      adminPassword: "private-upload-confirmation",
+      confirmDangerous: true,
+    };
+    await installPlugin(file, confirmation);
+    await updatePlugin("example.plugin", file, confirmation);
+    for (const [url, init] of mock.mock.calls) {
+      expect(String(url)).not.toContain("admin_password");
+      expect(String(url)).not.toContain(confirmation.adminPassword);
+      expect((init?.body as FormData).get("admin_password")).toBe(
+        confirmation.adminPassword,
+      );
+      expect((init?.body as FormData).get("file")).toBeTruthy();
+    }
+    mock.mockRestore();
+  });
   it("uses the gateway-facing plugin lifecycle endpoints", async () => {
     const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
