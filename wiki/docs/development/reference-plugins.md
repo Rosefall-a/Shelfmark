@@ -10,9 +10,17 @@ The independent [`unnamed_tracking_app_plugins`](https://github.com/Rosefall-a/u
 
 `example.self-service-session-manager` contributes an Account sessions page. It requests `sessions.read` and `sessions.revoke` separately. The host performs confirmation before revocation and scopes both operations to the signed-in user. The plugin never receives credential material.
 
-## External Discord Delivery Provider
+## Help Button
 
-`example.discord-delivery-provider` requests provider registration, provider delivery, and private plugin storage. It registers one namespaced provider, stores a webhook through the write-only secret route, and formats eligible delivery work. Core owns user preference checks, retries, deduplication, and audit state.
+`example.help-button` demonstrates plugin-owned routes/navigation, the `app.global` extension slot, the Home Hub `home.replace` slot, dialogs, and explicitly declared external navigation.
+
+## Jellyfin Media Sync
+
+`example.jellyfin-media-sync` demonstrates plugin settings, write-only plugin secrets, Jellyfin HTTP API access, media read/import, background synchronization, and event-driven update polling.
+
+## Retired reference plugins
+
+The plugin repository has retired the former UI/API, Playtime Report, Recently Played Notifier, Metadata Curator, Discord Delivery Provider, and UI Playground examples from the current catalogue. Their published packages and release histories remain immutable for audit and historical installation, but they are not current reference implementations and should not be used as examples for new development.
 
 ## Build and install
 
@@ -23,12 +31,12 @@ Install through the normal Plugin Manager preview/consent flow. A reference page
 
 ## Current official reference plugins
 
-The official plugin repository contains these feature demonstrations in addition to the existing lifecycle, metadata, notification, Playnite, and UI examples:
+The official plugin repository currently maintains four feature demonstrations:
 
 - **Help Button (Totally Not Helpful)** — demonstrates plugin-owned routes/navigation, the `app.global` extension slot, the Home Hub `home.replace` slot, and explicitly declared external navigation.
 - **Jellyfin Media Sync** — demonstrates plugin settings, write-only plugin secrets, Jellyfin HTTP API access, media read/import, background synchronization, and cursor-based `game.updated` / `media.added` event polling.
-- **Self-Service Session Manager** — implements the user/admin session-management surface from the former #248 feature through the Plugin API, including session state, revocation, administrator filtering, and GeoIP/network metadata exposed by the host session foundation.
-- **Scoped Document Viewer** — implements the former #241 document-viewer surface through scoped document APIs, including PDF, UTF-8 text, and sanitized HTML presentation.
+- **Self-Service Session Manager** — implements scoped own/admin sessions and privileged native Settings/maps.
+- **Scoped Document Viewer** — implements scoped document APIs and sandboxed PDF/text/Office presentation.
 
 ### Full API warning
 

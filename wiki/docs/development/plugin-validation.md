@@ -20,7 +20,7 @@ The application tests:
 
 ## Plugin repository coverage
 
-`Rosefall-a/unnamed_tracking_app_plugins` tests every manifest, permission rationale, source import boundary, frontend entry, package digest, and package validation rule. The three domain reference plugins additionally test exact public methods/capabilities, host confirmation declarations, namespaced provider registration, bounded delivery formatting, and absence of direct frontend network access.
+`Rosefall-a/unnamed_tracking_app_plugins` tests every maintained manifest, permission rationale, source import boundary, frontend entry, package digest, and package validation rule. The maintained reference plugins exercise their exact public capabilities and host lifecycle contracts; retired packages remain covered by immutable release-history validation rather than current reference-plugin acceptance.
 
 Normal development builds are unsigned and intentionally exercise the untrusted-package warning. Release builds require the private reviewed signing key and fail closed when the signer is unavailable or out of scope.
 
@@ -28,7 +28,7 @@ Normal development builds are unsigned and intentionally exercise the untrusted-
 
 For a release candidate:
 
-1. Build the three `.utp` packages from the plugin repository.
+1. Build the four current `.utp` packages from the plugin repository.
 2. Preview/install them through the application's real Plugin Manager.
 3. Confirm denied permissions fail, approved permissions work, and revocation takes effect immediately.
 4. Confirm sidebar pages disappear on disable/uninstall.
@@ -51,7 +51,7 @@ python tools/check_plugin_repository_lifecycle.py \
   --work-root /tmp/plugin-acceptance
 ```
 
-The work root must not exist. The runner downloads and inspects all live official
+The work root must not exist. The runner downloads and inspects all current official
 packages, creates signed releases with a disposable publisher registered only
 inside its temporary test environment, and runs separate authenticated host and
 runtime processes. It performs a real Jellyfin sync against a deterministic

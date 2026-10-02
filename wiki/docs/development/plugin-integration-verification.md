@@ -41,7 +41,7 @@ and configuration through public APIs.
 
 | Requested area | Verified behavior |
 | --- | --- |
-| Distribution | Live official catalogue and all ten package URLs; payload/archive hashes, versions, trusted signatures, README, tags and update policy; the downloaded official Jellyfin package installs and runs healthy before the synthetic sequence; release metadata validated by both repository tooling and host |
+| Distribution | Live official catalogue and all four current package URLs; payload/archive hashes, versions, trusted signatures, README, tags and update policy; the downloaded official Jellyfin package installs and runs healthy before the synthetic sequence; retired package histories remain immutable but are not current catalogue entries |
 | Install | Rendered discovery, tag filtering, detail/README, host risk bubbles and scope counts, explicit approval, running/healthy worker and native Jellyfin page; duplicate installation exposes update/reinstall/replace/cancel |
 | Persistent data | Configuration, secret/progress storage bytes and installation identity survive host/runtime restart, disable/enable, preserving reinstall, update, rollback and failed update; confirmed purge resets owned data and uninstall removes it |
 | Permissions | Plugin declarations are classified by host; revocation denies real actions; explicit regrant restores access; newly requested scope stages an update while the old version runs, then approved staged activation succeeds |
