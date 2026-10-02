@@ -299,16 +299,6 @@ def test_pr241_pdf_signature_overrides_extension(tmp_path, name):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"document_id": "../secret.txt"},
-        {"offset": -1},
-        {"chunk_bytes": 24577},
-        {"offset": True},
-        {"offset": 1},
-    ],
-)
 async def test_configurable_preview_limit_can_exceed_legacy_cap_and_be_unlimited(stored):
     boundary, save, _ = stored
     grant(boundary, "documents.read")
@@ -330,6 +320,16 @@ async def test_configurable_preview_limit_can_exceed_legacy_cap_and_be_unlimited
     assert unlimited_payload["document"]["size_bytes"] == len(data)
     assert unlimited_payload["next_offset"] == 24576
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"document_id": "../secret.txt"},
+        {"offset": -1},
+        {"chunk_bytes": 24577},
+        {"offset": True},
+        {"offset": 1},
+    ],
+)
 async def test_invalid_chunk_request_is_explicit(stored, payload):
     boundary, save, _ = stored
     grant(boundary, "documents.read")
