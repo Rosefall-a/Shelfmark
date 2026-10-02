@@ -34,7 +34,6 @@ jobs:
       POSTGRES_PORT: 5432
       POSTGRES_DB: plugin_integration
       SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
-      JELLYFIN_SCREENSHOT_DIR: ${{ runner.temp }}/plugin-acceptance/screenshots
       PYTHONPATH: ${{ github.workspace }}/src/backend
     steps:
       - uses: actions/checkout@v4
@@ -94,6 +93,8 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium --only-shell
       - name: Verify official distribution and the full real-worker lifecycle
+        env:
+          JELLYFIN_SCREENSHOT_DIR: ${{ runner.temp }}/plugin-acceptance/screenshots
         run: |
           python tools/check_plugin_repository_lifecycle.py \
             --plugins-root .integration-plugins \
