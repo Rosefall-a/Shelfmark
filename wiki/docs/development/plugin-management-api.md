@@ -27,6 +27,9 @@ A simultaneous browser session does not widen token access.
 
 Permission risk/trust checks still apply. Tokens cannot bypass untrusted
 privileged consent, password reauthentication, dependencies or package validation.
+Approving new grants during installation or an update additionally requires
+`plugins.permissions`, alongside `plugins.install` or `plugins.update`. The operation
+scope alone can install or update only without approving additional grants.
 
 ## Operations
 

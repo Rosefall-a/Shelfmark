@@ -520,3 +520,44 @@ async def test_each_management_scope_authorizes_only_its_operation_family(
         ) as client:
             response = await client.request(method, path)
             assert response.status_code == (200 if granted_scope == scope else 403)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scope,path,approval",
+    [
+        (
+            "plugins.install",
+            "/api/plugins/install/url?approved_permissions=games.read:v1",
+            {},
+        ),
+        (
+            "plugins.update",
+            "/api/plugins/example/update/staged",
+            {"approved_permissions": ["games.read:v1"]},
+        ),
+    ],
+)
+async def test_operation_tokens_need_permission_scope_to_approve_grants(
+    gate, scope, path, approval
+):
+    app = FastAPI()
+    app.dependency_overrides[plugins.get_db] = lambda: gate.db
+
+    async def operation(admin=Depends(get_plugin_manager_admin)):
+        return {"authorized": True}
+
+    app.add_api_route(path.split("?", 1)[0], operation, methods=["POST"])
+    for scopes, expected in [([scope], 403), ([scope, "plugins.permissions"], 200)]:
+        issued = await plugins.create_management_token(
+            plugins.ManagementTokenIn(name="Grant approval test", scopes=scopes),
+            gate.db,
+            gate.admin,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://manager.test",
+            headers={"Authorization": "Bearer " + issued["token"]},
+        ) as client:
+            assert (await client.post(path, json=approval)).status_code == expected
+            assert (await client.post(path.split("?", 1)[0], json={})).status_code == 200

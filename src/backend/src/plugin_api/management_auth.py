@@ -1,5 +1,7 @@
 """Dedicated, granular control-plane credentials; never general application keys."""
 
+from json import JSONDecodeError
+
 from fastapi import Cookie, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,6 +75,17 @@ async def _management_user(request: Request, db: AsyncSession, authorization: st
         raise HTTPException(401, "Invalid plugin management token.")
     if required is None or required not in row.scopes:
         raise HTTPException(403, "Plugin management scope is not granted.")
+    if required in {"plugins.install", "plugins.update"}:
+        approved = bool(request.query_params.getlist("approved_permissions"))
+        if request.headers.get("content-type", "").split(";", 1)[0].lower() == "application/json":
+            try:
+                payload = await request.json()
+            except JSONDecodeError as exc:
+                raise HTTPException(422, "Invalid JSON request body.") from exc
+            if isinstance(payload, dict):
+                approved = approved or bool(payload.get("approved_permissions"))
+        if approved and "plugins.permissions" not in row.scopes:
+            raise HTTPException(403, "Approving new grants also requires plugins.permissions.")
     user = await db.scalar(
         select(User).where(
             User.id == row.user_id,
