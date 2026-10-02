@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-03 Australia/Perth",
+  "exact_live_credential_matches": 0,
+  "files_scanned": 1628,
+  "archive_members_scanned": 1763,
+  "repositories": {
+    "host-accepted": {
+      "commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+      "status": " M wiki/mkdocs.yml\n?? wiki/docs/assets/post-merge-acceptance-2026-10-03/\n?? wiki/docs/development/post-merge-acceptance-2026-10-03.md\n",
+      "tracked_files": 590
+    },
+    "plugins-security": {
+      "commit": "54649b50ecd422123cf244fe846bb59bc83a7ec0",
+      "status": "",
+      "tracked_files": 288
+    },
+    "playnite": {
+      "commit": "154f6d45e504c9b04f20e08b865278a2b6ebdc8c",
+      "status": "",
+      "tracked_files": 49
+    }
+  },
+  "classification": "Only host report/navigation/evidence are pending tracked changes; plugin and Playnite checkouts clean. Build outputs inspected as intentional ignored products. Historical releases preserved.",
+  "screenshots": "Synthetic local fixture; report images visually inspected with blank credential field. Exact byte scan does not substitute for visual review.",
+  "private_live_storage": "Each live run deleted its private /tmp work root after runtime shutdown; no live log or configuration exported."
+}

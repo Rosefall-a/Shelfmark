@@ -1,0 +1,73 @@
+{
+  "host_commit": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+  "plugins_commit": "3ae180545906c87b14d6d55c0a54f6408de492e9",
+  "passed": [
+    "Live master setup, header credential, discovery, explicit Movies/TV/Anime mapping and user linking",
+    "Live bounded root/episode sync matches independently paginated mapped-library inventory",
+    "Live repeated sync preserves identities and creates no duplicate media",
+    "Live media-context Watch Now resolves token-free item destinations for populated categories",
+    "Live explicit restart retains credential, configuration and identities",
+    "Live credential, configuration and mapping survive stop/start, disable/enable and retaining reinstall",
+    "Live runtime-process restart restores secure credential and durable mappings",
+    "Live uninstall removes plugin and owned secure state"
+  ],
+  "remote_inventory": {
+    "movie": {
+      "types": {
+        "Movie": 43,
+        "BoxSet": 21
+      },
+      "unique_roots": 43
+    },
+    "anime": {
+      "types": {},
+      "unique_roots": 0
+    },
+    "tv_show": {
+      "types": {
+        "Series": 23
+      },
+      "unique_roots": 23
+    }
+  },
+  "sync": {
+    "phase": "complete",
+    "processed": 1594,
+    "skipped": 684,
+    "conflicts": 0,
+    "total": null
+  },
+  "media_counts": {
+    "movie": 43,
+    "tv": 23,
+    "anime": 0
+  },
+  "completion_counts": {
+    "movie": {
+      "WATCHLIST": 35,
+      "IN_PROGRESS": 3,
+      "WATCHED": 5
+    },
+    "tv": {
+      "WATCHLIST": 22,
+      "IN_PROGRESS": 1,
+      "WATCHED": 0
+    },
+    "anime": {
+      "WATCHLIST": 0,
+      "IN_PROGRESS": 0,
+      "WATCHED": 0
+    }
+  },
+  "not_verified": [
+    "Live anime behavior: mapped remote anime library has no Movie/Series records"
+  ],
+  "repeat_sync": {
+    "phase": "complete",
+    "processed": 1594,
+    "skipped": 684,
+    "conflicts": 0,
+    "total": null
+  },
+  "status": "passed"
+}
