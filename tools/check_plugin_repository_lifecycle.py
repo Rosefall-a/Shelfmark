@@ -204,25 +204,94 @@ def build(root, env):
 
 
 class Jellyfin(BaseHTTPRequestHandler):
+    watched = False
+
     def do_GET(self):
+        from urllib.parse import parse_qs, urlsplit
+
         assert "IntegrationToken123" in self.headers.get("Authorization", "")
-        data = json.dumps(
-            {
-                "Items": [
+        path = urlsplit(self.path)
+        if path.path == "/System/Info":
+            data = {"Id": "fixture"}
+        elif path.path == "/Users":
+            data = [
+                {"Id": "a" * 32, "Name": "Fixture user"},
+                {"Id": "b" * 32, "Name": "Second fixture user"},
+            ]
+        elif path.path == "/Library/VirtualFolders":
+            data = [
+                {"ItemId": c * 32, "Name": n}
+                for c, n in zip("123", ("Movies", "TV Shows", "Anime"))
+            ]
+        else:
+            query = parse_qs(path.query)
+            if "ParentId" not in query:
+                # Preserve conformance for released v2 packages while companion
+                # v3 source and additive host capabilities are reviewed separately.
+                items = [
                     {
-                        "Id": "integration-movie",
+                        "Id": "4" * 32,
                         "Name": "Integration Movie",
                         "Type": "Movie",
                         "UserData": {"Played": True},
                     }
-                ],
-                "TotalRecordCount": 1,
+                ]
+                offset = int(query["StartIndex"][0])
+                data = {
+                    "Items": items[offset : offset + 100],
+                    "TotalRecordCount": len(items),
+                }
+                body = json.dumps(data).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            library = query["ParentId"][0][0]
+            roots = {
+                "1": [("4", "Integration Movie", "Movie")],
+                "2": [("5", "Integration TV", "Series")],
+                "3": [("6", "Integration Anime", "Series")],
             }
-        ).encode()
+            if query["IncludeItemTypes"] == ["Episode"]:
+                items = (
+                    []
+                    if library == "1"
+                    else [
+                        {
+                            "Id": format(7 + (library == "3") * 2 + i, "x") * 32,
+                            "Name": "Episode " + str(i + 1),
+                            "SeriesId": ("5" if library == "2" else "6") * 32,
+                            "Type": "Episode",
+                            "ParentIndexNumber": 1,
+                            "IndexNumber": i + 1,
+                            "UserData": {"Played": i == 0 or self.watched},
+                        }
+                        for i in range(2)
+                    ]
+                )
+            else:
+                items = [
+                    {
+                        "Id": c * 32,
+                        "Name": title,
+                        "Type": kind,
+                        "UserData": {
+                            "Played": self.watched,
+                            "PlaybackPositionTicks": 100,
+                        },
+                    }
+                    for c, title, kind in roots[library]
+                ]
+            offset = int(query["StartIndex"][0])
+            data = {
+                "Items": items[offset : offset + 100],
+                "TotalRecordCount": len(items),
+            }
+        body = json.dumps(data).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(data)
+        self.wfile.write(body)
 
     def log_message(self, *_args):
         pass
@@ -243,6 +312,7 @@ def acceptance(plugins_root, work, browser=False):
         "status": "running",
         "plugin_id": PLUGIN,
         "browser": browser,
+        "jellyfin_browser": bool(os.getenv("JELLYFIN_SCREENSHOT_DIR")),
         "host_commit": os.getenv("GITHUB_SHA") or revision(HOST),
         "plugins_commit": revision(plugins_root),
         "passed": [],
@@ -254,6 +324,7 @@ def acceptance(plugins_root, work, browser=False):
 
     root, signing_env = prepare_releases(plugins_root, work)
     entry = build(root, signing_env)
+    report.update(package_version=entry["version"], package_digest=entry["sha256"])
     host_port, runtime_port = available_port(), available_port()
     runtime_url = f"http://127.0.0.1:{runtime_port}"
     env = {
@@ -493,6 +564,7 @@ def acceptance(plugins_root, work, browser=False):
             ]
             ui = request("GET", f"/{PLUGIN}/ui")
             assert ui["native_frontend"]
+            modern_sync = any(a["id"] == "save-master" for a in ui["actions"])
             asset = client.get(
                 f"/api/plugins/{PLUGIN}/native-frontend/{ui['native_frontend']['entry']}"
             )
@@ -515,21 +587,201 @@ def acceptance(plugins_root, work, browser=False):
                 "background_sync": False,
                 "sync_interval_minutes": 15,
             }
-            request("PUT", f"/{PLUGIN}/settings", json=config)
-            assert action("save-token", {"api_key": "IntegrationToken123"})["ok"]
-            assert action("sync-now")["queued"]
-            wait_until(lambda: action("status").get("phase") == "complete", timeout=45)
-            assert action("list-media")["media"]
+            if modern_sync:
+                assert action(
+                    "save-master",
+                    {
+                        "server_url": config["server_url"],
+                        "api_key": "IntegrationToken123",
+                    },
+                )["ok"]
+                assert action("test-connection")["ok"]
+                assert action(
+                    "save-mappings",
+                    {
+                        "mappings": {
+                            "1" * 32: "movie",
+                            "2" * 32: "tv_show",
+                            "3" * 32: "anime",
+                        }
+                    },
+                )["ok"]
+                host_user = action("get-config")["host_user_id"]
+                assert action(
+                    "authorize-identity",
+                    {"host_user_id": host_user, "user_id": "a" * 32},
+                )["ok"]
+                assert action("save-user", {"user_id": "a" * 32})["ok"]
+
+                def synchronize():
+                    assert action("sync-now")["queued"]
+                    # Wait for a new completed attempt, not a stale previous status.
+                    before = action("status").get("finished_at", 0)
+                    wait_until(
+                        lambda: action("status").get("phase") == "syncing", timeout=20
+                    )
+                    wait_until(
+                        lambda: action("status").get("phase") == "complete", timeout=60
+                    )
+
+                def media(kind):
+                    response = client.get(f"/api/{kind}/list")
+                    assert response.status_code == 200, response.text
+                    return response.json()["items"]
+
+                synchronize()
+                films, shows, anime = media("movie"), media("tv"), media("anime")
+                assert len(films) == len(shows) == len(anime) == 1
+                assert films[0]["status"] == "IN_PROGRESS"
+                assert shows[0]["status"] == anime[0]["status"] == "IN_PROGRESS"
+                Jellyfin.watched = True
+                synchronize()
+                assert all(
+                    media(kind)[0]["status"] == "WATCHED"
+                    for kind in ("movie", "tv", "anime")
+                )
+                synchronize()
+                assert all(len(media(kind)) == 1 for kind in ("movie", "tv", "anime"))
+                movie_id = films[0]["id"]
+                destination = request(
+                    "POST",
+                    f"/{PLUGIN}/actions/watch-now",
+                    json={
+                        "values": {},
+                        "context": {
+                            "kind": "media",
+                            "resource_id": movie_id,
+                            "resource_type": "movie",
+                        },
+                    },
+                )
+                assert (
+                    destination["url"]
+                    == config["server_url"] + "/web/index.html#!/details?id=" + "4" * 32
+                )
+                assert "IntegrationToken" not in json.dumps(destination)
+                checkpoint(
+                    "master config, approved user, mapped film/TV/anime, native completion, repeat sync and exact Watch Now"
+                )
+                # A different authenticated host user links their approved identity;
+                # the worker must import into their scope, never the enabling admin's.
+                second_name = "linked-" + uuid4().hex
+                created = client.post(
+                    "/api/auth/users",
+                    json={
+                        "username": second_name,
+                        "email": uuid4().hex + "@example.invalid",
+                        "password": PASSWORD,
+                    },
+                )
+                assert created.status_code == 201, created.text
+                second_user = created.json()["id"]
+                with httpx.Client(
+                    base_url=env["PLUGIN_GATEWAY_URL"], timeout=45
+                ) as other:
+                    assert (
+                        other.post(
+                            "/api/auth/login",
+                            json={
+                                "username_or_email": second_name,
+                                "password": PASSWORD,
+                            },
+                        ).status_code
+                        == 200
+                    )
+                    peer = InstalledPluginConformance(other, PLUGIN)
+                    assert "master" not in peer.action("get-config")
+                    denied = other.post(
+                        f"/api/plugins/{PLUGIN}/actions/save-master",
+                        json={"values": {"server_url": "https://unauthorized.example"}},
+                    )
+                    assert denied.status_code >= 400
+                    assert (
+                        action("get-config")["master"]["server_url"]
+                        == config["server_url"]
+                    )
+                    denied = other.post(
+                        f"/api/plugins/{PLUGIN}/actions/save-user",
+                        json={"values": {"user_id": "a" * 32}},
+                    )
+                    assert denied.status_code >= 400
+                    action(
+                        "authorize-identity",
+                        {"host_user_id": second_user, "user_id": "b" * 32},
+                    )
+                    assert peer.action("save-user", {"user_id": "b" * 32})["ok"]
+                    assert peer.action("sync-now")["queued"]
+                    wait_until(
+                        lambda: peer.action("status").get("phase") == "complete",
+                        timeout=90,
+                    )
+                    rows = other.get("/api/movie/list").json()["items"]
+                    assert len(rows) == 1 and rows[0]["id"] != movie_id
+                    own_destination = peer.request(
+                        "POST",
+                        f"/{PLUGIN}/actions/watch-now",
+                        json={
+                            "values": {},
+                            "context": {
+                                "kind": "media",
+                                "resource_id": rows[0]["id"],
+                                "resource_type": "movie",
+                            },
+                        },
+                    )
+                    assert own_destination["url"] == destination["url"]
+                    unavailable = peer.request(
+                        "POST",
+                        f"/{PLUGIN}/actions/watch-now",
+                        json={
+                            "values": {},
+                            "context": {
+                                "kind": "media",
+                                "resource_id": movie_id,
+                                "resource_type": "movie",
+                            },
+                        },
+                    )
+                    assert unavailable["ok"] is False
+                    assert len(media("movie")) == 1
+                    peer.action("unlink-user")
+                checkpoint(
+                    "second-user delegation, administrator/identity denial and cross-user Watch Now isolation"
+                )
+                if os.getenv("JELLYFIN_SCREENSHOT_DIR"):
+                    subprocess.run(
+                        ["node", str(plugins_root / "tools/capture_jellyfin.mjs")],
+                        env={
+                            **env,
+                            "JELLYFIN_HOST_ROOT": str(HOST),
+                            "JELLYFIN_FRONTEND_PORT": str(available_port()),
+                        },
+                        check=True,
+                    )
+                    checkpoint("installed native UI and media-page screenshots")
+
+            else:
+                request("PUT", f"/{PLUGIN}/settings", json=config)
+                assert action("save-token", {"api_key": "IntegrationToken123"})["ok"]
+                assert action("sync-now")["queued"]
+                wait_until(
+                    lambda: action("status").get("phase") == "complete", timeout=45
+                )
+                assert action("list-media")["media"]
             storage = work / "runtime/.storage" / PLUGIN
             baseline = {
                 p.relative_to(storage): p.read_bytes()
                 for p in storage.rglob("*")
                 if p.is_file()
+                and p.relative_to(storage).as_posix() != "worker/position"
             }
             assert baseline
 
             def preserved():
-                assert action("get-config")["server_url"] == config["server_url"]
+                saved = action("get-config")
+                assert (saved["master"] if modern_sync else saved)[
+                    "server_url"
+                ] == config["server_url"]
                 assert action("status")["phase"] == "complete"
                 for path, content in baseline.items():
                     assert (storage / path).read_bytes() == content, path
@@ -788,7 +1040,12 @@ def acceptance(plugins_root, work, browser=False):
                 json={"approved_permissions": keys + ["games.read:v1"]},
             )
             request("POST", f"/{PLUGIN}/enable")
-            assert action("get-config")["server_url"] == ""
+            saved = action("get-config")
+            assert (
+                saved["master"].get("server_url") is None
+                if modern_sync
+                else saved["server_url"] == ""
+            )
             assert action("status").get("phase") != "complete"
             request("DELETE", f"/{PLUGIN}", 204)
             assert not storage.exists()
