@@ -16,6 +16,7 @@ import {
   watch,
 } from "vue";
 import { useRouter } from "vue-router";
+import { blurOnLeave } from "../utils/blurOnLeave";
 import {
   fetchCalendar,
   fetchActivity,
@@ -1641,6 +1642,7 @@ async function submitManualEntry() {
                 class="entry-row"
                 :class="entry.eventType"
                 @click="openHistoryEntry(entry)"
+                @mouseleave="blurOnLeave"
               >
                 <span class="entry-icon">{{
                   HISTORY_ICONS[entry.eventType]

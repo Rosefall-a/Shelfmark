@@ -15,6 +15,7 @@ import type { SegmentOption } from "../SegmentedTabs.vue";
 import { preferences } from "../../state/preferences";
 import { matchesFilters } from "../../utils/libraryFilters";
 import type { LibraryFilters } from "../../utils/libraryFilters";
+import { blurOnLeave } from "../../utils/blurOnLeave";
 import {
   STATUS_BUCKETS,
   statusBucket,
@@ -1183,6 +1184,7 @@ defineExpose({ openQuickAdd });
               :key="it.id"
               class="shelf-card"
               @click="handleCardClick(it)"
+              @mouseleave="blurOnLeave"
             >
               <div class="shelf-art-wrap">
                 <div class="shelf-art">
@@ -1938,7 +1940,7 @@ defineExpose({ openQuickAdd });
 .search-wrap {
   position: relative;
   flex: 1;
-  min-width: 200px;
+  min-width: 140px;
   max-width: 340px;
 }
 .search-wrap svg {

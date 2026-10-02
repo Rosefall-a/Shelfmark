@@ -4,6 +4,7 @@
 // thing" as a game collection instead of a different feature bolted on.
 import { computed } from "vue";
 import type { MediaListSummary } from "../services/mediaExtras";
+import { blurOnLeave } from "../utils/blurOnLeave";
 
 const props = defineProps<{
   list: MediaListSummary;
@@ -40,6 +41,7 @@ const emptySlots = computed(() => Math.max(0, 4 - covers.value.length));
     @dragover.prevent="emit('dragover', list.id)"
     @drop.prevent="emit('drop', list.id)"
     @dragend="emit('dragend')"
+    @mouseleave="blurOnLeave"
   >
     <div class="collection-card">
       <div class="cover">

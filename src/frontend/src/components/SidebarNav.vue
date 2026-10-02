@@ -83,6 +83,19 @@ function stopResize() {
   document.removeEventListener("mouseup", stopResize);
 }
 
+// Rail mode also expands on keyboard focus (:focus-within), so tabbing in
+// works without a mouse. But that means clicking a link leaves it focused,
+// and a plain :hover/:focus-within CSS rule then keeps the rail pinned
+// open after the mouse has already left — it takes a click somewhere else
+// to move focus away before it can collapse. Blurring on mouse-leave
+// closes the gap: focus no longer outlives the hover once you've moved on.
+const asideRef = ref<HTMLElement | null>(null);
+function onRailMouseLeave() {
+  if (sidebarMode.value !== "rail") return;
+  const active = document.activeElement as HTMLElement | null;
+  if (active && asideRef.value?.contains(active)) active.blur();
+}
+
 async function handleLogout() {
   await logout();
   currentUser.value = null;
@@ -126,6 +139,7 @@ async function handleLogout() {
   <Transition name="sidebar-slide">
     <aside
       v-if="sidebarVisible"
+      ref="asideRef"
       class="sidebar"
       :class="{
         'pinned-mode': sidebarMode === 'pinned',
@@ -133,6 +147,7 @@ async function handleLogout() {
         resizing: sidebarResizing,
       }"
       :style="{ '--sidebar-w': `${sidebarWidth}px` }"
+      @mouseleave="onRailMouseLeave"
     >
       <div
         v-if="sidebarMode !== 'rail'"
@@ -185,7 +200,10 @@ async function handleLogout() {
         <span>Home</span>
       </router-link>
 
-      <div class="sidebar-group-label">Library</div>
+      <div class="sidebar-group-label">
+        <span class="sidebar-group-label-text">Library</span>
+        <span class="sidebar-group-label-rule"></span>
+      </div>
 
       <div
         class="sidebar-parent-row"
@@ -467,7 +485,10 @@ async function handleLogout() {
         </router-link>
       </div>
 
-      <div class="sidebar-group-label">Tools</div>
+      <div class="sidebar-group-label">
+        <span class="sidebar-group-label-text">Tools</span>
+        <span class="sidebar-group-label-rule"></span>
+      </div>
 
       <router-link
         to="/calendar"
@@ -690,49 +711,130 @@ async function handleLogout() {
   padding-left: 14px;
   padding-right: 14px;
 }
-/* Collapsed rail shows icons only, centered, with no expand chevrons or
-   sub-items. Hovering (or tabbing in) widens the rail back to the full
-   layout, at which point all of this reverts to the normal sidebar look. */
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-group-label,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .brand-name,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .mock-badge,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-profile-name,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-item span,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-link span,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-expand-toggle,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-subitems,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .inbox-badge {
+/* Collapsed rail shows icons only, with no expand chevrons or sub-items.
+   Hovering (or tabbing in) widens the rail back to the full layout, at
+   which point all of this reverts to the normal sidebar look.
+
+   The icon's own padding is a FIXED value in rail mode, the same whether
+   collapsed or expanded — chosen so it exactly centres the icon inside
+   the 56px collapsed rail (56 - 18px icon = 38, 19px either side). It
+   never toggles, so there's nothing to snap: hovering only grows the
+   rail itself and reveals more room to the icon's right for the label to
+   fade into. Two earlier versions got this wrong in opposite directions:
+   toggling justify-content snapped instantly (not animatable), and
+   toggling padding down to near-zero while centred pulled the icon off
+   to the left instead of keeping it centred. */
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-subitems {
   display: none;
 }
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-item,
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-link {
-  justify-content: center;
-  padding: 9px 0;
-  gap: 0;
+/* Unlike sub-items (a block of extra rows, legitimately tied to whether
+   Games/Media is expanded), these three are small inline badges that
+   used to display: none inside a row that otherwise stays the same
+   height — but a badge can still be taller than the icon next to it
+   (the mock-data pill was, by 8px), so hiding it outright shrank its
+   row, and revealing it grew that row back, nudging every row below it
+   down. Fading them in place keeps each row's own height constant too. */
+.mock-badge,
+.inbox-badge,
+.sidebar-expand-toggle {
+  opacity: 1;
+  transition: opacity 0.14s ease 0.05s;
 }
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-row {
-  justify-content: center;
+.sidebar.rail-mode:not(:hover):not(:focus-within) .mock-badge,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .inbox-badge,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-expand-toggle {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.08s ease;
 }
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-brand {
-  justify-content: center;
-  padding: 0 0 18px;
+/* Group labels ("Library", "Tools") used to display: none in the
+   collapsed rail like everything above, which freed their row's height
+   entirely — so every icon below a hidden label jumped up to fill the
+   gap, then jumped back down the moment you hovered and the label
+   reappeared. The row itself (and its height) stays put in both states
+   now; only the text inside cross-fades with a thin divider line, so
+   expanding the rail moves things sideways, not vertically. */
+.sidebar-group-label-text {
+  min-width: 0;
+  flex-shrink: 1;
+  opacity: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.14s ease 0.05s;
 }
-.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-profile {
-  display: flex;
-  justify-content: center;
-  padding: 9px 0;
+.sidebar-group-label-rule {
+  flex: 1;
+  min-width: 0;
+  height: 1px;
+  background: #2a2a2a;
+  opacity: 0;
+  transition: opacity 0.08s ease;
 }
-/* ProfileMenu's own trigger is styled inside ProfileMenu.vue's scoped
-   CSS (width: 100%, so the avatar sits at the left edge, not centred),
-   which this component's scoped styles can't reach without :deep(). */
-.sidebar.rail-mode:not(:hover):not(:focus-within)
-  .sidebar-profile
-  :deep(.profile-menu-wrap),
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-group-label-text {
+  opacity: 0;
+  transition: opacity 0.08s ease;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-group-label-rule {
+  opacity: 1;
+  transition: opacity 0.14s ease 0.05s;
+}
+/* The label's invisible-but-still-in-the-flex-row width (opacity: 0, not
+   display: none — see below) means flex-shrink's default of 1 would
+   squeeze every child in the row to fit once the rail is narrower than
+   icon + label combined, icon included. flex-shrink: 0 excludes the
+   icon and the brand emoji from that, so they always render full size
+   regardless of how little room the invisible label actually has. */
+.sidebar-item svg,
+.sidebar-parent-link svg,
+.brand-icon {
+  flex-shrink: 0;
+}
+/* These four ride along the icon row (or sit right next to the avatar).
+   They fade with a plain opacity transition — no width/max-width
+   animation on the text itself, which looked like the label was being
+   squeezed or stretched instead of just appearing. The rail's own
+   overflow: hidden (set above) clips whatever the fading text doesn't
+   have room for; the text never needs to know its own size. */
+.sidebar-item span,
+.sidebar-parent-link span,
+.sidebar-profile-name,
+.brand-name {
+  min-width: 0;
+  opacity: 1;
+  white-space: nowrap;
+  transition: opacity 0.14s ease 0.05s;
+}
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-item span,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-parent-link span,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .sidebar-profile-name,
+.sidebar.rail-mode:not(:hover):not(:focus-within) .brand-name {
+  opacity: 0;
+  transition: opacity 0.08s ease;
+}
+.sidebar.rail-mode .sidebar-item,
+.sidebar.rail-mode .sidebar-parent-link {
+  padding-left: 19px;
+  padding-right: 19px;
+}
+.sidebar.rail-mode .sidebar-brand {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.sidebar.rail-mode .sidebar-profile {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+/* ProfileMenu's own trigger (inside ProfileMenu.vue's scoped styles,
+   unreachable here without :deep()) keeps a fixed 10px gap between the
+   name slot and the avatar even once the name has shrunk away to
+   nothing, which pushed the avatar 10px right of centre. Dropping it to
+   0 only while collapsed removes exactly that offset; it isn't the
+   justify-content toggle that caused the icon-jump bug elsewhere, just a
+   small gap disappearing in step with the name it was spacing. */
 .sidebar.rail-mode:not(:hover):not(:focus-within)
   .sidebar-profile
   :deep(.profile-menu-trigger) {
-  width: auto;
-  justify-content: center;
+  gap: 0;
 }
 .sidebar-brand {
   display: flex;
@@ -741,6 +843,7 @@ async function handleLogout() {
   padding: 0 10px 18px;
   margin-bottom: 6px;
   border-bottom: 1px solid #232323;
+  transition: padding 0.18s ease;
 }
 .brand-icon {
   font-size: 22px;
@@ -771,6 +874,7 @@ async function handleLogout() {
   cursor: pointer;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: padding 0.18s ease;
 }
 .sidebar-profile:hover {
   background: rgba(255, 255, 255, 0.07);
@@ -791,6 +895,9 @@ async function handleLogout() {
   margin: 8px 10px 12px;
 }
 .sidebar-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 14px 12px 6px;
   font-size: 10.5px;
   font-weight: 800;
@@ -810,7 +917,9 @@ async function handleLogout() {
   cursor: pointer;
   transition:
     background 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    padding 0.18s ease,
+    gap 0.18s ease;
 }
 .sidebar-item:hover {
   background: rgba(255, 255, 255, 0.06);

@@ -215,6 +215,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   width: 100%;
   cursor: pointer;
+  transition: gap 0.14s ease;
 }
 .profile-menu-avatar-wrap {
   position: relative;

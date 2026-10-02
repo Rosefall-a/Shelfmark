@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { fetchUploadLimits } from "../../services/settings";
 import { fetchGames } from "../../services/games";
 import type { Game } from "../../types/game";
@@ -158,6 +158,8 @@ function toggleSelectAll() {
 const assignTargetGameId = ref("");
 const gameQuery = ref("");
 const gamePickerOpen = ref(false);
+const gamePickerRoot = ref<HTMLElement | null>(null);
+const gamePickerSearchInput = ref<HTMLInputElement | null>(null);
 const assigning = ref(false);
 const assignError = ref<string | null>(null);
 
@@ -171,19 +173,35 @@ const filteredGames = computed(() => {
     : games.value;
   return list.slice(0, 40);
 });
-function openGamePicker() {
+async function openGamePicker() {
   gamePickerOpen.value = true;
   gameQuery.value = "";
-}
-function closeGamePicker() {
-  // lets a click on an option register before the list disappears
-  setTimeout(() => (gamePickerOpen.value = false), 150);
+  // The `autofocus` attribute doesn't reliably fire on an element inserted
+  // after page load (this input only exists once `gamePickerOpen` flips),
+  // so it's focused explicitly here instead.
+  await nextTick();
+  gamePickerSearchInput.value?.focus();
 }
 function pickGame(game: Game) {
   assignTargetGameId.value = game.id;
   gamePickerOpen.value = false;
   gameQuery.value = "";
 }
+// A real click-outside check, not a blur timeout: focus moving from the
+// trigger button to the search input it just opened used to fire the
+// trigger's own blur handler and close the menu before a letter could be
+// typed. This only closes when the click actually lands outside the
+// picker.
+function onDocumentClick(e: MouseEvent) {
+  if (!gamePickerOpen.value) return;
+  if (!gamePickerRoot.value?.contains(e.target as Node)) {
+    gamePickerOpen.value = false;
+  }
+}
+onMounted(() => document.addEventListener("mousedown", onDocumentClick));
+onBeforeUnmount(() =>
+  document.removeEventListener("mousedown", onDocumentClick),
+);
 
 async function assignSelected() {
   if (!assignTargetGameId.value || !selected.value.size) return;
@@ -349,12 +367,11 @@ async function restoreItem(item: TrashedInboxItem) {
     <div v-if="selectedCount" class="assign-bar">
       <span class="assign-count">{{ selectedCount }} selected</span>
 
-      <div class="game-picker">
+      <div ref="gamePickerRoot" class="game-picker">
         <button
           type="button"
           class="game-picker-trigger"
           @click="openGamePicker"
-          @blur="closeGamePicker"
         >
           <span
             v-if="selectedGame?.coverImageUrl"
@@ -398,11 +415,11 @@ async function restoreItem(item: TrashedInboxItem) {
         </button>
         <div v-if="gamePickerOpen" class="game-picker-menu">
           <input
+            ref="gamePickerSearchInput"
             v-model="gameQuery"
             type="text"
             class="game-picker-search"
             placeholder="Search your games…"
-            autofocus
             @mousedown.stop
           />
           <div class="game-picker-list">
