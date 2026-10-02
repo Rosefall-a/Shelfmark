@@ -307,7 +307,7 @@ export const installPlugin = async (
     confirm_dangerous: confirmation.confirmDangerous ? "true" : "false",
   });
   if (confirmation.adminPassword)
-    query.set("admin_password", confirmation.adminPassword);
+    form.append("admin_password", confirmation.adminPassword);
   for (const permission of confirmation.approvedPermissions)
     query.append("approved_permissions", permission);
   const response = await fetch(`/api/plugins/install?${query.toString()}`, {
@@ -498,7 +498,7 @@ export const updatePlugin = async (
     confirm_dangerous: confirmation.confirmDangerous ? "true" : "false",
   });
   if (confirmation.adminPassword)
-    query.set("admin_password", confirmation.adminPassword);
+    form.append("admin_password", confirmation.adminPassword);
   for (const permission of confirmation.approvedPermissions)
     query.append("approved_permissions", permission);
   const response = await fetch(

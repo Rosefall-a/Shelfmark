@@ -332,8 +332,8 @@ async def seed_update(gate, source, *, trust="unsigned", permissions=()):
                 "allow_untrusted": "true",
                 "approved_permissions": [name + ":v1" for name in permissions],
                 "confirm_dangerous": True,
-                "admin_password": PASSWORD,
             },
+            data={"admin_password": PASSWORD},
             files={"file": ("original.utp", payload)},
         )
         assert response.status_code == 201, response.text
@@ -365,8 +365,10 @@ async def acquire(gate, source, payload, **consent):
     )
     path = f"/api/plugins/{gate.plugin_id}/update" if update else "/api/plugins/install"
     method = gate.client.put if update else gate.client.post
+    password = params.pop("admin_password", None)
     return await method(
-        path, params=params, files={"file": (filename, payload, "application/octet-stream")}
+        path, params=params, data={"admin_password": password} if password else {},
+        files={"file": (filename, payload, "application/octet-stream")}
     )
 
 
@@ -437,6 +439,33 @@ async def test_invalid_packages_are_hard_failures_from_every_source(gate, source
     )
     assert "install" not in gate.events and "start" not in gate.events
     assert await grants(gate) == []
+
+
+@pytest.mark.parametrize("source", ("utp", "update-utp"))
+async def test_upload_password_requires_body_and_never_enters_client_url(gate, source):
+    await seed_update(gate, source)
+    payload = package_bytes(gate.plugin_id, permissions=("api.full",), key=gate.key)
+    update = source.startswith("update")
+    method = gate.client.put if update else gate.client.post
+    path = f"/api/plugins/{gate.plugin_id}/update" if update else "/api/plugins/install"
+    response = await method(
+        path,
+        params={"allow_untrusted": True, "approved_permissions": ["api.full:v1"],
+                "confirm_dangerous": True, "admin_password": PASSWORD},
+        files={"file": ("candidate.utp", payload)},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "administrator_reauthentication_failed"
+    assert await grants(gate) == []
+    response = await acquire(
+        gate, source, payload, approved_permissions=["api.full:v1"],
+        confirm_dangerous=True, admin_password=PASSWORD,
+    )
+    assert response.status_code == (200 if update else 201), response.text
+    assert "admin_password" not in str(response.request.url)
+    assert PASSWORD not in str(response.request.url)
+    assert response.json()["dangerous_permissions_reauthenticated"] == ["api.full:v1"]
+    assert [row.capability for row in await grants(gate)] == ["api.full"]
 
 
 @pytest.mark.parametrize("source", SOURCES)
