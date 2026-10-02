@@ -6,7 +6,7 @@ on:
       - "wiki/**"
       - ".github/workflows/docs.yml"
   push:
-    branches: [main, plugin/manager]
+    branches: [main, plugin-manager]
     paths:
       - "wiki/**"
       - ".github/workflows/docs.yml"

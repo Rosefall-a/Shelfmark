@@ -1,0 +1,75 @@
+name: Plugin repository integration
+
+on:
+  push:
+    branches: [plugin-manager, 'fix/plugin-*']
+  pull_request:
+    branches: [plugin-manager]
+  workflow_dispatch:
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: plugin_integration
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U test -d plugin_integration"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      DATABASE_URL: postgresql+psycopg://test:test@localhost:5432/plugin_integration
+      SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
+      PYTHONPATH: ${{ github.workspace }}/src/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Rosefall-a/unnamed_tracking_app_plugins
+          ref: main
+          fetch-depth: 0
+          path: .integration-plugins
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install host and builder dependencies
+        run: |
+          python -m pip install -r src/backend/requirements.txt jsonschema
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo mkdir -p /data
+          sudo chown "$(id -u):$(id -g)" /data
+      - name: Prepare disposable database
+        working-directory: src/backend
+        run: alembic upgrade head
+      - name: Build the actual host frontend
+        working-directory: src/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Install browser tooling from the plugin repository
+        working-directory: .integration-plugins
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium --only-shell
+      - name: Verify official distribution and the full real-worker lifecycle
+        run: |
+          python tools/check_plugin_repository_lifecycle.py \
+            --plugins-root .integration-plugins \
+            --work-root "${{ runner.temp }}/plugin-acceptance" --browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-integration-evidence
+          path: |
+            ${{ runner.temp }}/plugin-acceptance/*.log
+            ${{ runner.temp }}/plugin-acceptance/*.png
+          if-no-files-found: warn

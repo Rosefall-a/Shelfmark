@@ -173,6 +173,50 @@ describe("plugin management service", () => {
 });
 
 describe("remote plugin installation", () => {
+  it("preserves catalogue provenance and the selected release URL in every remote lifecycle request", async () => {
+    const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ plugin_id: "example.test" }), {
+          status: 200,
+        }),
+    );
+    const url = "https://example.com/test-2.0.0.utp";
+    const source = {
+      type: "catalogue" as const,
+      url: "https://example.com/test-1.0.0.utp",
+      catalogue_url: "https://example.com/catalogue.json",
+      release_notes: "Security fixes",
+    };
+    await previewPluginInstallUrl(url, source);
+    await installPluginFromUrl(
+      url,
+      { approvedPermissions: [] },
+      "a".repeat(64),
+      false,
+      source,
+    );
+    await previewPluginUpdateUrl("example.test", url, source);
+    await updatePluginFromUrl(
+      "example.test",
+      url,
+      { approvedPermissions: [] },
+      "a".repeat(64),
+      false,
+      source,
+    );
+    for (const [, options] of mock.mock.calls) {
+      const body = JSON.parse(String(options?.body));
+      expect(body).toMatchObject({
+        url,
+        source_type: "catalogue",
+        catalogue_url: source.catalogue_url,
+        release_notes: source.release_notes,
+      });
+      expect(body).not.toHaveProperty("type");
+    }
+    mock.mockRestore();
+  });
+
   it("loads the official catalogue", async () => {
     const mock = vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>

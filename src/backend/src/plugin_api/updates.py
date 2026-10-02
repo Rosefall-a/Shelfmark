@@ -19,7 +19,7 @@ import stat
 import tempfile
 import zipfile
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
@@ -100,6 +100,7 @@ class VerifiedPackage:
     manifest: PluginManifest
     package_path: Path
     payload_digest: str
+    distribution: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -266,9 +267,41 @@ class PluginPackageVerifier:
         if digest.lower() != manifest.integrity.sha256.lower():
             raise PackageVerificationError("plugin package integrity verification failed")
 
+        distribution: dict[str, object] = {}
+        for name, content in payload:
+            if name != "distribution.json":
+                continue
+            try:
+                if len(content) > 128 * 1024:
+                    raise ValueError("release metadata is too large")
+                metadata = json.loads(content)
+                if (
+                    not isinstance(metadata, dict)
+                    or metadata.get("schema_version") != 1
+                    or metadata.get("version") != manifest.version
+                    or type(metadata.get("automatic_update")) is not bool
+                    or not isinstance(metadata.get("tags"), list)
+                    or len(metadata["tags"]) > 32
+                    or any(
+                        not isinstance(tag, str)
+                        or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", tag)
+                        for tag in metadata["tags"]
+                    )
+                    or len(metadata["tags"]) != len(set(metadata["tags"]))
+                    or not isinstance(metadata.get("release_notes", ""), str)
+                    or len(metadata.get("release_notes", "")) > 4000
+                ):
+                    raise ValueError("invalid release metadata")
+                distribution = metadata
+            except (ValueError, UnicodeError) as exc:
+                raise PackageFormatError("package distribution metadata is invalid") from exc
+
         if not verify_signature:
             return VerifiedPackage(
-                manifest=manifest, package_path=package_path, payload_digest=digest
+                manifest=manifest,
+                package_path=package_path,
+                payload_digest=digest,
+                distribution=distribution,
             )
 
         signature = manifest.integrity.signature
@@ -301,7 +334,12 @@ class PluginPackageVerifier:
                     "plugin package signature verification failed"
                 ) from exc
 
-        return VerifiedPackage(manifest=manifest, package_path=package_path, payload_digest=digest)
+        return VerifiedPackage(
+            manifest=manifest,
+            package_path=package_path,
+            payload_digest=digest,
+            distribution=distribution,
+        )
 
     def extract(self, verified: VerifiedPackage, destination: Path) -> Path:
         if destination.exists():

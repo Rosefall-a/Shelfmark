@@ -33,3 +33,36 @@ For a release candidate:
 7. Run both repositories' complete CI workflows and `mkdocs build --strict`.
 
 See [Reference plugins](reference-plugins.md) and the [documentation review checklist](documentation-review.md).
+
+## Repeatable repository lifecycle acceptance
+
+`tools/check_plugin_repository_lifecycle.py` runs the current host against actual
+packages built by a separate plugin checkout. Run it only against a disposable,
+migrated PostgreSQL database with the backend requirements and the plugin
+builder's `jsonschema` dependency installed:
+
+```bash
+python tools/check_plugin_repository_lifecycle.py \
+  --plugins-root /path/to/unnamed_tracking_app_plugins \
+  --work-root /tmp/plugin-acceptance
+```
+
+The work root must not exist. The runner downloads and inspects all live official
+packages, creates signed releases with a disposable publisher registered only
+inside its temporary test environment, and runs separate authenticated host and
+runtime processes. It performs a real Jellyfin sync against a deterministic
+Jellyfin HTTP server and verifies configuration, secrets and progress bytes
+through restart, update, rollback and reinstall. It also checks permission
+staging/revocation, release opt-out/opt-in, startup failure recovery, notifications,
+retention, management-token scope isolation, confirmed purge and uninstall.
+Only acquisition of the simulated release catalogue is substituted; the official
+downloads, public gateway, runtime HTTP and workers are real.
+
+Add `--browser` after building `src/frontend` and installing the plugin
+repository's npm/Playwright dependencies to verify rendered catalogue filtering,
+README, scope counts, risk bubbles, consent, duplicate choices, native UI and
+Updates Available actions. `Plugin repository integration` runs this complete
+acceptance in CI and retains logs and screenshots. The runtime deliberately
+permits reduced isolation inside this disposable test environment and verifies
+that the UI reports it accurately; real Bubblewrap namespace capability is
+probed and the runtime unit suite also covers usable/unsupported policy behavior.

@@ -535,8 +535,10 @@ def _install_preview(
         "name": manifest.name,
         "description": manifest.description,
         "icon": icon,
-        "tags": list(manifest.tags),
-        "automatic_update": manifest.automatic_update,
+        "tags": inspected.package.distribution.get("tags", list(manifest.tags)),
+        "automatic_update": manifest.automatic_update
+        and inspected.package.distribution.get("automatic_update", True),
+        "release_notes": inspected.package.distribution.get("release_notes"),
         "readme": readme,
         "version": manifest.version,
         "publisher": trust.publisher_identity,
@@ -609,6 +611,30 @@ async def _resolve_plugin_upload(request: Request, file: UploadFile | None) -> S
     )
 
 
+async def _validate_catalogue_candidate(
+    path: Path, inspected: InspectedPackage, request: PluginInstallUrl, admin: User
+) -> list[PluginCatalogEntry]:
+    """Bind every catalogue acquisition to its advertised identity and hashes."""
+    if request.source_type != "catalogue":
+        return []
+    if not request.catalogue_url:
+        raise HTTPException(422, "Catalogue URL is required for a catalogue package.")
+    entries = await plugin_catalog(source=request.catalogue_url, user=admin)
+    manifest = inspected.package.manifest
+    entry = next((item for item in entries if item.plugin_id == manifest.plugin_id), None)
+    if (
+        entry is None
+        or entry.url != request.url
+        or entry.version != manifest.version
+        or entry.digest
+        and entry.digest.lower() != manifest.integrity.sha256.lower()
+        or entry.package_sha256
+        and entry.package_sha256.lower() != hashlib.sha256(path.read_bytes()).hexdigest()
+    ):
+        raise HTTPException(409, "Catalogue release and package identity or hashes differ.")
+    return entries
+
+
 @router.post("/install/preview-url")
 async def preview_plugin_install_url(
     request: PluginInstallUrl, admin: User = Depends(get_plugin_manager_admin)
@@ -618,12 +644,10 @@ async def preview_plugin_install_url(
     try:
         path, filename, total = await _download_remote_file(request.url)
         inspected = _inspect_install_candidate(path)
-        available: list[dict[str, Any]] = []
-        if request.source_type == "catalogue" and request.catalogue_url:
-            available = [
-                entry.model_dump()
-                for entry in await plugin_catalog(source=request.catalogue_url, user=admin)
-            ]
+        available = [
+            entry.model_dump()
+            for entry in await _validate_catalogue_candidate(path, inspected, request, admin)
+        ]
         dependencies = await _plan_candidate_dependencies(
             inspected.package.manifest,
             available=available,
@@ -659,6 +683,8 @@ async def install_plugin_url(
     upload: UploadFile | None = None
     try:
         path, filename, _ = await _download_remote_file(request.url)
+        inspected = _inspect_install_candidate(path)
+        await _validate_catalogue_candidate(path, inspected, request, admin)
         upload = UploadFile(path.open("rb"), filename=filename)
         return await _install_plugin_package(
             upload,
@@ -1394,6 +1420,7 @@ async def run_automatic_plugin_updates(db: AsyncSession, admin: User) -> dict[st
                 enabled
                 and update["automatic_update"]
                 and manifest.automatic_update
+                and inspected.package.distribution.get("automatic_update", True)
                 and inspected.trust.is_verified
                 and plan.dependencies.ready
                 and not plan.permissions.newly_requested_grants
@@ -1895,11 +1922,14 @@ def _update_preview(
                 )
             ),
             "release_notes": (
-                source.get("release_notes")
-                if isinstance(source, dict)
-                else installed.get("source", {}).get("release_notes")
-                if isinstance(installed.get("source"), dict)
-                else None
+                inspected.package.distribution.get("release_notes")
+                or (
+                    source.get("release_notes")
+                    if isinstance(source, dict)
+                    else installed.get("source", {}).get("release_notes")
+                    if isinstance(installed.get("source"), dict)
+                    else None
+                )
             ),
         }
     )
@@ -1943,11 +1973,11 @@ async def preview_plugin_update_url(
     db: AsyncSession = Depends(get_db),
     operation: Literal["update", "replace"] = "update",
 ) -> dict[str, Any]:
-    del admin
     temporary_path: Path | None = None
     try:
         temporary_path, filename, total = await _download_remote_file(request.url)
         inspected = _inspect_install_candidate(temporary_path)
+        await _validate_catalogue_candidate(temporary_path, inspected, request, admin)
         installed, _, permission_delta, dependencies, can_retain_grants = await _update_context(
             plugin_id,
             inspected,
@@ -1993,6 +2023,8 @@ async def update_plugin_url(
     upload: UploadFile | None = None
     try:
         temporary_path, filename, _ = await _download_remote_file(request.url)
+        inspected = _inspect_install_candidate(temporary_path)
+        await _validate_catalogue_candidate(temporary_path, inspected, request, admin)
         upload = UploadFile(temporary_path.open("rb"), filename=filename)
         return await _update_plugin_package(
             plugin_id,

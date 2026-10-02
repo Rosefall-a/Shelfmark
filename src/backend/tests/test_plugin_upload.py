@@ -520,11 +520,30 @@ def test_upload_url_and_catalogue_converge_on_one_commit_path(monkeypatch) -> No
     payload = package_bytes()
 
     async def fake_download(url, *, json_document=False):
-        del url, json_document
+        del url
+        data = payload
+        if json_document:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+            data = json.dumps(
+                {
+                    "version": 1,
+                    "plugins": [
+                        {
+                            "plugin_id": manifest["plugin_id"],
+                            "name": manifest["name"],
+                            "version": manifest["version"],
+                            "url": "https://example.com/candidate.utp",
+                            "sha256": manifest["integrity"]["sha256"],
+                            "package_sha256": hashlib.sha256(payload).hexdigest(),
+                        }
+                    ],
+                }
+            ).encode()
         handle = __import__("tempfile").NamedTemporaryFile(delete=False)
-        handle.write(payload)
+        handle.write(data)
         handle.close()
-        return __import__("pathlib").Path(handle.name), "candidate.bin", len(payload)
+        return __import__("pathlib").Path(handle.name), "candidate.bin", len(data)
 
     monkeypatch.setattr(plugins, "_install_plugin_package", fake_commit)
     monkeypatch.setattr(plugins, "_download_remote_file", fake_download)

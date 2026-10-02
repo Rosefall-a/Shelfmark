@@ -1221,6 +1221,20 @@ class PluginRegistry:
 
     def _item(self, package: Path) -> dict[str, Any]:
         data = self.package(package.name)[1]
+        distribution_path = package / "distribution.json"
+        distribution = {}
+        if (
+            distribution_path.is_file()
+            and distribution_path.stat().st_size <= 128 * 1024
+        ):
+            try:
+                metadata = json.loads(distribution_path.read_text(encoding="utf-8"))
+                if isinstance(metadata, dict) and metadata.get("version") == data.get(
+                    "version"
+                ):
+                    distribution = metadata
+            except (ValueError, OSError):
+                pass
         plugin_id = data["plugin_id"]
         expected = data.get("integrity", {}).get("sha256")
         compatible = (
@@ -1259,7 +1273,10 @@ class PluginRegistry:
             "name": data.get("name", plugin_id),
             "description": data.get("description", ""),
             "icon": self._package_icon(package, data),
-            "tags": data.get("tags", []),
+            "tags": distribution.get("tags", data.get("tags", [])),
+            "automatic_update": data.get("automatic_update", True)
+            and distribution.get("automatic_update", True),
+            "release_notes": distribution.get("release_notes"),
             "version": data.get("version", "0.0.0"),
             "publisher": (
                 data.get("integrity", {}).get("key_id")
