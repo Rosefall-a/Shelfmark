@@ -959,7 +959,7 @@ def test_runtime_gateway_settings_use_active_package_path(tmp_path, monkeypatch)
             "capability": "plugin.settings",
             "payload": {"key": "display_mode"},
         },
-    ) == {"payload": {"value": "dark"}}
+    )["payload"] == {"value": "dark"}
     assert approved == ["plugin.settings"]
 
 

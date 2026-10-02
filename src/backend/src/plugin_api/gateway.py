@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hmac
 import json
@@ -225,7 +226,8 @@ async def dispatch_gateway_request(
             "save_icon": scan.save_icon,
         }
         integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
-        metadata_result = search_game_metadata(
+        metadata_result = await asyncio.to_thread(
+            search_game_metadata,
             query,
             limit,
             None,

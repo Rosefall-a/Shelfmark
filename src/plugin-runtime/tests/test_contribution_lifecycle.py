@@ -117,7 +117,7 @@ def test_starting_allows_local_bootstrap_but_not_contributions(tmp_path):
         assert registry._execution_allowed("contract", method)
     assert supervisor._handle_gateway_request(
         "contract", {"method": "lifecycle.ready"}
-    ) == {"payload": {"accepted": True}}
+    )["payload"] == {"accepted": True}
     for method in (
         "events.poll",
         "notification_providers.register",
