@@ -265,7 +265,10 @@ async def dispatch_gateway_request(
         item, game = row
         try:
             path = _document_path(game, item)
-            data, media_type, document_format, digest = read_representation(path)
+            max_bytes = payload.get("max_bytes", MAX_DOCUMENT_BYTES)
+            if type(max_bytes) is not int or max_bytes < 0:
+                raise DocumentAccessError("invalid", "Invalid document size limit.", 400)
+            data, media_type, document_format, digest = read_representation(path, max_bytes=max_bytes)
             if "chunk_bytes" in payload:
                 offset = payload.get("offset", 0)
                 chunk_bytes = payload["chunk_bytes"]
