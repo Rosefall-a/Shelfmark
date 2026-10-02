@@ -41,6 +41,7 @@ from src.plugin_api.contracts import (
 )
 from src.plugin_api.documents import (
     MAX_CHUNK_BYTES,
+    MAX_DOCUMENT_BYTES,
     DocumentAccessError,
     document_path,
     owned_document,
