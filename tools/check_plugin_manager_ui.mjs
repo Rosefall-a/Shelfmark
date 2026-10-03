@@ -40,7 +40,7 @@ const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(String(error)));
 const review = JSON.parse(process.env.INTEGRATION_REVIEW);
-const plugin = page.locator("article.plugin").filter({ has: page.getByRole("heading", { name: "Jellyfin Media Sync", exact: true }) });
+const plugin = page.locator("article.plugin").filter({ has: page.getByRole("heading", { name: /^Jellyfin Media Sync(?: \(Demo\))?$/ }) });
 try {
   const login = await context.request.post(origin + "/api/auth/login", {
     data: { username_or_email: process.env.PRIMARY_USER_USERNAME, password: process.env.PRIMARY_USER_PASSWORD },
@@ -66,7 +66,7 @@ try {
     await page.getByRole("combobox", { name: "Filter by tag" }).selectOption("media");
     assert.equal(await plugin.count(), 1);
     await plugin.getByRole("button", { name: "Review plugin", exact: true }).click();
-    const consent = page.getByRole("dialog", { name: "Review Jellyfin Media Sync", exact: true });
+    const consent = page.getByRole("dialog", { name: /^Review Jellyfin Media Sync(?: \(Demo\))?$/ });
     await consent.waitFor();
     await consent.getByText("Plugin documentation", { exact: true }).click();
     await consent.locator(".readme article").waitFor();
@@ -121,7 +121,7 @@ try {
     await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "offline-inventory.png"), fullPage: true });
     releaseCatalogue();
     await plugin.getByRole("button", { name: "Manage plugin", exact: true }).click();
-    const settings = page.getByRole("dialog", { name: "Jellyfin Media Sync", exact: true });
+    const settings = page.getByRole("dialog", { name: /^Jellyfin Media Sync(?: \(Demo\))?$/ });
     await settings.getByRole("button", { name: "Diagnostics", exact: true }).click();
     await settings.getByText("Runtime availability", { exact: true }).waitFor();
     assert.equal(await settings.getByText("Active", { exact: true }).count(), 0);
@@ -135,7 +135,7 @@ try {
     assert.equal(await plugin.count(), 1);
     await page.getByRole("button", { name: "Updates Available", exact: true }).click();
     await plugin.getByRole("button", { name: /^Review v.* update$/ }).click();
-    const consent = page.getByRole("dialog", { name: "Review Jellyfin Media Sync", exact: true });
+    const consent = page.getByRole("dialog", { name: /^Review Jellyfin Media Sync(?: \(Demo\))?$/ });
     await consent.waitFor();
     await page.screenshot({ path: path.join(process.env.INTEGRATION_WORK_ROOT, "update-review.png"), fullPage: true });
     await consent.getByRole("button", { name: "Update with selected access", exact: true }).click();

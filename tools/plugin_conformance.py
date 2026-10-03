@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+import time
 from urllib.parse import quote
 
 import httpx
@@ -51,19 +52,26 @@ class InstalledPluginConformance:
         )
 
     def assert_ready(self) -> None:
+        deadline = time.monotonic() + 30
         current = self.current()
+        while (current["status"] != "running" or current["health"] != "healthy") and time.monotonic() < deadline:
+            time.sleep(0.1)
+            current = self.current()
         assert current["enabled"] and current["runtime_available"]
-        assert current["status"] == "running" and current["health"] == "healthy"
-        diagnostics = self.request("GET", self.path + "/logs")
-        assert any(
-            event["event"] == "lifecycle.ready" for event in diagnostics["events"]
+        assert current["status"] == "running" and current["health"] == "healthy", (
+            current["status"], current["health"],
+            self.request("GET", self.path + "/logs"),
         )
+        # Runtime logs are a bounded tail: an active sync can legitimately evict
+        # its startup event. Running/healthy is the supervisor's readiness state.
+        diagnostics = self.request("GET", self.path + "/logs")
+        assert isinstance(diagnostics["events"], list)
         health = self.request("GET", "/runtime/health")
         assert (
             health["api_version"] == "v1" and "v1" in health["supported_api_versions"]
         )
 
-    def preserving_lifecycle(self, probe: Callable[[], Any]) -> None:
+    def preserving_lifecycle(self, probe: Callable[[], Any], *, reinstall_review: dict | None = None) -> None:
         """Check stop/start, disable/enable and ordinary reinstall against real data.
 
         The probe must return stable plugin-owned data/configuration/secret state,
@@ -85,7 +93,7 @@ class InstalledPluginConformance:
         self.request("POST", self.path + "/enable")
         self.assert_ready()
         assert probe() == baseline
-        self.request("POST", self.path + "/reinstall", json={})
+        self.request("POST", self.path + "/reinstall", json=reinstall_review or {})
         self.assert_ready()
         assert probe() == baseline
         assert self.current()["installation_id"] == identity

@@ -99,6 +99,13 @@ jobs:
           python tools/check_plugin_repository_lifecycle.py \
             --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/plugin-acceptance" --browser
+      - name: Test the official Jellyfin preview when supplied by the companion ref
+        run: |
+          if [ -f .integration-plugins/tools/check_jellyfin_official_lifecycle.py ]; then
+            python .integration-plugins/tools/check_jellyfin_official_lifecycle.py \
+              --host-root "$GITHUB_WORKSPACE" \
+              --work-root "${{ runner.temp }}/jellyfin-official-acceptance" --browser
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,4 +114,7 @@ jobs:
             ${{ runner.temp }}/plugin-acceptance/*.log
             ${{ runner.temp }}/plugin-acceptance/**/*.png
             ${{ runner.temp }}/plugin-acceptance/conformance.json
+            ${{ runner.temp }}/jellyfin-official-acceptance/*.log
+            ${{ runner.temp }}/jellyfin-official-acceptance/conformance.json
+            ${{ runner.temp }}/jellyfin-official-acceptance/screenshots/*.png
           if-no-files-found: warn

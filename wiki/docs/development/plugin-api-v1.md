@@ -151,3 +151,136 @@ now also applies to contextual buttons: a `redirect_url` is accepted only when
 that flag is declared and the target is credential-free HTTP(S). Failed actions
 show an unavailable/error message. Native plugins can render normal HTTP links.
 Native contributions remount when the authenticated resource context changes, preventing a previous media item's action destination from remaining visible. There is no provider-specific button or media action in core.
+
+## Provider media synchronization, background subscriptions and outbound JSON
+
+These are additive **Plugin API v1** operations on the existing gateway. They do
+not change package format, SDK, gateway transport or installation identity.
+
+| Operation | Capability | Scope |
+| --- | --- | --- |
+| `media.sync` | `media.write` | Authenticated caller's existing Movies/TV/Anime domain records |
+| `network.request` | `network.outbound` | Bounded JSON GET/POST through the host, outside worker network isolation |
+| `tasks.subscribe`, `tasks.unsubscribe` | `tasks.background` | Explicit authenticated UI action's own user; a worker cannot subscribe another user |
+| `tasks.subscribers` | `tasks.background` | Plugin's opted-in user IDs; bounded offset/limit, maximum 100 |
+| `tasks.request` | `tasks.background` | Delegates reviewed media sync or notifications to a subscribed target; checks both target grants live |
+
+### Media sync contract
+
+`media.sync` accepts one bounded DTO: `source`, `source_scope`, `external_id`,
+`media_type` (`movie`, `tv_show`, `anime`), `title`, optional `genres`,
+`runtime_minutes`, `poster_url`, `played`, `in_progress`, `expected_revision`,
+`inventory_complete`, and at most 100 `episodes`. Each episode contains
+`external_id`, `season` (including zero for specials), `number`, `watched`, optional
+`title`, and optional `removed`. Unknown fields and invalid bounds are rejected.
+
+The host derives a deterministic UUID from plugin ID, authenticated user, source,
+source scope and external ID. This uses the existing media primary key rather than
+introducing another provider database. The plugin stores its external mapping and
+returned host ID. Source scope must distinguish server/account namespaces. Names
+and category changes do not alter this ID. Identical titles remain distinct.
+Upserts serialize by identity using a transaction advisory lock.
+
+A successful response returns `id`, `created`, `status`, `revision`. Revision is a
+SHA-256 digest of actual watch status, episode flags and season counts. An existing
+item requires its last returned revision. Local watch changes return
+`conflict=local_watch_state_changed` and the current revision, without mutation.
+A plugin may use that revision only after explicit user resolution. Local deletion
+returns `locally_deleted`; a category change returns `category_changed` instead of
+creating another record or dropping local notes/references. Do not silently adopt
+unrelated existing records by title. Locked metadata, notes, ratings, favorites
+and rewatch history remain protected. Legacy `media.import` remains available.
+
+Films map played to WATCHED; unwatched positions imply IN_PROGRESS, otherwise
+WATCHLIST. Episodic media writes real episode flags and derives season counters.
+Completion requires an explicitly finalized, nonempty complete inventory with
+all episodes watched. Until finalization, a partial watched inventory is
+IN_PROGRESS. A root object's existence or played flag does not complete a series.
+Episode removal is explicit and bounded; it retains unrelated local fields.
+
+### Optional provider enrichment
+
+Adding `sync_mode: "enrich"` selects an additive contract on `media.sync`; omitting
+it retains the original deterministic-identity behavior. It adds `provider_ids`
+(32 bounded lowercase namespaces), `release_year`, `auto_merge`, `merge_title_year`,
+owned `target_id`, `force_watch`, `available`, and `availability_only`. Only known
+identity providers match: collection identifiers never identify a film. Anime
+TMDB identities distinguish `tmdb.movie` from `tmdb.tv`. A unique provider-ID or
+exact trimmed case-insensitive title/year match can enrich an existing record;
+ambiguous, contradictory or incomplete matches return owned candidates for review.
+Once accepted, the host retains the provider link across renames and replays.
+
+`metadata` permits at most 32 JSON keys and 64 KiB. Supported native fields include
+descriptions, credits, dates, studios, countries, languages, tags, age rating and
+backdrops; extra JSON remains provider metadata. Artwork has at most eight
+credential-free HTTP(S) URLs. Personal ratings fill absent values only. Notes,
+locked fields and local ratings survive. `playback` holds bounded position/runtime
+ticks, percentage, play count and last-played Unix timestamp. `episode_progress`
+holds at most 100 such records keyed by remote episode ID per request. `history`
+holds at most 100 stable event IDs, played timestamps, optional episode identities
+and durations, with `reported_session` or `observed_last_played` provenance.
+Counts alone must never be presented as individual sessions.
+
+Domain changes, links, snapshots and sessions commit together under a user-scoped
+transaction lock. Repeated requests do not duplicate records or events. Metadata
+refreshes preserve local watch edits; a later conflicting remote watch change
+requires review and an explicit `force_watch` decision. Episode mappings retain
+native IDs across provider renumbering. Other accepted provider snapshots contribute
+watched flags without treating provider updates as local edits. `availability_only`
+updates an existing owned link without altering native records or watch history.
+
+The authenticated native `/api/media/provider-state` endpoint exposes owned provider
+snapshots and viewing history with `media_type`, `media_id`, `offset`, `limit`
+(maximum 100) and `has_more`; another user's media returns 404. Plugins still use
+the gateway and their granted media capability, never this database directly.
+
+### Background consent and lifecycle
+
+Subscriptions are runtime-owned records in a protected `host/tasks/` storage
+namespace. Plugin storage operations cannot read/write those records or list their
+keys. Registration gets identity from the authenticated action context, not a
+payload-supplied user ID. Delegated work uses the existing private HTTP bridge,
+then the public gateway checks the target's media grant. Unsubscribed targets,
+revoked grants, arbitrary methods, and nested delegation are rejected. Normal
+reinstall/update/rollback retains subscription/storage state; purge/uninstall
+removes it through the existing lifecycle. Installing a different plugin never
+inherits another plugin's subscriptions.
+
+`tasks.request` payload is `{user_id, method: "media.sync", capability:
+"media.write", payload: <media DTO>}`. A background grant does not grant media
+access or authorize arbitrary impersonation. The target needs both grants.
+`notifications.send`/`notifications.send` is the other reviewed delegation pair;
+optional notification denial must not break sync. No other methods can be delegated.
+
+### Outbound JSON
+
+`network.request` accepts `{url, headers?, method?: "GET"|"POST", body?: object}`. It uses
+normal TLS verification, an 8-second timeout, no redirects and a 4 MiB response
+limit. URLs cannot contain embedded credentials or fragments. Header names are
+restricted to Accept, Authorization and X-Emby-Token; count/length and CRLF bounds
+are enforced. The generic transport treats those headers as opaque strings and
+contains no provider behavior. POST JSON bodies are bounded to 64 KiB; other methods
+and non-object bodies are rejected. Responses preserve successful HTTP status and
+return `{status, data: <object/array/boolean>}`
+or a safe `{status, error}` for HTTP/connection failures. Malformed/oversized JSON
+is rejected. No arbitrary response headers/bodies are returned on errors.
+Numeric Retry-After is returned only as bounded `retry_after_seconds` (maximum
+3600). Untrusted TLS certificates return `code: "certificate_untrusted"`; the host
+must trust the CA before connection. The transport never offers a TLS bypass.
+
+Network grants remain explicit, high-risk egress authorization; the administrator
+chooses appropriate destinations. This operation enables isolated workers to use
+HTTP without changing their sandbox policy. It does not proxy playback.
+
+### Existing media actions
+
+Use `frontend.page.extend` with `media.detail.after-header` and an authenticated
+`frontend.context.media` action. The existing `external_navigation` action flag
+now also applies to contextual buttons: a `redirect_url` is accepted only when
+that flag is declared and the target is credential-free HTTP(S). Failed actions
+show an unavailable/error message. Native plugins can render normal HTTP links.
+Native contributions remount when the authenticated resource context changes, preventing a previous media item's action destination from remaining visible. There is no provider-specific button or media action in core.
+
+Native activation context includes the installed `version` and the existing safe
+Vue helpers plus `onBeforeUnmount`, allowing component polling to stop on navigation
+as well as plugin-level `onCleanup`. Privileged native frontend consent still applies.
