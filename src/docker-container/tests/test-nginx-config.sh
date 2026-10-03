@@ -11,10 +11,48 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
   -keyout "$work/tls/key.pem" -out "$work/tls/cert.pem" \
   -subj "/CN=localhost" >/dev/null 2>&1
 
-rendered="$work/http.conf"
-cp "$base" "$rendered"
-! grep -q 'listen 443 ssl;' "$rendered"
+rendered="$work/http-defaults.conf"
+"$render" /etc/nginx/ready.conf "$rendered"
+grep -q 'real_ip_header X-Forwarded-For;' "$rendered"
+grep -q 'real_ip_recursive on;' "$rendered"
+grep -q 'set_real_ip_from 10.0.0.0/8;' "$rendered"
+grep -q 'set_real_ip_from 100.64.0.0/10;' "$rendered"
+grep -q 'set_real_ip_from fc00::/7;' "$rendered"
+grep -q 'set_real_ip_from 173.245.48.0/20;' "$rendered"
+grep -q 'set_real_ip_from 2606:4700::/32;' "$rendered"
 nginx -t -c "$rendered"
+
+rendered="$work/http.conf"
+NGINX_REALIP_TRUSTED_PROXIES="10.0.0.0/8 192.0.2.0/24" "$render" /etc/nginx/ready.conf "$rendered"
+! grep -q 'listen 443 ssl;' "$rendered"
+grep -q 'real_ip_header X-Forwarded-For;' "$rendered"
+grep -q 'real_ip_recursive on;' "$rendered"
+grep -q 'set_real_ip_from 10.0.0.0/8;' "$rendered"
+grep -q 'set_real_ip_from 192.0.2.0/24;' "$rendered"
+if grep -q 'set_real_ip_from 127.0.0.0/8;' "$rendered"; then
+  echo "default realip trust leaked into an explicit override" >&2
+  exit 1
+fi
+nginx -t -c "$rendered"
+
+NGINX_REALIP_HEADER=CF-Connecting-IP NGINX_REALIP_TRUSTED_PROXIES="" "$render" /etc/nginx/ready.conf "$work/realip-disabled.conf"
+grep -q 'real_ip_header CF-Connecting-IP;' "$work/realip-disabled.conf"
+grep -q 'real_ip_recursive on;' "$work/realip-disabled.conf"
+if grep -q 'set_real_ip_from ' "$work/realip-disabled.conf"; then
+  echo "empty trusted-proxy override unexpectedly rendered a trusted source" >&2
+  exit 1
+fi
+nginx -t -c "$work/realip-disabled.conf"
+
+if NGINX_REALIP_HEADER='bad;include /tmp/evil;' "$render" /etc/nginx/ready.conf "$work/invalid-realip-header.conf"; then
+  echo "invalid realip header unexpectedly succeeded" >&2
+  exit 1
+fi
+
+if NGINX_REALIP_TRUSTED_PROXIES='10.0.0.0/8;include /tmp/evil;' "$render" /etc/nginx/ready.conf "$work/invalid-realip-proxies.conf"; then
+  echo "invalid realip proxy list unexpectedly succeeded" >&2
+  exit 1
+fi
 
 rendered="$work/https.conf"
 NGINX_TLS_ENABLED=true NGINX_TLS_CERTIFICATE="$work/tls/cert.pem" NGINX_TLS_PRIVATE_KEY="$work/tls/key.pem" "$render" /etc/nginx/readytls.conf "$rendered"

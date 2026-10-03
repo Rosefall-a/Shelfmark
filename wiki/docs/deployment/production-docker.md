@@ -63,6 +63,31 @@ When enabled, publish container port 443 and mount the certificate directory rea
 
 If TLS is enabled but the certificate/key is missing, unreadable, malformed, or mismatched, Nginx validation fails and startup reports a frontend/configuration failure. Because the startup configuration remains HTTP-only until the production handoff, the diagnostic page remains reachable during this failure.
 
+## Client IPs behind reverse proxies
+
+Production Nginx restores the originating client address when the request comes through a trusted reverse proxy. The default configuration uses `X-Forwarded-For` with recursive real-IP processing. Nginx only accepts the forwarded address when the immediate peer is in the trusted-proxy set; with recursive processing enabled it selects the last non-trusted address in the forwarded chain. This prevents an arbitrary direct client from making a forwarded header authoritative. See the [NGINX real-IP module documentation](https://nginx.org/en/docs/http/ngx_http_realip_module.html).
+
+The built-in trusted set covers common container/proxy topologies:
+
+- IPv4 loopback
+- RFC1918 private IPv4 ranges
+- IPv4 link-local
+- CGNAT (`100.64.0.0/10`)
+- IPv6 loopback, ULA, and link-local
+- Cloudflare's published IPv4 and IPv6 proxy ranges
+
+This makes the production container work out of the box when it is directly behind a local/private reverse proxy or Cloudflare. The default list is not a blanket trust of every Internet address.
+
+The defaults can be completely replaced through environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NGINX_REALIP_HEADER` | `X-Forwarded-For` | Request header Nginx uses as the source of the client address. For Cloudflare-specific deployments, `CF-Connecting-IP` can be used. |
+| `NGINX_REALIP_TRUSTED_PROXIES` | Built-in local/CGNAT/Cloudflare ranges | Space-separated addresses/CIDRs that are allowed to supply the configured real-IP header. Setting this variable replaces the built-in list completely. |
+| `NGINX_REALIP_TRUSTED_PROXIES` = empty | Empty trust list | Explicitly disables trusted real-IP sources. |
+
+For a deployment behind a known proxy/load-balancer network, set `NGINX_REALIP_TRUSTED_PROXIES` to only the ranges that can actually reach the container. Do not use a blanket public range merely to make forwarded client addresses appear correct.
+
 ## Logs and operations
 
 Startup details and backend startup output are stored under the ephemeral runtime status directory. Nginx logs remain container-local unless exported by the runtime. Operators should use the container logging driver or a centralized collector for durable retention and rotation.
