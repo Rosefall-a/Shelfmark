@@ -107,9 +107,9 @@ jobs:
       - name: Test the official Jellyfin preview when supplied by the companion ref
         run: |
           if [ -f .integration-plugins/tools/check_jellyfin_official_lifecycle.py ]; then
-            python .integration-plugins/tools/check_jellyfin_official_lifecycle.py \
-              --host-root "$GITHUB_WORKSPACE" \
-              --work-root "${{ runner.temp }}/jellyfin-official-acceptance" --browser
+            bash tools/run_strict_plugin_acceptance.sh "$GITHUB_WORKSPACE" \
+              "$GITHUB_WORKSPACE/.integration-plugins" \
+              "${{ runner.temp }}/jellyfin-official-acceptance"
           fi
       - name: Verify official PWA signing and real browser lifecycle
         run: |
