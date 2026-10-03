@@ -32,6 +32,16 @@ The Compose deployment persists `./data:/data` and PostgreSQL’s named volume. 
 
 The production configuration keeps the startup diagnostics available after readiness. API requests are proxied to FastAPI with Host, client-address, forwarded-for, and forwarded-protocol headers. Proxy timeouts are bounded.
 
+### Restoring the real client IP
+
+Production Nginx enables the ngx_http_realip_module by default. X-Forwarded-For is used recursively, but only when the immediate proxy address belongs to the trusted-proxy set. The default set includes loopback, RFC1918 private networks, IPv4 link-local, CGNAT, IPv6 loopback/ULA/link-local, and Cloudflare's published proxy ranges. Nginx's real-IP module only trusts addresses explicitly listed with set_real_ip_from; recursive processing selects the last non-trusted address in the forwarded chain. See the NGINX real-IP documentation at https://nginx.org/en/docs/http/ngx_http_realip_module.html and Cloudflare's published IP ranges at https://www.cloudflare.com/ips/.
+
+Set NGINX_REALIP_HEADER to use a different header, such as CF-Connecting-IP for a deployment that wants Cloudflare's single-value client-IP header.
+
+NGINX_REALIP_TRUSTED_PROXIES is a space-separated list of addresses/CIDRs. If the variable is set, it completely replaces the built-in default list; setting it to an empty value disables trusted real-IP sources. This is useful when the container is behind a different proxy/load-balancer topology or when the operator wants a deliberately narrower trust boundary.
+
+Only trusted proxy source addresses can cause the configured header to replace Nginx's client address. Do not add public or untrusted networks to the override merely to make forwarded IPs appear correct.
+
 Nginx hides its version and emits security headers for the production frontend/HTTPS edge. HSTS is emitted only by the HTTPS server.
 
 ## Optional embedded HTTPS/TLS
