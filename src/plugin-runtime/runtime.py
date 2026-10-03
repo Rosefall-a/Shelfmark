@@ -1458,6 +1458,7 @@ class PluginRegistry:
                 if isinstance(p.get("capability"), dict)
             ],
             "backend_routes": self._backend_routes(data),
+            "pwa": data.get("pwa"),
             "dependencies": [
                 dependency
                 for dependency in data.get("dependencies", [])
@@ -2104,6 +2105,28 @@ class PluginRegistry:
             raise RuntimePolicyError("plugin frontend asset exceeds 4 MiB")
         return {"path": relative, "content": base64.b64encode(data).decode("ascii")}
 
+    def pwa_asset(self, plugin_id: str, relative: str) -> dict[str, Any]:
+        """Serve only declared inert PWA assets after the host grants site-wide use."""
+        self._require_active(plugin_id)
+        package, manifest = self.package(plugin_id)
+        declaration = manifest.get("pwa")
+        if not isinstance(declaration, dict):
+            raise KeyError(relative)
+        allowed = {declaration.get("manifest", "pwa/manifest.webmanifest"),
+                   *declaration.get("icons", ["pwa/icon-192.png", "pwa/icon-512.png"])}
+        if relative not in allowed or relative not in {
+            "pwa/manifest.webmanifest", "pwa/icon-192.png", "pwa/icon-512.png"
+        }:
+            raise RuntimePolicyError("PWA asset is not declared")
+        path = package / relative
+        try:
+            path.resolve(strict=True).relative_to(package.resolve())
+        except (OSError, ValueError) as exc:
+            raise RuntimePolicyError("PWA asset escapes the package") from exc
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > 256 * 1024:
+            raise RuntimePolicyError("PWA asset is missing or exceeds 256 KiB")
+        return {"path": relative, "content": base64.b64encode(path.read_bytes()).decode("ascii")}
+
     def ui(self, plugin_id: str) -> dict[str, Any]:
         package, manifest = self.package(plugin_id)
         ui_path = package / "ui.json"
@@ -2602,6 +2625,8 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 self._json(200, {"healthy": self.server.registry.health(parts[1])})  # type: ignore[attr-defined]
             elif len(parts) == 3 and parts[0] == "plugins" and parts[2] == "logs":
                 self._json(200, self.server.registry.diagnostics(parts[1]))  # type: ignore[attr-defined]
+            elif len(parts) >= 4 and parts[0] == "plugins" and parts[2] == "pwa":
+                self._json(200, self.server.registry.pwa_asset(parts[1], "/".join(parts[3:])))
             elif len(parts) >= 3 and parts[0] == "plugins" and parts[2] == "frontend":
                 relative = "/".join(parts[3:])
                 self._json(200, self.server.registry.frontend(parts[1], relative))  # type: ignore[attr-defined]

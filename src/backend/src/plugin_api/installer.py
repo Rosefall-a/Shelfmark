@@ -80,6 +80,7 @@ class PackageTrust:
     publisher_key_id: str | None
     publisher_identity: str | None
     warning: str | None
+    publisher_channel: str = "unverified"
 
     @property
     def installable(self) -> bool:
@@ -174,13 +175,13 @@ def inspect_package(
     # A signature's encoding/length is verifiable even without a publisher key.
     try:
         assert integrity.signature is not None
-        signature_bytes = base64.b64decode(integrity.signature, validate=True)
+        signature_bytes = base64.b64decode(integrity.signature.removeprefix("v2:"), validate=True)
         if len(signature_bytes) != 64:
             raise ValueError("invalid Ed25519 signature length")
         publisher: TrustedPublisher | None = verifier.publishers.get(key_id)
         if publisher is not None:
             publisher.verifier().verify(
-                signature_bytes, verifier.SIGNING_PREFIX + candidate.payload_digest.encode("ascii")
+                signature_bytes, f"plugin-package-v{candidate.signing_version}:{candidate.payload_digest}".encode("ascii")
             )
     except (ValueError, binascii.Error, InvalidSignature, PackageVerificationError):
         return InspectedPackage(
@@ -219,6 +220,7 @@ def inspect_package(
             publisher_key_id=key_id,
             publisher_identity=publisher.publisher or None,
             warning=None,
+            publisher_channel=publisher.channel if candidate.signing_version == 2 or publisher.channel != "official" else "community",
         ),
     )
 
@@ -768,6 +770,8 @@ class PluginInstaller:
                     "signature_verified": trust.signature_verified,
                     "publisher_key_id": trust.publisher_key_id,
                     "publisher_identity": trust.publisher_identity,
+                    "publisher_channel": trust.publisher_channel,
+                    "signing_version": plan.inspected.package.signing_version,
                 },
             }
             if replacing:

@@ -15,6 +15,7 @@ import {
 import PluginExtensionSlot from "./components/plugins/PluginExtensionSlot.vue";
 import PluginOverlayHost from "./components/plugins/PluginOverlayHost.vue";
 import { fetchCurrentUser } from "./services/auth";
+import PwaStatus from "./components/PwaStatus.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -67,6 +68,7 @@ const KEPT_ALIVE = [
 </script>
 
 <template>
+  <PwaStatus />
   <!-- First-run setup and the direct OIDC entrypoint deliberately bypass
        normal authentication, so both must render while authChecked is false. -->
   <template

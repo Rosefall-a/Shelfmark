@@ -64,12 +64,23 @@ def load_trusted_publishers(path: Path | None = None) -> dict[str, TrustedPublis
             ) from exc
         if len(public_key) != 32 or hashlib.sha256(public_key).hexdigest() != digest:
             raise PublisherTrustError("publisher trust registry public-key digest does not match")
+        if entry.get("channel", "community") not in {"official", "demo", "community"}:
+            raise PublisherTrustError("invalid publisher channel")
+        legacy = entry.get("legacy_manifest_hashes", {})
+        if not isinstance(legacy, dict) or len(legacy) > 2048 or any(
+            not re.fullmatch(r"[a-f0-9]{64}", key) or not isinstance(value, list) or not value or len(value) > 128
+            or any(not isinstance(pin, str) or not re.fullmatch(r"[a-f0-9]{64}", pin) for pin in value) for key, value in legacy.items()
+        ):
+            raise PublisherTrustError("invalid legacy manifest review pins")
         publishers[key_id] = TrustedPublisher(
             key_id=key_id,
             public_key=public_key,
             publisher=str(entry.get("publisher", "")),
             status=status,
             plugin_id_prefixes=tuple(scopes),
+            channel=entry.get("channel", "community"),
+            legacy_manifest_hashes=legacy,
+            require_manifest_binding=True,
         )
     if not publishers:
         raise PublisherTrustError("publisher trust registry must contain at least one publisher")

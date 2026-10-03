@@ -1096,6 +1096,20 @@ onMounted(() => {
         </p>
         <dl>
           <div>
+            <dt>Publisher trust</dt>
+            <dd>
+              {{
+                plugin.trust?.status === "trusted"
+                  ? plugin.trust?.publisher_channel === "official"
+                    ? "Official · verified"
+                    : plugin.trust?.publisher_channel === "demo"
+                      ? "Demo/example · verified"
+                      : "Community · verified"
+                  : (plugin.trust?.status ?? "Unverified")
+              }}
+            </dd>
+          </div>
+          <div>
             <dt>Health</dt>
             <dd>{{ plugin.health }}</dd>
           </div>

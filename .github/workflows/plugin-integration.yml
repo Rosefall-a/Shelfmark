@@ -2,7 +2,7 @@ name: Plugin repository integration
 
 on:
   push:
-    branches: [plugin-manager, 'fix/plugin-*']
+    branches: [plugin-manager, 'fix/plugin-*', 'feat/official-pwa-*']
   pull_request:
     branches: [plugin-manager]
   workflow_dispatch:
@@ -99,6 +99,10 @@ jobs:
           python tools/check_plugin_repository_lifecycle.py \
             --plugins-root .integration-plugins \
             --work-root "${{ runner.temp }}/plugin-acceptance" --browser
+      - name: Verify official PWA signing and real browser lifecycle
+        run: |
+          python tools/check_pwa_lifecycle.py --plugins-root .integration-plugins \
+            --work-root "${{ runner.temp }}/pwa-acceptance"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,4 +111,7 @@ jobs:
             ${{ runner.temp }}/plugin-acceptance/*.log
             ${{ runner.temp }}/plugin-acceptance/**/*.png
             ${{ runner.temp }}/plugin-acceptance/conformance.json
+            ${{ runner.temp }}/pwa-acceptance/*.log
+            ${{ runner.temp }}/pwa-acceptance/*.png
+            ${{ runner.temp }}/pwa-acceptance/pwa-conformance.json
           if-no-files-found: warn
