@@ -111,6 +111,7 @@ _CRITICAL = frozenset(
     {
         Capability.FULL_API,
         Capability.FRONTEND_NATIVE,
+        Capability.FRONTEND_PWA,
         Capability.BACKEND_ROUTES_HOST,
     }
 )
@@ -185,7 +186,7 @@ def capability_definition(capability: Capability | str) -> CapabilityDefinition:
     return CapabilityDefinition(
         capability=resolved,
         category=_category(resolved),
-        title=_title(resolved),
+        title=("Installable web application (site-wide)" if resolved is Capability.FRONTEND_PWA else _title(resolved)),
         parent=_PARENTS.get(resolved),
         risk=risk,
         highly_privileged=resolved in _CRITICAL,

@@ -100,7 +100,12 @@ const canInstall = computed(() => {
 const trustLabel = computed(
   () =>
     ({
-      trusted: "Signed · trusted publisher",
+      trusted:
+        props.preview.publisher_channel === "official"
+          ? "Official · verified signature"
+          : props.preview.publisher_channel === "demo"
+            ? "Demo/example · verified signature"
+            : "Signed · trusted community publisher",
       unknown_publisher: "Signed · unknown publisher key",
       invalid_signature: "Signed · invalid signature",
       unsigned: "Unsigned package",

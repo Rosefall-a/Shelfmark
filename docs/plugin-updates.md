@@ -19,7 +19,16 @@ Packages are integrity-checked before staging. Production verification requires 
 
 Signatures use Ed25519 and cover:
 
-`plugin-package-v1:<sha256>`
+`plugin-package-v2:<sha256>`
+
+New signatures have a `v2:` prefix and include `package-signature-v2.json` in the
+payload. This envelope binds the complete manifest without integrity and the key
+ID; the verifier compares it with the outer manifest before any consent or
+execution. Historical v1 signatures remain supported only when their exact
+manifest hashes are reviewed in the deployed registry's `legacy_manifest_hashes`
+lists. New PWA contributions require v2 when signed. A valid signature alone does
+not establish Official status: that requires a reviewed official publisher channel
+and v2 verification; demo, community, unknown and unsigned states remain distinct.
 
 The manifest supplies a publisher `key_id`; keys in the reviewed publisher trust registry can establish verified publisher identity. The host's bundled registry is a bootstrap policy. Deployments may supply a reviewed replacement file through `PLUGIN_TRUSTED_PUBLISHER_REGISTRY`; raw key/value environment entries are not accepted. Each record binds a key to a publisher, status and permitted plugin-ID prefixes. Active and retiring keys verify existing packages during a planned overlap. Invalid signatures are rejected. Unsigned, unknown-key, revoked-key, and out-of-scope packages remain explicitly unverified and require administrator consent; dangerous grants additionally require password reauthentication.
 

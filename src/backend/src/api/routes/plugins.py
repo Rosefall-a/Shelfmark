@@ -549,6 +549,8 @@ def _install_preview(
         "version": manifest.version,
         "publisher": trust.publisher_identity,
         "publisher_key_id": trust.publisher_key_id,
+        "publisher_channel": trust.publisher_channel,
+        "signing_version": inspected.package.signing_version,
         "digest": manifest.integrity.sha256,
         "trust_status": trust.status.value,
         "trust_warning": trust.warning,

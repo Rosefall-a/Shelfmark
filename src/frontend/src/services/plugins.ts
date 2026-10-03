@@ -102,6 +102,8 @@ export interface PluginInstallPreview {
   trust_warning: string | null;
   signature_present: boolean;
   signature_verified: boolean;
+  publisher_channel?: "official" | "demo" | "community" | "unverified";
+  signing_version?: number;
   installable: boolean;
   sdk_version_range: string;
   application_version_range: string;
