@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.database.models.movies import MovieStatus
+from src.api.schemas.provider_identity import ProviderIDs
 
 
 class MovieBase(BaseModel):
@@ -25,6 +26,7 @@ class MovieBase(BaseModel):
     age_rating: str | None = Field(default=None, max_length=20)
     tmdb_score: Decimal | None = Field(default=None, ge=0, le=10)
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIDs = Field(default_factory=dict)
     poster_url: str | None = None
     backdrop_url: str | None = None
 
@@ -52,6 +54,8 @@ class MovieCreate(MovieBase):
 
 class MovieUpdate(BaseModel):
     """Payload for partial updates — every field optional."""
+
+    provider_ids: ProviderIDs = Field(default_factory=dict)
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     sort_title: str | None = Field(default=None, max_length=500)

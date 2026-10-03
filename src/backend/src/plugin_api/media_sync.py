@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -53,6 +54,17 @@ class MediaSyncInput(BaseModel):
     inventory_complete: bool = False
 
 
+@dataclass
+class ResolvedSync:
+    """Host-owned options after identity resolution, never accepted as JSON input."""
+
+    identity: UUID | None = None
+    enrich: bool = False
+    update_watch: bool = True
+    commit: bool = True
+    episode_ids: dict[str, UUID] = field(default_factory=dict)
+
+
 def media_identity(plugin_id: str, user_id: UUID, item: MediaSyncInput) -> UUID:
     """Resolve stable identity without title matching or a parallel mapping table."""
     return uuid5(
@@ -91,11 +103,19 @@ def watch_revision(item: Any, kind: str) -> str:
 
 
 async def dispatch_media_sync(
-    db: AsyncSession, *, plugin_id: str, user_id: UUID, payload: dict[str, Any]
+    db: AsyncSession,
+    *,
+    plugin_id: str,
+    user_id: UUID,
+    payload: dict[str, Any],
+    options: ResolvedSync | None = None,
 ) -> dict[str, Any]:
     """Upsert only the caller's media and reject stale watch-state revisions."""
     item = MediaSyncInput.model_validate(payload)
-    identity = media_identity(plugin_id, user_id, item)
+    options = options or ResolvedSync()
+    enrich, update_watch, commit = options.enrich, options.update_watch, options.commit
+    episode_ids = options.episode_ids
+    identity = options.identity or media_identity(plugin_id, user_id, item)
     # These independent SQLAlchemy media tables expose the same domain fields;
     # validated media_type selects their concrete model/status/episode classes.
     models: dict[str, tuple[Any, Any, Any, Any]] = {
@@ -136,7 +156,7 @@ async def dispatch_media_sync(
         db.add(media)
     elif media.deleted_at is not None:
         return {"id": str(identity), "conflict": "locally_deleted"}
-    elif item.expected_revision != watch_revision(media, item.media_type):
+    elif update_watch and item.expected_revision != watch_revision(media, item.media_type):
         return {
             "id": str(identity),
             "conflict": "local_watch_state_changed",
@@ -148,18 +168,23 @@ async def dispatch_media_sync(
         ("genres", item.genres),
         ("poster_url", item.poster_url),
     ):
-        if field not in (media.locked_fields or []):
+        if field not in (media.locked_fields or []) and (not enrich or value):
+            if enrich and field == "genres":
+                value = list(dict.fromkeys([*(media.genres or []), *item.genres]))
             setattr(media, field, value)
     if item.media_type == "movie":
-        if "runtime_minutes" not in (media.locked_fields or []):
+        if "runtime_minutes" not in (media.locked_fields or []) and (
+            not enrich or item.runtime_minutes is not None
+        ):
             media.runtime_minutes = item.runtime_minutes
-        media.status = (
-            status_type.WATCHED
-            if item.played
-            else status_type.IN_PROGRESS
-            if item.in_progress
-            else status_type.WATCHLIST
-        )
+        if update_watch:
+            media.status = (
+                status_type.WATCHED
+                if item.played
+                else status_type.IN_PROGRESS
+                if item.in_progress
+                else status_type.WATCHLIST
+            )
     else:
         for remote in item.episodes:
             season = next((s for s in media.seasons if s.season_number == remote.season), None)
@@ -173,7 +198,9 @@ async def dispatch_media_sync(
                 )
                 season.episodes = []
                 media.seasons.append(season)
-            episode_id = uuid5(identity, f"episode:{remote.external_id}")
+            episode_id = (episode_ids or {}).get(remote.external_id) or uuid5(
+                identity, f"episode:{remote.external_id}"
+            )
             episode = next(
                 (e for s in media.seasons for e in s.episodes if e.id == episode_id), None
             )
@@ -185,6 +212,9 @@ async def dispatch_media_sync(
                 ),
                 None,
             )
+            if enrich and episode is None and occupied is not None:
+                episode = occupied
+                occupied = None
             if not remote.removed and occupied is not None:
                 raise ValueError("episode number conflicts with another external identity")
             if episode is not None:
@@ -204,8 +234,11 @@ async def dispatch_media_sync(
                         episode_number=remote.number,
                     )
                     season.episodes.append(episode)
-                episode.title, episode.watched = remote.title, remote.watched
-        for season in media.seasons:
+                if remote.title or not enrich:
+                    episode.title = remote.title
+                if update_watch or episode.watched is None:
+                    episode.watched = remote.watched
+        for season in media.seasons if update_watch else []:
             season.episode_count = len(season.episodes)
             season.episodes_watched = sum(e.watched for e in season.episodes)
             season.status = (
@@ -218,13 +251,14 @@ async def dispatch_media_sync(
                 else status_type.WATCHLIST
             )
         episodes = [e for s in media.seasons for e in s.episodes]
-        media.status = (
-            status_type.WATCHED
-            if item.inventory_complete and episodes and all(e.watched for e in episodes)
-            else status_type.IN_PROGRESS
-            if any(e.watched for e in episodes) or item.in_progress
-            else status_type.WATCHLIST
-        )
+        if update_watch:
+            media.status = (
+                status_type.WATCHED
+                if item.inventory_complete and episodes and all(e.watched for e in episodes)
+                else status_type.IN_PROGRESS
+                if any(e.watched for e in episodes) or item.in_progress
+                else status_type.WATCHLIST
+            )
     await db.flush()
     result = {
         "id": str(identity),
@@ -232,5 +266,6 @@ async def dispatch_media_sync(
         "revision": watch_revision(media, item.media_type),
         "status": media.status.value,
     }
-    await db.commit()
+    if commit:
+        await db.commit()
     return result
