@@ -24,6 +24,7 @@ import zipfile
 import zlib
 from collections import deque
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +44,9 @@ except ImportError:  # pragma: no cover - Windows development/test fallback
 
 _PLUGIN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _ENTRYPOINT = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
+# Linux parent-death signals follow the spawning thread. HTTP request threads
+# end after their response, while supervised workers must live until shutdown.
+_WORKER_LAUNCHER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="plugin-launcher")
 _RESERVED_ENV = {
     "DATABASE_URL",
     "SECRET_KEY",
@@ -438,7 +442,9 @@ class PluginSupervisor:
             if storage.get("host/tasks/" + target) is None:
                 raise RuntimePolicyError("user has not subscribed to this plugin's background tasks")
             # A reviewed, bounded operation with its own live target-user grant.
-            if payload.get("method") != "media.sync" or payload.get("capability") != "media.write":
+            operations = {"media.sync": "media.write", "notifications.send": "notifications.send"}
+            if (payload.get("method") not in operations
+                    or operations[payload["method"]] != payload.get("capability")):
                 raise RuntimePolicyError("unsupported background operation")
             self._authorize_capability(plugin_id, "tasks.background", user_id=target,
                                        request_id=request["request_id"])
@@ -665,6 +671,9 @@ class PluginSupervisor:
             "--ro-bind",
             "/lib",
             "/lib",
+            # The ELF interpreter can live here even when /lib is mounted.
+            # Debian-based Python images use /lib64/ld-linux-x86-64.so.2.
+            *(["--ro-bind", "/lib64", "/lib64"] if Path("/lib64").exists() else []),
             "--ro-bind",
             "/etc",
             "/etc",
@@ -729,7 +738,8 @@ class PluginSupervisor:
                     )
                 except (OSError, ValueError):
                     self._package_manifests[spec.plugin_id] = {}
-                process = subprocess.Popen(
+                process = _WORKER_LAUNCHER.submit(
+                    subprocess.Popen,
                     self._sandbox_command(spec, workdir, package_dir),
                     cwd=package_dir if self._nonbubble_enabled() else workdir,
                     env=environment
@@ -744,7 +754,7 @@ class PluginSupervisor:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     preexec_fn=lambda: self._limits(spec.resources),
-                )
+                ).result()
             except Exception:
                 self._package_paths.pop(spec.plugin_id, None)
                 self._package_manifests.pop(spec.plugin_id, None)

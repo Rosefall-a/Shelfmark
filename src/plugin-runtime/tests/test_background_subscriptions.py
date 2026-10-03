@@ -83,3 +83,18 @@ def test_subscription_does_not_allow_arbitrary_operations_and_checks_target_gran
             "tasks.request",
             {"user_id": user, "method": "media.sync", "capability": "media.write"},
         )
+
+
+def test_notification_delegation_checks_target_permission_and_rejects_wrong_capability(supervisor, monkeypatch):
+    user = str(uuid4())
+    dispatch(supervisor, "tasks.subscribe", user=user)
+    with pytest.raises(RuntimePolicyError, match="unsupported"):
+        dispatch(supervisor, "tasks.request", {"user_id": user, "method": "notifications.send", "capability": "media.write"})
+
+    def authorize(*_args, **kwargs):
+        if kwargs.get("user_id") == user:
+            raise RuntimePolicyError("notification target grant revoked")
+
+    monkeypatch.setattr(supervisor, "_authorize_capability", authorize)
+    with pytest.raises(RuntimePolicyError, match="revoked"):
+        dispatch(supervisor, "tasks.request", {"user_id": user, "method": "notifications.send", "capability": "notifications.send"})
