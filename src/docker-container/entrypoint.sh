@@ -161,15 +161,11 @@ case "${NGINX_TLS_ENABLED:-false}" in
     ;;
 esac
 
-log "Activating $selected_config"
-if [ "$selected_config" = "/etc/nginx/ready.conf" ]; then
-  cp "$selected_config" /etc/nginx/nginx.conf
-else
-  render_output="$({ /usr/local/bin/render-production-nginx "$selected_config" /etc/nginx/nginx.conf; } 2>&1)" || {
-    printf '%s\n' "$render_output" >> "$DETAILS_FILE"
-    fail_startup "FRONTEND_FAILED" "Production Nginx/TLS configuration is invalid. See startup details." "ready" "ready" "ready" "failed"
-  }
-fi
+log "Rendering and activating $selected_config"
+render_output="$({ /usr/local/bin/render-production-nginx "$selected_config" /etc/nginx/nginx.conf; } 2>&1)" || {
+  printf '%s\n' "$render_output" >> "$DETAILS_FILE"
+  fail_startup "FRONTEND_FAILED" "Production Nginx configuration is invalid. See startup details." "ready" "ready" "ready" "failed"
+}
 
 log "Testing active Nginx configuration"
 nginx_output="$(nginx -t 2>&1)" || {
