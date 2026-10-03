@@ -47,40 +47,10 @@ const router = createRouter({
     { path: "/upload", redirect: "/settings?section=upload" },
     { path: "/inbox", redirect: "/settings?section=upload" },
     {
-      path: "/bounties",
-      name: "bounties",
-      meta: { title: "Bounties" },
-      component: () => import("../views/Bounties.vue"),
-    },
-    {
       path: "/games/:id",
       name: "game-detail",
       meta: { title: "Game" },
       component: () => import("../views/GameDetail.vue"),
-    },
-    {
-      path: "/cards",
-      name: "card-collection",
-      meta: { title: "Cards" },
-      component: () => import("../views/CardCollection.vue"),
-    },
-    {
-      path: "/cards/:cardId",
-      name: "card-detail",
-      meta: { title: "Card" },
-      component: () => import("../views/CardDetail.vue"),
-    },
-    {
-      path: "/sets",
-      name: "set-list",
-      meta: { title: "Sets" },
-      component: () => import("../views/SetList.vue"),
-    },
-    {
-      path: "/sets/:id",
-      name: "set-detail",
-      meta: { title: "Set" },
-      component: () => import("../views/SetDetail.vue"),
     },
     {
       path: "/movies",

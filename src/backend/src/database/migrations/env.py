@@ -15,9 +15,7 @@ from src.database.models import (
     anime,  # noqa: F401
     app_integration_settings,  # noqa: F401
     auth,  # noqa: F401
-    bounty,  # noqa: F401
     calendar_event,  # noqa: F401
-    card,  # noqa: F401
     game,  # noqa: F401
     game_archive,  # noqa: F401
     game_checklist_item,  # noqa: F401
@@ -39,7 +37,6 @@ from src.database.models import (
     user_preferences,  # noqa: F401
     user_scan_settings,  # noqa: F401
 )
-from src.database.models import set as set_model  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
