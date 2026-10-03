@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.schemas.pagination import PaginatedResponse
+from src.api.routes.media_extras import log_activity, status_change_detail
 from src.api.schemas.anime import (
     AnimeCreate,
     AnimeLibraryRead,
@@ -28,16 +28,17 @@ from src.api.schemas.anime import (
     SeasonCreate,
     SeasonUpdate,
 )
-from src.api.routes.media_extras import log_activity, status_change_detail
+from src.api.schemas.pagination import PaginatedResponse
 from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import get_current_user
 from src.core.integrations import resolve_integrations
 from src.core.titles import apply_alt_titles
-from src.features.metadata.anime.alt_titles import fill_missing_titles
 from src.database.models.anime import Anime, AnimeEpisode, AnimeSeason, AnimeStatus
 from src.database.models.media_extras import ActivityEventType
 from src.database.models.user import User
 from src.database.session import SessionLocal, get_db
+from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
+from src.features.metadata.anime.alt_titles import fill_missing_titles
 from src.features.metadata.anime.anilist import RELATIONS_CACHE_VERSION, AniListClient, AniListError
 from src.features.metadata.anime.episode_sync import (
     backfill_from_tmdb,
@@ -49,10 +50,9 @@ from src.features.metadata.anime.search import (
     get_anime_metadata_by_anilist_id,
     search_anime_metadata,
 )
-from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
 from src.features.metadata.locked_fields import apply_updates_with_locking
-from src.features.notifications import record_sequel_announcements
 from src.features.metadata.refresh import quick_check_anime_season, refresh_anime_season_now
+from src.features.notifications import record_sequel_announcements
 
 router = APIRouter(prefix="/api/anime", tags=["anime"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
@@ -164,8 +164,8 @@ async def import_anilist_library(
                 skipped += 1
                 continue
 
-            def parsed(key: str):
-                value = entry[key]
+            def parsed(key: str, source=entry):
+                value = source[key]
                 return date.fromisoformat(value) if value else None
 
             season: AnimeSeason | None = None

@@ -21,10 +21,10 @@ from src.core.auth import (
     validate_password,
 )
 from src.core.config import settings
+from src.core.config_registry import CONFIG_REGISTRY
 from src.core.crypto import encrypt_secret
 from src.core.env_handler import EnvConfigHandler
 from src.core.provider_credentials import apply_deployment_provider_credentials
-from src.core.config_registry import CONFIG_REGISTRY
 from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.models.auth import UserSession
 from src.database.models.game import Game

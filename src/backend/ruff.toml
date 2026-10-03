@@ -14,6 +14,16 @@ ignore = [
     "E501", # let black/ruff format handle line length
 ]
 
+[lint.flake8-bugbear]
+# FastAPI creates immutable parameter metadata at import time; these calls are
+# the framework's standard dependency/query declarations, not mutable defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.File",
+]
+
 [format]
 quote-style = "double"
 indent-style = "space"

@@ -10,8 +10,8 @@ from typing import Any, Callable, Literal
 
 from src.features.metadata.movies.omdb import OMDBClient
 from src.features.metadata.movies.tmdb import TMDBClient
-from src.features.metadata.tv.tvmaze import TVMazeClient
 from src.features.metadata.search_utils import format_provider_error, merge_search_result
+from src.features.metadata.tv.tvmaze import TVMazeClient
 
 # Reuses the TMDB/OMDb clients built for Movies (same API keys, same
 # deployment-wide AppIntegrationSettings) rather than duplicating a whole
@@ -158,7 +158,7 @@ def _looks_like_anime(result: dict[str, Any]) -> bool:
     if "animation" not in genres:
         return False
     countries = {str(c).lower() for c in result.get("countries") or []}
-    languages = {str(l).lower() for l in result.get("languages") or []}
+    languages = {str(language).lower() for language in result.get("languages") or []}
     return bool({"jp", "japan"} & countries or {"ja", "japanese"} & languages)
 
 

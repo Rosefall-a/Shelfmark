@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy import BigInteger, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,6 +22,21 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=time.time)
+    last_seen_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    geo_country: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geo_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    geo_network_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    geo_network_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_network_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    geo_network_organization: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    anomaly_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    anomaly_previous_location: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    revoked_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class UserApiKey(Base):

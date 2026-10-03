@@ -505,8 +505,7 @@ async def sync_steam_library(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Save your Steam ID and API key first."
         )
 
-    scan_settings = await get_or_create_scan_settings(current_user.id, db)
-    preferences = _scan_settings_to_preferences(scan_settings)
+    # scan_settings = await get_or_create_scan_settings(current_user.id, db) #not used currently
     app_integrations = resolve_integrations(await get_or_create_app_integration_settings(db))
     igdb_client_id = app_integrations.igdb_client_id
     igdb_client_secret = app_integrations.igdb_client_secret
@@ -664,7 +663,7 @@ async def sync_retroachievements_library(
     newly_created: list[Game] = []
     synced_titles: list[str] = []
     touched_ids: set[UUID] = set()
-    for entry, progress in zip(owned_games, progress_results):
+    for entry, progress in zip(owned_games, progress_results, strict=False):
         title = entry.get("Title")
         if not title:
             continue

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.routes.games import ALLOWED_ASSET_KINDS, _DATA_ROOT, _get_game_or_404
+from src.api.routes.games import _DATA_ROOT, ALLOWED_ASSET_KINDS, _get_game_or_404
 from src.core.auth import get_current_user
 from src.database.models.user import User
 from src.database.session import get_db

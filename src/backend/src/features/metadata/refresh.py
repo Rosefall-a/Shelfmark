@@ -28,6 +28,7 @@ from src.database.models.tv_show import TVEpisode, TVSeason, TVShow, TVShowStatu
 from src.database.session import SessionLocal
 from src.features.episode_progress import materialize_progress
 from src.features.metadata.anime.anilist import AniListClient, AniListError
+from src.features.metadata.anime.anizip import AniZipClient, AniZipError
 from src.features.metadata.anime.episode_sync import (
     backfill_from_tmdb,
     fetch_airing_status,
@@ -35,7 +36,6 @@ from src.features.metadata.anime.episode_sync import (
     needs_tmdb_backfill,
     pad_to_known_total,
 )
-from src.features.metadata.anime.anizip import AniZipClient, AniZipError
 from src.features.metadata.tv.episode_sync import (
     fetch_is_airing,
     fetch_next_episode,

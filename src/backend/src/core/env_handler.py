@@ -9,10 +9,10 @@ Secrets are represented only by a configured flag.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import os
 
 from dotenv import dotenv_values
 
@@ -357,7 +357,11 @@ class EnvConfigHandler:
         primary_names = ("PRIMARY_USER_USERNAME", "PRIMARY_USER_EMAIL", "PRIMARY_USER_PASSWORD")
         primary_present = [bool(str(values.get(name) or "").strip()) for name in primary_names]
         if any(primary_present) and not all(primary_present):
-            missing = [name for name, present in zip(primary_names, primary_present) if not present]
+            missing = [
+                name
+                for name, present in zip(primary_names, primary_present, strict=True)
+                if not present
+            ]
             issues.append(
                 ConfigIssue(
                     "primary_user",
@@ -372,7 +376,6 @@ class EnvConfigHandler:
         # considered deployment-managed OIDC configuration.
         oidc_names = ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
         if all(str(values.get(name) or "").strip() for name in oidc_names):
-            issuer = str(values.get("OIDC_ISSUER_URL") or "").strip()
             scopes = set(str(values.get("OIDC_SCOPES") or "").split())
             missing_scopes = {"openid", "profile", "email"} - scopes
             if missing_scopes:

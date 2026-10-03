@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.media_extras import log_activity, status_change_detail
 from src.api.schemas.pagination import PaginatedResponse
 from src.api.schemas.tv_show import (
     EpisodesBulkWatched,
@@ -27,7 +28,6 @@ from src.api.schemas.tv_show import (
     TVShowRead,
     TVShowUpdate,
 )
-from src.api.routes.media_extras import log_activity, status_change_detail
 from src.core.app_integrations import get_or_create_app_integration_settings
 from src.core.auth import get_current_user
 from src.core.integrations import resolve_integrations
@@ -37,12 +37,12 @@ from src.database.models.user import User
 from src.database.session import get_db
 from src.features.episode_progress import apply_counter, counter_from_flags, materialize_progress
 from src.features.metadata.locked_fields import apply_updates_with_locking
-from src.features.tv_seasons import check_in_background, is_due
 from src.features.metadata.movies.tmdb import TMDBClient
 from src.features.metadata.refresh import quick_check_tv_season
 from src.features.metadata.tv.episode_sync import fetch_season_episodes
 from src.features.metadata.tv.search import search_tv_metadata
 from src.features.metadata.tv.tvdb import TVDBClient
+from src.features.tv_seasons import check_in_background, is_due
 
 router = APIRouter(prefix="/api/tv", tags=["tv"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)

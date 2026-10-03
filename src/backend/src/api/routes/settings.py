@@ -25,6 +25,7 @@ from src.database.models.user import User
 from src.database.models.user_appearance_settings import UserAppearanceSettings
 from src.database.models.user_scan_settings import UserScanSettings
 from src.database.session import get_db
+from src.features.metadata import refresh_job
 from src.features.metadata.games import steam
 from src.features.metadata.games.giant_bomb import GiantBombClient, GiantBombError
 from src.features.metadata.games.gog import GOGClient, GOGError
@@ -35,7 +36,6 @@ from src.features.metadata.games.retroachievements import (
 from src.features.metadata.games.screenscraper import ScreenScraperClient, ScreenScraperError
 from src.features.metadata.games.steam import SteamLibraryError
 from src.features.metadata.games.xbox import XboxClient, XboxError
-from src.features.metadata import refresh_job
 from src.helpers.save_badge_image import badge_image_path, delete_badge_image, save_badge_image
 
 router = APIRouter(

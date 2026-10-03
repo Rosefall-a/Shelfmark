@@ -1,5 +1,5 @@
-from cryptography.fernet import Fernet
 import pytest
+from cryptography.fernet import Fernet
 
 from src.core.env_handler import EnvConfigHandler
 from src.core.fernet_key import persistent_fernet_key

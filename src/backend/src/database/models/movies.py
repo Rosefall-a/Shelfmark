@@ -10,13 +10,16 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
-    Enum as SAEnum,
     ForeignKey,
     Numeric,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base

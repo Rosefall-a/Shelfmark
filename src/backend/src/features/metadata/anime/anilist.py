@@ -1017,9 +1017,9 @@ class AniListClient:
             if order is None:
                 continue  # couldn't fully resolve — leave original order
             by_id = {b["id"]: b for b in group}
-            for slot, branch_id in zip(sorted(positions), order):
+            for slot, branch_id in zip(sorted(positions), order, strict=True):
                 branches[slot] = by_id[branch_id]
-            for prev_id, branch_id in zip(order, order[1:]):
+            for prev_id, branch_id in zip(order, order[1:], strict=True):
                 child = by_id[branch_id]
                 child["anchor_id"] = prev_id
                 child["anchor_kind"] = "branch"

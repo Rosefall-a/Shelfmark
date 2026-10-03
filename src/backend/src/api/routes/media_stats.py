@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user
@@ -179,9 +179,6 @@ async def _episode_stats(
     (against the larger of the rows on record and the known total), so a
     half-finished season never shows up as a finished one."""
     runtime = func.coalesce(ep_model.runtime_minutes, show_model.episode_runtime_minutes)
-    counted = or_(
-        ep_model.watched.is_(True), ep_model.episode_number <= season_model.episodes_watched
-    )
     flagged = ep_model.watched.is_(True)
     season_rows = (
         await db.execute(

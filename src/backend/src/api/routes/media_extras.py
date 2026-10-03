@@ -33,19 +33,18 @@ from src.core.preferences import load_preferences
 from src.core.titles import display_title
 from src.database.models.achievement import Achievement
 from src.database.models.anime import Anime, AnimeStatus
-from src.features.notifications import tracked_statuses
+from src.database.models.game import Game
 from src.database.models.media_extras import (
     ActivityEventType,
     ActivityLog,
     MediaType,
     RewatchLog,
 )
-from src.database.models.game import Game, GameStatus
 from src.database.models.movies import Movie, MovieStatus
 from src.database.models.tv_show import TVShow, TVShowStatus
 from src.database.models.user import User
 from src.database.session import get_db
-
+from src.features.notifications import tracked_statuses
 
 # The app shows five statuses (Plan to Watch, On Hold, Watching, Completed,
 # Dropped) over eight stored ones; history text uses the shown names.
