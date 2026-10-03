@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
+import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
+import { documentReaderUrl } from "../state/pluginExtensions";
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -2286,6 +2289,15 @@ function formatPlaytime(minutes: number) {
       </button>
     </nav>
 
+    <PluginExtensionSlot
+      v-if="activeTab === 'Overview'"
+      slot-id="game.overview.after-header"
+      :context="{ host_page: 'game.overview', game_id: game.id }"
+    />
+    <PluginContextualActions
+      :context="{ kind: 'game', resource_id: game.id }"
+    />
+
     <section v-if="activeTab === 'Overview'" class="overview">
       <div class="overview-main">
         <div v-if="relatedBounties.length" class="related-bounties">
@@ -2800,7 +2812,13 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
+              {{
+                noteSaving
+                  ? "Saving…"
+                  : editingNoteName
+                    ? "Save changes"
+                    : "Create note"
+              }}
             </button>
           </div>
         </div>
@@ -3641,6 +3659,17 @@ function formatPlaytime(minutes: number) {
 
     <section v-else-if="activeTab === 'Docs'" class="files-panel">
       <h2>Docs</h2>
+      <PluginExtensionSlot
+        slot-id="game.documents.actions"
+        :context="{ host_page: 'game.documents', game_id: game.id }"
+      />
+      <PluginContextualActions
+        :context="{
+          kind: 'documents',
+          resource_id: game.id,
+          resource_type: 'game',
+        }"
+      />
       <div class="panel-body">
         <ViewUploadSidebar v-model="panelMode" />
         <div class="panel-content">
@@ -3685,13 +3714,14 @@ function formatPlaytime(minutes: number) {
                   <path d="M14 2v6h6" />
                 </svg>
                 <a
-                  :href="file.url"
+                  :href="documentReaderUrl(game.id, file) ?? file.url"
                   class="file-name"
                   target="_blank"
                   rel="noopener noreferrer"
                   >{{ displayFileName(file.filename) }}</a
                 >
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <a :href="file.url" download class="file-download">Download</a>
                 <button
                   type="button"
                   class="tile-remove-inline"
@@ -6071,6 +6101,15 @@ function formatPlaytime(minutes: number) {
   color: #777;
   font-size: 0.78rem;
   flex-shrink: 0;
+}
+.file-download {
+  color: #93c5fd;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.file-download:hover {
+  text-decoration: underline;
 }
 .tile-remove-inline {
   background: none;

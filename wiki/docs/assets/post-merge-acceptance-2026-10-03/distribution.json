@@ -1,0 +1,476 @@
+{
+  "steps": [
+    {
+      "name": "final-plugin-tests",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-plugin-docs",
+      "command": [
+        "python",
+        "tools/check_docs.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-plugin-wiki",
+      "command": [
+        "python",
+        "-m",
+        "mkdocs",
+        "build",
+        "--strict"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-plugin-wiki-direct",
+      "command": [
+        "python",
+        "-m",
+        "mkdocs",
+        "build",
+        "--strict",
+        "-f",
+        "wiki/mkdocs.yml"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-source-layout",
+      "command": [
+        "python",
+        "tools/check_source_layout.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-preview-build",
+      "command": [
+        "python",
+        "tools/build_packages.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-repeat-build",
+      "command": [
+        "python",
+        "tools/build_packages.py"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-published-signatures",
+      "command": [
+        "python",
+        "tools/verify_packages.py",
+        "/acceptance/plugins-security/dist/example.advanced-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.discord-delivery-provider-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.discord-delivery-provider-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.events-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.0.1.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.1.1.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-3.0.0.utp",
+        "/acceptance/plugins-security/dist/example.lifecycle-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.metadata-curator-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.metadata-curator-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.playtime-report-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.playtime-report-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.recently-played-notifier-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.recently-played-notifier-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.2.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.3.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.4.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.5.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.5.1.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.6.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.7.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.2.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.2.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-api-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-api-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-playground-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-playground-1.1.0.utp"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-published-structure",
+      "command": [
+        "python",
+        "tools/validate_packages.py",
+        "/acceptance/plugins-security/dist/example.advanced-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.discord-delivery-provider-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.discord-delivery-provider-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.events-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.help-button-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.0.1.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-2.1.1.utp",
+        "/acceptance/plugins-security/dist/example.jellyfin-media-sync-3.0.0.utp",
+        "/acceptance/plugins-security/dist/example.lifecycle-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.metadata-curator-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.metadata-curator-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.playtime-report-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.playtime-report-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.recently-played-notifier-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.recently-played-notifier-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.2.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.3.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.4.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.5.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.5.1.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.6.0.utp",
+        "/acceptance/plugins-security/dist/example.scoped-document-viewer-1.7.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-1.2.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.0.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.1.0.utp",
+        "/acceptance/plugins-security/dist/example.self-service-session-manager-2.2.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-api-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-api-1.1.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-playground-1.0.0.utp",
+        "/acceptance/plugins-security/dist/example.ui-playground-1.1.0.utp"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-published-distribution",
+      "command": [
+        "python",
+        "tools/distribution.py",
+        "--root",
+        "/acceptance/plugins-security",
+        "--check-source"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-preview-signatures",
+      "command": [
+        "python",
+        "tools/verify_packages.py",
+        "/acceptance/plugins-security/.validation/dist/example.advanced-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.discord-delivery-provider-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.discord-delivery-provider-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.events-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.0.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.1.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-3.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.lifecycle-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.metadata-curator-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.metadata-curator-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.playtime-report-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.playtime-report-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.recently-played-notifier-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.recently-played-notifier-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.3.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.4.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.5.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.5.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.6.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.7.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-api-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-api-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-playground-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-playground-1.1.0.utp"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-preview-structure",
+      "command": [
+        "python",
+        "tools/validate_packages.py",
+        "/acceptance/plugins-security/.validation/dist/example.advanced-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.discord-delivery-provider-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.discord-delivery-provider-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.events-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.help-button-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.0.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-2.1.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.jellyfin-media-sync-3.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.lifecycle-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.metadata-curator-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.metadata-curator-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.playtime-report-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.playtime-report-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.recently-played-notifier-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.recently-played-notifier-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.3.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.4.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.5.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.5.1.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.6.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.scoped-document-viewer-1.7.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-1.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.self-service-session-manager-2.2.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-api-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-api-1.1.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-playground-1.0.0.utp",
+        "/acceptance/plugins-security/.validation/dist/example.ui-playground-1.1.0.utp"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-preview-distribution",
+      "command": [
+        "python",
+        "tools/distribution.py",
+        "--root",
+        "/acceptance/plugins-security/.validation",
+        "--check-source"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "final-immutable-history",
+      "command": [
+        "python",
+        "tools/distribution.py",
+        "--baseline-ref",
+        "bb09d1b6d83a6e9ce5b612307c87a420446f1de8"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "deterministic": true,
+  "packages": [
+    {
+      "plugin_id": "example.discord-delivery-provider",
+      "version": "1.1.0",
+      "sha256": "de431fe9f3504d2d77e9f06596414cfe6630447a04d6a0e431ff2c7d6e96d151",
+      "package_sha256": "b958b20ae77ea31063212044b68c636abe77b5e09db795bb7ff1b95136f973a4",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "de431fe9f3504d2d77e9f06596414cfe6630447a04d6a0e431ff2c7d6e96d151",
+        "signature": "uqve/NoDYI6R32j++UD3grZZ92OE0IoSOR8r8J+XODd2HWLNpUmTioxAaIzhfd3GoinXlzZbBwO6/t4ENI/FAg=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.discord-delivery-provider-1.1.0.utp"
+    },
+    {
+      "plugin_id": "example.help-button",
+      "version": "2.1.0",
+      "sha256": "4ef595d2099cfd8babb7d6c7724ddb401a1f6b3b4cfc352fc09c611107df7648",
+      "package_sha256": "fce6ccb1be45e2177a994ba8bcb219d198d1a77ec06f5217d5aaa772b9a62e88",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "4ef595d2099cfd8babb7d6c7724ddb401a1f6b3b4cfc352fc09c611107df7648",
+        "signature": "kC2BWvKyfuiTZVPlGeEL27rToZATMNgARajGnxSdBm7WgU0CK0HDNlwWcnLYe1w44KRYURi8l+hiB2kc6G+cBg=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.help-button-2.1.0.utp"
+    },
+    {
+      "plugin_id": "example.jellyfin-media-sync",
+      "version": "3.0.0",
+      "sha256": "1642a7bea64b2aa95821ff36337df680ccc5e2fabc10fea729ac8655cfd78748",
+      "package_sha256": "472e0ecb35f6ad2d16c12b2d42d6ec0e0661eecfd191c0017bd7698e678c4eb7",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "1642a7bea64b2aa95821ff36337df680ccc5e2fabc10fea729ac8655cfd78748",
+        "signature": "/NKGToBfA67UZzOM6viEkm2vkmQFdXfI0qyfY6KrmjwkrLSYwtYxj7VNdYtyMmLMgdqWzTbmDCgnftzVIp1iDg=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.jellyfin-media-sync-3.0.0.utp"
+    },
+    {
+      "plugin_id": "example.metadata-curator",
+      "version": "1.1.0",
+      "sha256": "a76e0f5c5af106be760564c9c8ebc3cf4772f95ff30facf1496833b841728186",
+      "package_sha256": "bfc29e48104657cdc9ff4f8af7e808389a8b3ec84412aaa5df3e0618b7b26b69",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "a76e0f5c5af106be760564c9c8ebc3cf4772f95ff30facf1496833b841728186",
+        "signature": "xO0KnqHEn7Jvkt242oPUkVntzvLYnukhuFtS0CwVjFndfl+sBbshjxoqBWiJkkaBd4eNalhO5g6F3a56/zScAA=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.metadata-curator-1.1.0.utp"
+    },
+    {
+      "plugin_id": "example.playtime-report",
+      "version": "1.1.0",
+      "sha256": "0eab3d931eafde03d552c728fd64fdfde82a9b0c4f2c7cb2551225794c270d40",
+      "package_sha256": "b5e0ddd92ef0971abd3a63e1a4dd9a3e40caed174f793f10c84480391ee9fae3",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "0eab3d931eafde03d552c728fd64fdfde82a9b0c4f2c7cb2551225794c270d40",
+        "signature": "kGQzL+bw9l+kyPzuRyIS5J7J5m6fjpgF30I3bpKFpPrr55SdA0CRNteEIOcdTL1MU1o7KhqFM7YobudpQ9+UAQ=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.playtime-report-1.1.0.utp"
+    },
+    {
+      "plugin_id": "example.recently-played-notifier",
+      "version": "1.1.0",
+      "sha256": "26fb6d6b29b744e7185b8e126360190dc63efc587cabec5b262c8456ce1bf2b4",
+      "package_sha256": "4ad387ed1210653a51826bd693d5a317279a05466bf9ef9c3d918adf99666aa0",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "26fb6d6b29b744e7185b8e126360190dc63efc587cabec5b262c8456ce1bf2b4",
+        "signature": "vO47M9W76lkgvrlRs6javeTAaMG13dJjH8eb+kgASpTZppAqtPVxbQWldf81myB9WGvh0je3NZEXR72dYKsLBw=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.recently-played-notifier-1.1.0.utp"
+    },
+    {
+      "plugin_id": "example.scoped-document-viewer",
+      "version": "1.7.0",
+      "sha256": "0681e5a5ca83bb7f32a38882605d20825d057e959e7dc255ecc25ffe7238d336",
+      "package_sha256": "58ac3d13dbf44152874d55ac3b95ea92faf436ae94832ab0a17a527ada3e2c0a",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "0681e5a5ca83bb7f32a38882605d20825d057e959e7dc255ecc25ffe7238d336",
+        "signature": "PJbpHWnmTf+VZTKsCEQpkeR4xLC6pIG6YRkTh1PIftl2jzUfOvTsgX2ha5Mx8BiIXjj2lihE1OcAZYVBKXI/AA=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.scoped-document-viewer-1.7.0.utp"
+    },
+    {
+      "plugin_id": "example.self-service-session-manager",
+      "version": "2.2.0",
+      "sha256": "884a92e1d0da19e80e22d25bbe8999b1367ad5ca6fe913ed6717727810a9e113",
+      "package_sha256": "a928ca4c9dd502c9a6e4f6cc633b0823b1be84dbafb3f56d690004e7798886ce",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "884a92e1d0da19e80e22d25bbe8999b1367ad5ca6fe913ed6717727810a9e113",
+        "signature": "yDZKyswxMIuPjVjjo9hGBwl2AngLnnrXRpVJhukQO3oSUE9Ilx5te1YbgdCD0ZTXuZhlhXoYa/XnolPDTXi1Dw=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.self-service-session-manager-2.2.0.utp"
+    },
+    {
+      "plugin_id": "example.ui-api",
+      "version": "1.1.0",
+      "sha256": "665fb64ba2ae7a373e062267c3a3d4a7c7fd10d0d73fe972f8900571082cb89e",
+      "package_sha256": "d551be236b02d6274a60564e4cc59c7b2b18773b49dd96e44d2cee9055edea77",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "665fb64ba2ae7a373e062267c3a3d4a7c7fd10d0d73fe972f8900571082cb89e",
+        "signature": "HvGUuaih7fOD/zk7DseEXA1jJTXJ1Fo29YVlRGcd4HOzNC8CTxDg8tetLbQcZzNz5cDw3bN2C7GRgiY/Mj1dBA=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.ui-api-1.1.0.utp"
+    },
+    {
+      "plugin_id": "example.ui-playground",
+      "version": "1.1.0",
+      "sha256": "1d28e5df1685799a765a5759017ba8ad08373aa9f620068c6cfe2d5be870a8d6",
+      "package_sha256": "9af332489d24d40b7c6350f18d9060dab02376ffd076421be91c59466a530801",
+      "signing": {
+        "key_id": "non-secret-testkey",
+        "sha256": "1d28e5df1685799a765a5759017ba8ad08373aa9f620068c6cfe2d5be870a8d6",
+        "signature": "oL9vdFuaYT6CA3hG6Nee2yT61CcV2cD5N3I4k6WV0ZU0hXiWH/T++QVSmoMtv5rZh9dw6YUzOobxMymXr/AwCw=="
+      },
+      "publisher": "Unnamed Tracking Official",
+      "package": "example.ui-playground-1.1.0.utp"
+    }
+  ],
+  "preview_hashes": {
+    "dist/example.advanced-1.0.0.utp": "c0c0ced8df0bd84f773d5494b8e2106421615bd904bfcdc47bc9c16cb011ec47",
+    "dist/example.discord-delivery-provider-1.0.0.utp": "4b970195439d4802205f9c2b325fe30ef65b718d32e94e7b8a1d9e76c5a11759",
+    "dist/example.discord-delivery-provider-1.1.0.utp": "b958b20ae77ea31063212044b68c636abe77b5e09db795bb7ff1b95136f973a4",
+    "dist/example.events-1.0.0.utp": "3068fc9368d08550188034379405404a0e32e03db266127ba79d12adda4d6b7a",
+    "dist/example.help-button-1.0.0.utp": "d649697db73db4e65eb8c171bc91377cb7ceb5ed48414971bc61dea8ce22ee3d",
+    "dist/example.help-button-2.0.0.utp": "c2bd173b769266adddc54bcbf3dd3857168c92c9179de9bd5f6aed6dd1481101",
+    "dist/example.help-button-2.1.0.utp": "fce6ccb1be45e2177a994ba8bcb219d198d1a77ec06f5217d5aaa772b9a62e88",
+    "dist/example.jellyfin-media-sync-1.1.0.utp": "832b5bdd13e19fa79b0bb8a1fa0c5665734914cb34b69bc67cbdc8c5b854e354",
+    "dist/example.jellyfin-media-sync-2.0.0.utp": "4f547d06027721634d73ecc99a4be9768692de8fe76a811d69a7aee9a33370be",
+    "dist/example.jellyfin-media-sync-2.0.1.utp": "5bfe0a562944d5aedfe72dfcf36cc7a84fb71a7068665858adc233d74773ca65",
+    "dist/example.jellyfin-media-sync-2.1.0.utp": "6394120555c90fbda09ba24fc6e14b3bd0cfcdbb78f96182b564d6ace4a95e26",
+    "dist/example.jellyfin-media-sync-2.1.1.utp": "555f9afdae6dacc738eed3f6d65e9fc7fb60ecf0d2468d2de7400f40fb16599b",
+    "dist/example.jellyfin-media-sync-3.0.0.utp": "472e0ecb35f6ad2d16c12b2d42d6ec0e0661eecfd191c0017bd7698e678c4eb7",
+    "dist/example.lifecycle-1.0.0.utp": "de33720df61f822a5d87bef7bd80a8e6e6de37de00ab7cf8cf4aff9d3e2b7a97",
+    "dist/example.metadata-curator-1.0.0.utp": "3ad7f790a81b7722ea2547a85f94938df619f6150aaf62a42c815fc403694816",
+    "dist/example.metadata-curator-1.1.0.utp": "bfc29e48104657cdc9ff4f8af7e808389a8b3ec84412aaa5df3e0618b7b26b69",
+    "dist/example.playtime-report-1.0.0.utp": "6e4203b78c47a7a958087f8ce1875176cbd53fd26dd987823d9335fa015ffe60",
+    "dist/example.playtime-report-1.1.0.utp": "b5e0ddd92ef0971abd3a63e1a4dd9a3e40caed174f793f10c84480391ee9fae3",
+    "dist/example.recently-played-notifier-1.0.0.utp": "1d019cc939c4ff0cfa793eaaeb4d5df74df5ac62726ebb4eab68db854cf5fdd2",
+    "dist/example.recently-played-notifier-1.1.0.utp": "4ad387ed1210653a51826bd693d5a317279a05466bf9ef9c3d918adf99666aa0",
+    "dist/example.scoped-document-viewer-1.0.0.utp": "e82824bba5ed297072427664933fd9638415cdbb400fef00065732233a664a34",
+    "dist/example.scoped-document-viewer-1.2.0.utp": "ac9135096a205a49d1ddbb7d21ec87466d58a278a938e5a8d431e6873c8b94fb",
+    "dist/example.scoped-document-viewer-1.3.0.utp": "192987671766589da6ced65973b65962eb6c3e3f1c9fc0bd8bf93f327b923f1d",
+    "dist/example.scoped-document-viewer-1.4.0.utp": "f2b888c7d515a13cfdc0116ea619486cefd1441011bda582efd262f92eff053b",
+    "dist/example.scoped-document-viewer-1.5.0.utp": "8d3f9487449072a1ee877f9efa26f1f669d4cfb471170a5425d557c11e9b944d",
+    "dist/example.scoped-document-viewer-1.5.1.utp": "652347ca59fa4b9d6c1f951e6ded29973ee0f95d8a8206ecaddac02dc0089b09",
+    "dist/example.scoped-document-viewer-1.6.0.utp": "0732ac61fbcd2d30a80a99c3f1a04f146b6b5ada7c4925598204308335fcc060",
+    "dist/example.scoped-document-viewer-1.7.0.utp": "58ac3d13dbf44152874d55ac3b95ea92faf436ae94832ab0a17a527ada3e2c0a",
+    "dist/example.self-service-session-manager-1.0.0.utp": "503fd72896207ea1eb4980bd42fd9d1dc7a1b8c86bc2d1346d5ddda171e43f45",
+    "dist/example.self-service-session-manager-1.1.0.utp": "1482e6b559cf6b84af826b774d3a80032b7c8ea569cf459f69a501884e581f69",
+    "dist/example.self-service-session-manager-1.2.0.utp": "e980c7d42d1cbe20ea5a9b298e8f558ce92572f1ad13fad2019a67aed4511f48",
+    "dist/example.self-service-session-manager-2.0.0.utp": "2940fb1a8cdd6daff8c43071660ba5ae1234fb1f9ecfb6e1d3916a25ef345277",
+    "dist/example.self-service-session-manager-2.1.0.utp": "dfc9eee628dabcdeb08822796e6b17b199c47d769ccabaa488bba17cee992460",
+    "dist/example.self-service-session-manager-2.2.0.utp": "a928ca4c9dd502c9a6e4f6cc633b0823b1be84dbafb3f56d690004e7798886ce",
+    "dist/example.ui-api-1.0.0.utp": "085fca2f0aa705042155527c1380a6b0b4112b4f52b0367d70856b80b6a4a0e4",
+    "dist/example.ui-api-1.1.0.utp": "d551be236b02d6274a60564e4cc59c7b2b18773b49dd96e44d2cee9055edea77",
+    "dist/example.ui-playground-1.0.0.utp": "d18e68a30044c1e617b5f3e6af12c33b5516a799041ee180c6622b173e4af39b",
+    "dist/example.ui-playground-1.1.0.utp": "9af332489d24d40b7c6350f18d9060dab02376ffd076421be91c59466a530801",
+    "list.json": "d6c9c0db34a684891eda138baf29172eba0b3410b2690b7928f4a9618f19c6d1",
+    "releases/example.advanced.json": "670ff8d44e2699e0d0ca5fedd1a50f64c76739664d669744f5537678f4b49b48",
+    "releases/example.discord-delivery-provider.json": "60818ec5e58e57ad83fd22b716b2c450e78beebfb9bcd12176dcc61070357dc4",
+    "releases/example.events.json": "4948f809a6dccea1df28fef5e08c6967c57009b6e22d2c6bc268fd5b18c053f4",
+    "releases/example.help-button.json": "2690198dc89d2f25ec6526d485bd902956660fa9ec86109f86e257645837a4f1",
+    "releases/example.jellyfin-media-sync.json": "9dd9ce93cd89cbc086887fd5c5e6425955f5f118d5f92c92a16d01a5b732b7ec",
+    "releases/example.lifecycle.json": "f894cdc9a8f63de94288a26a417bd56a7df99949e3b23c211e0b8fd5007a62f9",
+    "releases/example.metadata-curator.json": "20fbcdbb73a62528f8492e0c85590322dcbc4680eba4c97903c71b65e9235938",
+    "releases/example.playtime-report.json": "c45432916ab9b27465675e89c66b217670bc8fae7ca99d9ded434c095e292f58",
+    "releases/example.recently-played-notifier.json": "c7cc21e9215b602a0e2cbdd7a80d69b18cb13fe17710cc337ce214a8e3b9e757",
+    "releases/example.scoped-document-viewer.json": "08f4aa3a91473916379d16252e4f343651964f00eee65e5a205c3697d320517a",
+    "releases/example.self-service-session-manager.json": "627962205cc3b4ef6d66065b6246bf745687765a25583f4e03a9a28ea915725d",
+    "releases/example.ui-api.json": "a3d4b2a24c0b5b33104c6b88b01380180b9b961aad8c78fb2e75637a001ca375",
+    "releases/example.ui-playground.json": "cccf84ba573202d0a378981037dbfe70c3e047b61bd294b299faa185dc9546f8",
+    "wiki/assets/screenshots/host-components.json": "65b14a703b2b990df8b537e315a8fe0404e589208ab47a1fa3edab9f4f0b0083",
+    "wiki/assets/screenshots/workflow-captures.json": "e8f100d11c1b1623207bcca9c59383b6ec86b16ac91c9f0fce310d56ad3fd75f",
+    "wiki/search/search_index.json": "c5f4c726386073ad9fafeb27bb0db369d2eccdcc1b260bc6c3b58a00400941d9"
+  }
+}

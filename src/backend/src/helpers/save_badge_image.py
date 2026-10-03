@@ -19,8 +19,8 @@ def badge_image_path(user_id: UUID | str) -> Path:
 
 def save_badge_image(image_bytes: bytes, user_id: UUID | str) -> Path:
     BADGE_DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    with Image.open(BytesIO(image_bytes)) as img:
-        img = img.convert("RGBA")
+    with Image.open(BytesIO(image_bytes)) as source:
+        img = source.convert("RGBA")
         if img.width > _MAX_DIMENSION or img.height > _MAX_DIMENSION:
             img.thumbnail((_MAX_DIMENSION, _MAX_DIMENSION), Image.Resampling.LANCZOS)
         path = badge_image_path(user_id)

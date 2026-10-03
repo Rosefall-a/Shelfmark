@@ -549,7 +549,8 @@ def _media_item_to_dict(item: MediaItem, game_id: UUID) -> dict:
 @router.post("/{game_id}/screenshots")
 async def upload_game_screenshots(
     game_id: UUID,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     profile_id: UUID | None = _NONE_FORM,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
@@ -569,8 +570,21 @@ async def upload_game_screenshots(
     if profile_id is not None:
         await _get_profile_or_404(profile_id, game_id, db)
 
+    # Accept both the current plural field used by the frontend and the
+    # legacy/single-file field used by older clients. This keeps the upload
+    # endpoint backwards-compatible while still returning a useful 400 when
+    # a multipart request contains no file at all.
+    uploads = list(files or [])
+    if file is not None:
+        uploads.append(file)
+    if not uploads:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+
     results: list[dict] = []
-    for file in files:
+    for file in uploads:
         kind = classify_media(file.content_type, file.filename or "")
         if kind is None:
             results.append(
@@ -813,7 +827,8 @@ async def _sync_game_file_items(game_id: UUID, game_dir: Path, db: AsyncSession)
 async def upload_game_files(
     game_id: UUID,
     kind: GameFileKind,
-    files: list[UploadFile] = _FILE_UPLOAD,
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, list[dict]]:
@@ -830,8 +845,18 @@ async def upload_game_files(
     # doc-sized limit
     limit_mb = settings.MAX_WORLD_SAVE_SIZE_MB if kind == "modpack" else settings.MAX_UPLOAD_SIZE_MB
     max_bytes = limit_mb * 1024 * 1024
+    # Accept both the current plural field used by the frontend and the
+    # legacy/single-file field used by older clients.
+    uploads = list(files or [])
+    if file is not None:
+        uploads.append(file)
+    if not uploads:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
     results: list[dict] = []
-    for file in files:
+    for file in uploads:
         data = await file.read()
         if len(data) > max_bytes:
             results.append(
@@ -881,6 +906,7 @@ async def list_game_files(
     return {
         "files": [
             {
+                "id": str(item.id),
                 "filename": item.filename,
                 "size": (game_dir / _game_file_subdir(kind) / item.filename).stat().st_size
                 if (game_dir / _game_file_subdir(kind) / item.filename).is_file()
@@ -1030,9 +1056,17 @@ async def create_game_note(
     except FileExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "note_already_exists", "message": f'A note titled "{normalized_name}" already exists.'},
+            detail={
+                "error": "note_already_exists",
+                "message": f'A note titled "{normalized_name}" already exists.',
+            },
         ) from exc
-    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
+    return {
+        "game_id": str(game_id),
+        "note_name": normalized_name,
+        "path": str(note_path),
+        "status": "saved",
+    }
 
 
 @router.put(
@@ -1050,9 +1084,16 @@ async def update_game_note(
     normalized_name = _normalize_note_name(note_name)
     note_path = _game_note_path(game, normalized_name)
     if not note_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.')
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.'
+        )
     note_path.write_text(payload.content, encoding="utf-8")
-    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
+    return {
+        "game_id": str(game_id),
+        "note_name": normalized_name,
+        "path": str(note_path),
+        "status": "saved",
+    }
 
 
 @router.patch(
@@ -1072,18 +1113,31 @@ async def rename_game_note(
     source_path = _game_note_path(game, source_name)
     destination_path = _game_note_path(game, destination_name)
     if not source_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{source_name}" was not found.')
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{source_name}" was not found.'
+        )
     if source_name == destination_name:
-        return {"game_id": str(game_id), "note_name": source_name, "path": str(source_path), "status": "saved"}
+        return {
+            "game_id": str(game_id),
+            "note_name": source_name,
+            "path": str(source_path),
+            "status": "saved",
+        }
     try:
         os.link(source_path, destination_path)
     except FileExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"error": "note_already_exists", "message": f'A note titled "{destination_name}" already exists.'},
+            detail={
+                "error": "note_already_exists",
+                "message": f'A note titled "{destination_name}" already exists.',
+            },
         ) from exc
     except OSError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The note could not be renamed.",
+        ) from exc
     try:
         source_path.unlink()
     except OSError as exc:
@@ -1091,8 +1145,16 @@ async def rename_game_note(
             destination_path.unlink()
         except OSError:
             pass
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
-    return {"game_id": str(game_id), "note_name": destination_name, "path": str(destination_path), "status": "saved"}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The note could not be renamed.",
+        ) from exc
+    return {
+        "game_id": str(game_id),
+        "note_name": destination_name,
+        "path": str(destination_path),
+        "status": "saved",
+    }
 
 
 @router.get(

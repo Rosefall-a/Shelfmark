@@ -215,7 +215,9 @@ export interface YamtrackImportResult {
   errors: string[];
 }
 
-export async function importYamtrack(file: File): Promise<YamtrackImportResult> {
+export async function importYamtrack(
+  file: File,
+): Promise<YamtrackImportResult> {
   const body = new FormData();
   body.append("file", file);
   const response = await fetch("/api/import/yamtrack", {

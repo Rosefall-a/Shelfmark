@@ -7,7 +7,6 @@ on:
 
 jobs:
   backend-checks:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     services:
@@ -55,7 +54,21 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest
+        run: |
+          set -o pipefail
+          pytest 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics-${{ github.run_id }}
+          path: src/backend/pytest-output.txt
+          if-no-files-found: warn
+
+      - name: Test plugin runtime policy
+        working-directory: src/plugin-runtime
+        run: PYTHONPATH=. pytest -q tests
 
       - name: Validate Alembic migration graph
         run: |
@@ -129,7 +142,17 @@ jobs:
           PY
 
       - name: Run mypy
-        run: mypy --config-file pyproject.toml src
+        run: |
+          set -o pipefail
+          mypy --config-file pyproject.toml src 2>&1 | tee mypy-output.txt
+
+      - name: Upload mypy diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mypy-diagnostics-${{ github.run_id }}
+          path: src/backend/mypy-output.txt
+          if-no-files-found: warn
 
       - name: Run pylint
         run: |

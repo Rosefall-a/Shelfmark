@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { currentUser } from "../state/auth";
 import SettingsNav from "../components/settings/SettingsNav.vue";
@@ -24,9 +24,96 @@ import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
+import PluginManagerSection from "../components/settings/PluginManagerSection.vue";
+import PluginContributionHost from "../components/plugins/PluginContributionHost.vue";
+import {
+  pluginSettingsSections,
+  pluginNavigation,
+  pageReplacement,
+  pageReplacementConflicts,
+  refreshPluginExtensions,
+} from "../state/pluginExtensions";
 
 const router = useRouter();
 const route = useRoute();
+const activeSection = ref((route.query.section as string) || "profile");
+onMounted(() => void refreshPluginExtensions());
+
+const coreSectionIds = new Set([
+  "profile",
+  "interface",
+  "appearance",
+  "api-keys",
+  "calendar-notifications",
+  "upload",
+  "library",
+  "media-prefs",
+  "media-trash",
+  "scan",
+  "sources",
+  "media-refresh",
+  "export",
+  "oidc",
+  "server-integrations",
+  "users",
+  "plugins",
+  "stats",
+  "tasks",
+  "logs",
+]);
+const visiblePluginSettings = computed(() => {
+  const seen = new Set<string>();
+  return pluginSettingsSections.value.filter((item) => {
+    if (item.adminOnly && !currentUser.value?.is_admin) return false;
+    if (
+      coreSectionIds.has(item.contributionId) ||
+      seen.has(item.contributionId)
+    )
+      return false;
+    seen.add(item.contributionId);
+    return true;
+  });
+});
+
+function pluginSettingsId(contributionId: string): string {
+  return contributionId;
+}
+
+const settingsReplacement = computed(() => pageReplacement("settings"));
+const settingsReplacementConflicts = computed(() =>
+  pageReplacementConflicts("settings"),
+);
+const showHostSettings = computed(
+  () => currentUser.value?.is_admin && route.query.host === "1",
+);
+
+const activePluginSettings = computed(() =>
+  visiblePluginSettings.value.find(
+    (item) => pluginSettingsId(item.contributionId) === activeSection.value,
+  ),
+);
+const visiblePluginSettingsNavigation = computed(() => {
+  const seen = new Set(
+    visiblePluginSettings.value.map((item) => item.contributionId),
+  );
+  return pluginNavigation.value.filter((item) => {
+    if (item.location !== "settings.sidebar" || !item.pageId) return false;
+    if (item.adminOnly && !currentUser.value?.is_admin) return false;
+    if (
+      coreSectionIds.has(item.contributionId) ||
+      seen.has(item.contributionId)
+    )
+      return false;
+    seen.add(item.contributionId);
+    return true;
+  });
+});
+const activePluginSettingsNavigation = computed(() =>
+  visiblePluginSettingsNavigation.value.find(
+    (item) => item.contributionId === activeSection.value,
+  ),
+);
+
 function goBack() {
   if (window.history.length > 1) router.back();
   else router.push("/");
@@ -71,6 +158,9 @@ const groups = computed<SettingsGroup[]>(() => {
       ? [{ id: "server-integrations", label: "Server Integrations" }]
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
+    ...(currentUser.value?.is_admin
+      ? [{ id: "plugins", label: "Plugins" }]
+      : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
       ? [{ id: "tasks", label: "Tasks", comingSoon: true }]
@@ -80,15 +170,30 @@ const groups = computed<SettingsGroup[]>(() => {
       : []),
   ];
   result.push({ label: "System", sections: systemSections });
+  if (
+    visiblePluginSettings.value.length ||
+    visiblePluginSettingsNavigation.value.length
+  ) {
+    result.push({
+      label: "Plugin sections",
+      sections: [
+        ...visiblePluginSettings.value.map((item) => ({
+          id: pluginSettingsId(item.contributionId),
+          label: item.label,
+        })),
+        ...visiblePluginSettingsNavigation.value.map((item) => ({
+          id: item.contributionId,
+          label: item.label,
+        })),
+      ],
+    });
+  }
   return result;
 });
-const activeSection = ref((route.query.section as string) || "profile");
-
 watch(
   () => route.query.section,
   (section) => {
-    const next =
-      typeof section === "string" && section ? section : "profile";
+    const next = typeof section === "string" && section ? section : "profile";
     if (activeSection.value !== next) activeSection.value = next;
   },
 );
@@ -109,7 +214,31 @@ watch(activeSection, async () => {
 </script>
 
 <template>
-  <main class="settings-page">
+  <main
+    v-if="settingsReplacement && !showHostSettings"
+    class="settings-page plugin-settings-replacement"
+  >
+    <p v-if="currentUser?.is_admin" class="replacement-notice" role="status">
+      <template v-if="settingsReplacementConflicts.length > 1">
+        Multiple plugins requested Settings replacement. The deterministic order
+        selected {{ settingsReplacement.pluginId }}.
+      </template>
+      <template v-else>
+        Settings is replaced by {{ settingsReplacement.pluginId }}.
+      </template>
+      <router-link :to="{ path: '/settings', query: { host: '1' } }">
+        Open host Settings
+      </router-link>
+    </p>
+    <PluginContributionHost
+      :plugin-id="settingsReplacement.pluginId"
+      :document="settingsReplacement.document"
+      :page-id="settingsReplacement.page.id"
+      :context="{ host_page: 'settings' }"
+      embedded
+    />
+  </main>
+  <main v-else class="settings-page">
     <button
       type="button"
       class="back-arrow-button"
@@ -162,6 +291,9 @@ watch(activeSection, async () => {
           <AdminSection
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
           />
+          <PluginManagerSection
+            v-else-if="activeSection === 'plugins' && currentUser?.is_admin"
+          />
           <StatsSection v-else-if="activeSection === 'stats'" />
           <template v-else-if="activeSection === 'export'">
             <ExportImportSection />
@@ -180,6 +312,21 @@ watch(activeSection, async () => {
               'Restore a previous value',
             ]"
           />
+          <PluginContributionHost
+            v-else-if="activePluginSettings"
+            :plugin-id="activePluginSettings.pluginId"
+            :document="activePluginSettings.document"
+            :page-id="activePluginSettings.pageId"
+            embedded
+          />
+          <PluginContributionHost
+            v-else-if="activePluginSettingsNavigation?.pageId"
+            :plugin-id="activePluginSettingsNavigation.pluginId"
+            :document="activePluginSettingsNavigation.document"
+            :page-id="activePluginSettingsNavigation.pageId"
+            :context="{ host_page: 'settings' }"
+            embedded
+          />
         </div>
       </div>
     </div>
@@ -193,6 +340,14 @@ watch(activeSection, async () => {
   padding: 84px 40px 40px;
   background: var(--ui-bg);
   font-family: system-ui, sans-serif;
+}
+.replacement-notice {
+  margin: 0 0 16px;
+  color: #d8a15e;
+}
+.replacement-notice a {
+  margin-left: 8px;
+  color: inherit;
 }
 .back-arrow-button {
   position: fixed;

@@ -28,13 +28,19 @@ from src.database.models import (
     inbox_item,  # noqa: F401
     job_setting,  # noqa: F401
     media_extras,  # noqa: F401
+    media_provider,  # noqa: F401
     media_item,  # noqa: F401
     movies,  # noqa: F401
     notification,  # noqa: F401
+    notification_delivery,  # noqa: F401
+    notification_provider_setting,  # noqa: F401
     oidc_provider,
     oidc_settings,
     tv_show,  # noqa: F401
     user,  # noqa: F401
+    plugin_permission_audit,  # noqa: F401
+    plugin_notification_provider,  # noqa: F401
+    plugin_permissions,  # noqa: F401
     user_appearance_settings,  # noqa: F401
     user_preferences,  # noqa: F401
     user_scan_settings,  # noqa: F401

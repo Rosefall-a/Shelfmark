@@ -26,10 +26,43 @@ UNNAMED_TRACKING_APP_VERSION selects the image tag and UNNAMED_TRACKING_APP_PORT
     SECRET_KEY=replace-with-a-stable-secret
     PRIMARY_USER_PASSWORD=replace-with-the-initial-admin-password
     AUTH_COOKIE_SECURE=false
+    PLUGIN_RUNTIME_TOKEN=replace-with-a-random-32-byte-or-longer-token
 
 For HTTPS access, use AUTH_COOKIE_SECURE=true.
 
 Keep SECRET_KEY stable for an existing installation. If it is omitted from the environment, preserve the persistent generated key under /data/config instead.
+
+## Plugin Runtime isolation
+
+Production Compose also defines a separate plugin-runtime service for the
+Plugin Manager. Set `PLUGIN_RUNTIME_TOKEN` to a random value of at least 32
+characters; it is passed only to the application and runtime services for
+their authenticated internal transport.
+
+The application joins a dedicated internal gateway network so it can reach the
+runtime. The runtime has no membership in the core application/database
+network, no host port, no core environment or application volume, and no
+Docker socket.
+
+Container hardening includes a non-root user, read-only root filesystem,
+temporary filesystem only for /tmp, dropped Linux capabilities,
+no-new-privileges, and bounded PID/CPU/memory resources.
+
+Inside that container, each plugin is launched by the runtime supervisor in
+its own bubblewrap namespaces and process group with independent CPU, memory,
+file-descriptor and child-process limits. Plugin subprocesses receive a
+fresh environment and cannot receive core secrets.
+
+Outbound plugin networking is default-deny. The plugin sandbox has no direct
+network namespace access. Approved external traffic uses runtime-owned,
+narrowly validated senders rather than unrestricted network sharing. The
+reference Discord provider additionally requires
+`PLUGIN_RUNTIME_DISCORD_EGRESS=true`; its host/path and payload size are
+validated by the runtime.
+
+Authenticated gateway connectivity remains owned by #265, while #266 remains
+the capability authorization boundary. Plugin browser traffic is never
+published directly from the runtime.
 
 ## Startup lifecycle
 

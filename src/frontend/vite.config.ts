@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     host: true, // listen on 0.0.0.0 so the container's port mapping works
     port: 80,
+    allowedHosts: true,
     watch: {
       // Docker Desktop on Windows doesn't forward native filesystem
       // change events across the bind mount, so Vite's watcher never
@@ -14,6 +15,9 @@ export default defineConfig({
       usePolling: true,
     },
     proxy: {
+      "/service-worker.js": { target: "http://backend:8000" },
+      "/manifest.webmanifest": { target: "http://backend:8000" },
+      "/pwa/": { target: "http://backend:8000" },
       "/api": {
         target: "http://backend:8000",
         changeOrigin: true,

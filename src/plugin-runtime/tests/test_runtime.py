@@ -1,0 +1,980 @@
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import uuid
+import zipfile
+
+import pytest
+from runtime import (
+    OutboundNetworkPolicy,
+    PluginSpec,
+    ResourceLimits,
+    RuntimePolicyError,
+)
+
+
+def test_plugin_environment_is_default_deny_for_core_secrets() -> None:
+    with pytest.raises(RuntimePolicyError):
+        PluginSpec("example", ("run",), {"SECRET_KEY": "nope"}).validate()
+
+
+def test_plugin_ids_and_commands_are_validated() -> None:
+    with pytest.raises(RuntimePolicyError):
+        PluginSpec("../escape", ("run",)).validate()
+    with pytest.raises(RuntimePolicyError):
+        PluginSpec("example", ()).validate()
+
+
+def test_network_is_default_deny() -> None:
+    policy = OutboundNetworkPolicy()
+    policy.validate()
+    assert policy.allowed_hosts == ()
+
+
+def test_network_requires_capability_approval() -> None:
+    with pytest.raises(RuntimePolicyError, match="network.outbound"):
+        OutboundNetworkPolicy(("api.example.com",), (443,), False).validate()
+
+
+def test_network_ports_are_bounded() -> None:
+    with pytest.raises(RuntimePolicyError):
+        OutboundNetworkPolicy(("api.example.com",), (70000,), True).validate()
+
+
+def test_resource_limits_are_positive() -> None:
+    with pytest.raises(RuntimePolicyError):
+        PluginSpec(
+            "example",
+            ("run",),
+            resources=ResourceLimits(cpu_seconds=0),
+        ).validate()
+
+
+def test_supervisor_starts_a_validated_plugin_in_its_sandbox(
+    tmp_path, monkeypatch
+) -> None:
+    import runtime
+    from runtime import PluginSupervisor
+
+    class FakeProcess:
+        pid = 123
+
+        @staticmethod
+        def poll():
+            return None
+
+    calls = []
+
+    def fake_popen(*args, **kwargs):
+        calls.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work", storage_root=tmp_path / "storage"
+    )
+    package = tmp_path / "package"
+    package.mkdir()
+    process = supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
+
+    assert process.pid == 123
+    assert supervisor.running("example") is True
+    assert calls[0][0][0][:2] == ["bwrap", "--unshare-all"]
+    sandbox_command = calls[0][0][0]
+    assert sandbox_command[sandbox_command.index("--cap-drop") + 1] == "ALL"
+    assert calls[0][1]["env"]["HOME"] == "/plugin"
+    assert (tmp_path / "work" / "example").is_dir()
+
+
+def test_supervisor_can_start_without_bubblewrap_for_development(
+    tmp_path, monkeypatch
+) -> None:
+    import runtime
+    from runtime import PluginSupervisor
+
+    class FakeProcess:
+        pid = 123
+
+        @staticmethod
+        def poll():
+            return None
+
+    calls = []
+
+    def fake_popen(*args, **kwargs):
+        calls.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    monkeypatch.setattr(runtime.subprocess, "Popen", fake_popen)
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work", storage_root=tmp_path / "storage"
+    )
+    package = tmp_path / "package"
+    package.mkdir()
+    supervisor.start(PluginSpec("example", ("python", "-c", "pass")), package)
+
+    assert calls[0][0][0] == ["python", "-c", "pass"]
+    assert calls[0][1]["cwd"] == package
+    assert calls[0][1]["env"]["HOME"] == str(package)
+
+
+def test_nonbubble_flag_is_off_by_default(monkeypatch) -> None:
+    from runtime import PluginSupervisor
+
+    monkeypatch.delenv("NONBUBBLE_ENV", raising=False)
+    assert PluginSupervisor._nonbubble_enabled() is False
+
+
+def _package_bytes(
+    plugin_id: str = "example.upload",
+    frontend: bool = False,
+    native_frontend: bool = False,
+    version: str = "1.0.0",
+    inline_assets: object = False,
+    distribution: dict | None = None,
+) -> bytes:
+    files = {
+        "plugin.py": b"def main():\n    return None\n",
+        "sdk/plugin_protocol.py": b"API_VERSION = 1\n",
+    }
+    if distribution is not None:
+        files["distribution.json"] = json.dumps(distribution).encode()
+    if frontend:
+        files["frontend/index.html"] = b"<!doctype html><html><body>ok</body></html>"
+    if native_frontend:
+        files["native/index.js"] = b"export default () => {};"
+        files["native/style.css"] = b":root { --plugin-accent: orange; }"
+    digest = hashlib.sha256()
+    for name, data in sorted(files.items()):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    manifest = {
+        "manifest_version": 1,
+        "plugin_id": plugin_id,
+        "name": "Upload Example",
+        "version": version,
+        "entrypoint": "plugin:main",
+        "sdk_version_range": "*",
+        "application_version_range": "*",
+        "capabilities": [],
+        "permissions": [],
+        "dependencies": [],
+        "integrity": {"sha256": digest.hexdigest()},
+    }
+    if frontend:
+        manifest["frontend"] = {
+            "entry": "frontend/index.html",
+            "inline_assets": inline_assets,
+        }
+    if native_frontend:
+        manifest["capabilities"] = [{"name": "frontend.native", "version": 1}]
+        manifest["native_frontend"] = {
+            "entry": "native/index.js",
+            "styles": ["native/style.css"],
+        }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for name, data in files.items():
+            archive.writestr("payload/" + name, data)
+    return output.getvalue()
+
+
+def test_installed_release_metadata_survives_registry_restart(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "workers", tmp_path / "storage")
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    registry.install_package(
+        _package_bytes(distribution={
+            "schema_version": 1, "version": "1.0.0", "tags": ["media", "integration"],
+            "automatic_update": False, "release_notes": "Manual release",
+        }), "release.utp", installation_id=str(uuid.uuid4()),
+    )
+    restored = PluginRegistry(registry.root, supervisor).list()[0]
+    assert restored["tags"] == ["media", "integration"]
+    assert restored["automatic_update"] is False
+    assert restored["release_notes"] == "Manual release"
+
+
+def test_runtime_rejects_invalid_utf8_archive_name(tmp_path):
+    import struct
+
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = bytearray(_package_bytes())
+    central = package.index(b"PK\x01\x02")
+    struct.pack_into("<H", package, 6, 0x800)
+    struct.pack_into("<H", package, central + 8, 0x800)
+    package[30] = package[central + 46] = 0xFF
+
+    with pytest.raises(RuntimePolicyError, match="archive"):
+        registry.install_package(
+            bytes(package), "malformed.zip", installation_id=str(uuid.uuid4())
+        )
+    assert registry.list() == []
+
+
+def test_runtime_installs_verified_utp_atomically(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    result = registry.install_package(
+        _package_bytes(), "example-upload.utp", installation_id=str(uuid.uuid4())
+    )
+    assert result["plugin_id"] == "example.upload"
+    assert (tmp_path / "plugins" / "example.upload" / "manifest.json").is_file()
+    assert (tmp_path / "plugins" / "example.upload" / "plugin.py").is_file()
+
+
+@pytest.mark.parametrize("inline_assets", [False, True])
+def test_runtime_installs_and_serves_declared_frontend(
+    tmp_path, activate_registry, inline_assets
+):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    registry.install_package(
+        _package_bytes(frontend=True, inline_assets=inline_assets),
+        "frontend.utp",
+        installation_id=str(uuid.uuid4()),
+    )
+    activate_registry(registry, "example.upload")
+    asset = registry.frontend("example.upload", "frontend/index.html")
+    assert asset["path"] == "frontend/index.html"
+    assert "ok" in __import__("base64").b64decode(asset["content"]).decode("utf-8")
+    assert (
+        registry.ui("example.upload")["frontend"].get("inline_assets", False)
+        is inline_assets
+    )
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_runtime_rejects_non_boolean_inline_asset_flag(tmp_path, value):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    with pytest.raises(RuntimePolicyError, match="inline_assets must be a boolean"):
+        registry.install_package(
+            _package_bytes(frontend=True, inline_assets=value),
+            "frontend.utp",
+            installation_id=str(uuid.uuid4()),
+        )
+    assert registry.list() == []
+
+
+def test_runtime_installs_and_serves_native_frontend_from_separate_root(
+    tmp_path, activate_registry
+):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    registry.install_package(
+        _package_bytes(native_frontend=True),
+        "native.utp",
+        installation_id=str(uuid.uuid4()),
+    )
+
+    document = registry.ui("example.upload")
+    assert document["native_frontend"]["entry"] == "native/index.js"
+    activate_registry(registry, "example.upload")
+    assert (
+        registry.frontend("example.upload", "native/index.js", native=True)["path"]
+        == "native/index.js"
+    )
+    with pytest.raises(RuntimePolicyError, match="outside"):
+        registry.frontend("example.upload", "plugin.py", native=True)
+
+
+def test_runtime_rejects_missing_declared_frontend(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    package = _package_bytes(frontend=True)
+    with zipfile.ZipFile(io.BytesIO(package)) as source:
+        files = {
+            info.filename: source.read(info)
+            for info in source.infolist()
+            if info.filename != "payload/frontend/index.html"
+        }
+    manifest = json.loads(files["manifest.json"])
+    payload = sorted(
+        (name.removeprefix("payload/"), data)
+        for name, data in files.items()
+        if name.startswith("payload/")
+    )
+    digest = hashlib.sha256()
+    for name, data in payload:
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    manifest["integrity"]["sha256"] = digest.hexdigest()
+    files["manifest.json"] = json.dumps(manifest).encode("utf-8")
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    with pytest.raises(RuntimePolicyError, match="frontend entry is missing"):
+        registry.install_package(
+            output.getvalue(), "missing-frontend.utp", installation_id=str(uuid.uuid4())
+        )
+
+
+def test_runtime_rejects_tampered_utp(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    original = _package_bytes()
+    tampered = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(original)) as source,
+        zipfile.ZipFile(tampered, "w") as destination,
+    ):
+        for info in source.infolist():
+            data = source.read(info)
+            if info.filename == "payload/plugin.py":
+                data = b"tampered"
+            destination.writestr(info, data)
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    with pytest.raises(RuntimePolicyError, match="archive|integrity"):
+        registry.install_package(
+            tampered.getvalue(), "bad.utp", installation_id=str(uuid.uuid4())
+        )
+
+
+def test_runtime_rejects_duplicate_plugin_install(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(), "first.utp", installation_id=installation_id
+    )
+    with pytest.raises(RuntimePolicyError, match="already installed"):
+        registry.install_package(
+            _package_bytes(), "second.utp", installation_id=installation_id
+        )
+
+
+def test_runtime_lifecycle_preserves_package_trust_and_source(tmp_path, monkeypatch):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    trust = {"status": "trusted", "publisher_key_id": "known"}
+    source = {"type": "catalogue", "url": "https://example.com/package.utp"}
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(),
+        "candidate.utp",
+        installation_id=installation_id,
+        trust_metadata=trust,
+        source_metadata=source,
+    )
+    for action in (registry.start, registry.stop, registry.start):
+        action("example.upload")
+        state = registry._state()["example.upload"]
+        assert state["trust"] == trust
+        assert state["source"] == source
+        assert state["installation_id"] == installation_id
+
+
+@pytest.mark.parametrize("replacing", (False, True))
+def test_runtime_state_commit_failure_restores_the_previous_package(
+    tmp_path, monkeypatch, replacing
+):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    installation_id = str(uuid.uuid4())
+    if replacing:
+        registry.install_package(
+            _package_bytes(),
+            "original.utp",
+            installation_id=installation_id,
+            trust_metadata={"status": "trusted", "publisher_key_id": "known"},
+        )
+    previous_state = registry._state()
+    target = registry.root / "example.upload"
+    old_manifest = (target / "manifest.json").read_bytes() if replacing else None
+
+    def fail_state_commit(state):
+        raise OSError("injected state persistence failure")
+
+    monkeypatch.setattr(registry, "_save_state", fail_state_commit)
+    with pytest.raises(OSError, match="persistence"):
+        registry.install_package(
+            _package_bytes(frontend=True),
+            "candidate.zip",
+            installation_id=installation_id,
+            replace=replacing,
+            trust_metadata={"status": "unsigned"},
+        )
+    assert registry._state() == previous_state
+    if replacing:
+        assert (target / "manifest.json").read_bytes() == old_manifest
+        assert not (target / "frontend").exists()
+    else:
+        assert not target.exists()
+    assert not list(registry.root.glob(".install-*"))
+    assert not list(registry.root.glob(".backup-*"))
+
+
+def test_runtime_replacement_cannot_change_installation_identity(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    registry.install_package(
+        _package_bytes(), "original.utp", installation_id=str(uuid.uuid4())
+    )
+    state = registry._state()
+    with pytest.raises(RuntimePolicyError, match="identity"):
+        registry.install_package(
+            _package_bytes(frontend=True),
+            "candidate.utp",
+            installation_id=str(uuid.uuid4()),
+            replace=True,
+        )
+    assert registry._state() == state
+    assert not (registry.root / "example.upload" / "frontend").exists()
+
+
+def test_prepared_installation_survives_restart_and_requires_matching_completion(
+    tmp_path, monkeypatch
+):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    operation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(),
+        "candidate.utp",
+        installation_id=str(uuid.uuid4()),
+        operation_id=operation_id,
+    )
+    registry = PluginRegistry(registry.root, supervisor)
+    with pytest.raises(RuntimePolicyError, match="permission commit"):
+        registry.start("example.upload")
+    with pytest.raises(RuntimePolicyError, match="operation"):
+        registry.finish_installation("example.upload", str(uuid.uuid4()), commit=True)
+    registry.finish_installation("example.upload", operation_id, commit=True)
+    registry.start("example.upload")
+    assert registry._state()["example.upload"]["enabled"] is True
+
+
+def test_prepared_update_abort_restores_original_bytes_and_identity(tmp_path):
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(tmp_path / "plugins", PluginSupervisor(tmp_path / "work"))
+    installation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(), "original.utp", installation_id=installation_id
+    )
+    state = registry._state()
+    operation_id = str(uuid.uuid4())
+    registry.install_package(
+        _package_bytes(frontend=True),
+        "candidate.zip",
+        installation_id=installation_id,
+        operation_id=operation_id,
+        replace=True,
+        expected_version="1.0.0",
+    )
+    with pytest.raises(RuntimePolicyError, match="permission commit"):
+        registry.install_package(
+            _package_bytes(),
+            "competing.utp",
+            installation_id=installation_id,
+            replace=True,
+            operation_id=str(uuid.uuid4()),
+        )
+    registry.finish_installation("example.upload", operation_id, commit=False)
+    assert registry._state() == state
+    assert not (registry.root / "example.upload" / "frontend").exists()
+    assert not list(registry.root.glob(".backup-*"))
+
+
+def test_runtime_http_preparation_and_completion_are_authenticated(
+    tmp_path, monkeypatch
+):
+    import threading
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+
+    from runtime import PluginRegistry, PluginSupervisor, RuntimeHandler, RuntimeServer
+
+    token = "gate-runtime-test-token-" + "x" * 32
+    monkeypatch.setenv("PLUGIN_RUNTIME_TOKEN", token)
+    supervisor = PluginSupervisor(tmp_path / "work", tmp_path / "storage")
+    monkeypatch.setattr(supervisor, "start", lambda spec, path: None)
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    server = RuntimeServer(("127.0.0.1", 0), RuntimeHandler)
+    server.registry = registry
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+    operation_id = str(uuid.uuid4())
+    headers = {
+        "X-Plugin-Runtime-Token": token,
+        "X-Plugin-Installation-ID": str(uuid.uuid4()),
+        "X-Plugin-Operation-ID": operation_id,
+    }
+    try:
+        with pytest.raises(HTTPError) as unauthorized:
+            urlopen(
+                Request(
+                    base_url + "/plugins/install/prepare",
+                    data=_package_bytes(),
+                    method="PUT",
+                ),
+                timeout=5,
+            )
+        assert unauthorized.value.code == 401
+        request = Request(
+            base_url + "/plugins/install/prepare",
+            data=_package_bytes(),
+            method="PUT",
+            headers=headers,
+        )
+        with urlopen(request, timeout=5) as response:
+            assert json.load(response)["operation_id"] == operation_id
+        with pytest.raises(HTTPError) as premature:
+            urlopen(
+                Request(
+                    base_url + "/plugins/example.upload/start",
+                    data=b"{}",
+                    method="POST",
+                    headers=headers,
+                ),
+                timeout=5,
+            )
+        assert premature.value.code == 422
+        request = Request(
+            base_url + "/plugins/example.upload/installation",
+            data=json.dumps({"operation_id": operation_id, "commit": True}).encode(),
+            method="PUT",
+            headers=headers,
+        )
+        with urlopen(request, timeout=5) as response:
+            assert json.load(response) == {"completed": True}
+        with urlopen(
+            Request(
+                base_url + "/plugins/example.upload/start",
+                data=b"{}",
+                method="POST",
+                headers=headers,
+            ),
+            timeout=5,
+        ) as response:
+            assert response.status == 200
+        assert registry._state()["example.upload"]["enabled"] is True
+    finally:
+        server.shutdown()
+        worker.join(timeout=5)
+        server.server_close()
+
+
+def test_plugin_storage_files_are_owner_only(tmp_path) -> None:
+    from storage import PluginStorage
+
+    storage = PluginStorage(tmp_path / "storage", "example", quota_bytes=1024)
+    storage.put("secrets/webhook", b"secret")
+    assert (storage.root / "secrets" / "webhook").stat().st_mode & 0o777 == 0o600
+    assert (storage.root / ".storage.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_frontend_asset_is_namespaced(tmp_path, activate_registry) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.frontend"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.frontend",
+                "entrypoint": "plugin:main",
+                "frontend": {"entry": "frontend/index.html"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    frontend = package / "frontend"
+    frontend.mkdir()
+    (frontend / "index.html").write_text("<div>ok</div>", encoding="utf-8")
+    activate_registry(registry, "example.frontend")
+    asset = registry.frontend("example.frontend", "frontend/index.html")
+    assert asset["path"] == "frontend/index.html"
+    assert "PG" in asset["content"]
+
+
+def test_runtime_discord_action_reads_secret_from_private_storage(
+    tmp_path, monkeypatch, activate_registry
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.discord"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.discord",
+                "entrypoint": "plugin:main",
+                "capabilities": [{"name": "notifications.send", "version": 1}],
+                "permissions": [
+                    {
+                        "capability": {"name": "notifications.send", "version": 1},
+                        "rationale": "send notifications",
+                    }
+                ],
+                "integrity": {"sha256": "0" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.discord",
+                "actions": [
+                    {
+                        "id": "announce",
+                        "handler": "plugin:announce",
+                        "capability": {"name": "notifications.send", "version": 1},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+    registry.supervisor._storage_quotas["example.discord"] = 1024
+    registry.supervisor._storage("example.discord").put(
+        "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
+    )
+
+    class FakeSupervisor:
+        def execute(self, spec, package_dir, payload, **kwargs):
+            return json.dumps(
+                {
+                    "discord": True,
+                    "content": "hello",
+                }
+            ).encode()
+
+    registry.supervisor.execute = FakeSupervisor().execute
+    registry._save_state({"example.discord": {"enabled": True}})
+    approved = []
+    monkeypatch.setattr(registry.supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    delivered = []
+    monkeypatch.setattr(
+        registry,
+        "_discord_webhook",
+        lambda url, content: delivered.append((url, content)),
+    )
+    activate_registry(registry, "example.discord")
+    result = registry.action("example.discord", "announce", {})
+    assert approved == ["notifications.send", "notifications.send"]
+    assert result == {"completed": True}
+    assert delivered == [
+        (
+            "https://discord.com/api/webhooks/test/secret",
+            "hello",
+        )
+    ]
+
+
+def test_runtime_action_returns_structured_provider_result(
+    tmp_path, activate_registry
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps({"plugin_id": "example.provider", "entrypoint": "plugin:main"}),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+
+    class FakeSupervisor:
+        def execute(self, spec, package_dir, payload, **kwargs):
+            del spec, package_dir, payload
+            return b'{"success":true,"retryable":false,"error":null}'
+
+    registry.supervisor.execute = FakeSupervisor().execute
+    activate_registry(registry, "example.provider")
+    assert registry.action("example.provider", "deliver", {}) == {
+        "success": True,
+        "retryable": False,
+        "error": None,
+    }
+
+
+def test_runtime_discord_provider_returns_core_delivery_result(
+    tmp_path, monkeypatch, activate_registry
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "entrypoint": "plugin:main",
+                "capabilities": [
+                    {"name": "notification_providers.deliver", "version": 1}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text("", encoding="utf-8")
+    registry.supervisor._storage_quotas["example.provider"] = 1024
+    registry.supervisor._storage("example.provider").put(
+        "secrets/discord_webhook", b"https://discord.com/api/webhooks/test/secret"
+    )
+    registry.supervisor.execute = lambda *_args, **_kwargs: b'{"discord":true,"content":"hello"}'
+    registry._save_state({"example.provider": {"enabled": True}})
+    approved = []
+    monkeypatch.setattr(registry.supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
+    delivered = []
+    monkeypatch.setenv("PLUGIN_RUNTIME_DISCORD_EGRESS", "true")
+    monkeypatch.setattr(
+        registry,
+        "_discord_webhook",
+        lambda url, content: delivered.append((url, content)),
+    )
+
+    activate_registry(registry, "example.provider")
+    assert registry.action("example.provider", "deliver", {}) == {
+        "success": True,
+        "retryable": False,
+        "error": None,
+    }
+    assert delivered == [("https://discord.com/api/webhooks/test/secret", "hello")]
+    assert approved == ["notification_providers.deliver"]
+
+
+def test_action_handler_can_use_the_mediated_plugin_gateway(
+    tmp_path, monkeypatch, activate_registry
+) -> None:
+    from runtime import PluginRegistry, PluginSupervisor
+
+    monkeypatch.setenv("NONBUBBLE_ENV", "true")
+    supervisor = PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage")
+    registry = PluginRegistry(tmp_path / "plugins", supervisor)
+    package = tmp_path / "plugins" / "example.documents"
+    (package / "sdk").mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "entrypoint": "plugin:main",
+                "capabilities": [{"name": "documents.read", "version": 1}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.documents",
+                "actions": [
+                    {
+                        "id": "list",
+                        "handler": "plugin:list_documents",
+                        "capability": {"name": "documents.read", "version": 1},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (package / "sdk" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "sdk" / "plugin_protocol.py").write_text(
+        "import json,sys\n"
+        "def request(method,capability,payload):\n"
+        " print(json.dumps({'api_version':'v1','method':method,'capability':capability,'payload':payload}),flush=True)\n"
+        " response=json.loads(sys.stdin.readline())\n"
+        " if response.get('error'): raise RuntimeError(response['error'])\n"
+        " return response.get('payload',{})\n",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "from sdk.plugin_protocol import request\n"
+        "def main(): pass\n"
+        "def list_documents(values):\n"
+        " return request('documents.list','documents.read',{'limit':values.get('limit',50)})\n",
+        encoding="utf-8",
+    )
+    registry._save_state(
+        {
+            "example.documents": {
+                "enabled": True,
+                "installation_id": str(uuid.uuid4()),
+            }
+        }
+    )
+    calls = []
+
+    def dispatch(plugin_id, message, **kwargs):
+        calls.append((plugin_id, message))
+        if message["method"] == "capabilities.check":
+            return {"payload": {"authorized": True}}
+        return {"payload": {"documents": [{"id": "document-1"}]}}
+
+    monkeypatch.setattr(supervisor, "_handle_gateway_request", dispatch)
+
+    activate_registry(registry, "example.documents")
+    result = registry.action("example.documents", "list", {"limit": 10})
+
+    assert result == {"documents": [{"id": "document-1"}]}
+    assert calls[0][0] == "example.documents"
+    assert calls[0][1]["method"] == "capabilities.check"
+    assert calls[0][1]["capability"] == "documents.read"
+    assert calls[1][1]["method"] == "documents.list"
+    assert calls[1][1]["capability"] == "documents.read"
+
+
+def test_runtime_rejects_actions_for_disabled_installed_plugin(tmp_path) -> None:
+    from runtime import PluginRegistry, PluginSupervisor, RuntimePolicyError
+
+    registry = PluginRegistry(
+        tmp_path / "plugins",
+        PluginSupervisor(tmp_path / "work", storage_root=tmp_path / "storage"),
+    )
+    package = tmp_path / "plugins" / "example.provider"
+    package.mkdir(parents=True)
+    (package / "manifest.json").write_text(
+        json.dumps({"plugin_id": "example.provider", "entrypoint": "plugin:main"}),
+        encoding="utf-8",
+    )
+    (package / "ui.json").write_text(
+        json.dumps(
+            {
+                "plugin_id": "example.provider",
+                "actions": [{"id": "deliver", "handler": "plugin:deliver"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry._save_state(
+        {
+            "example.provider": {
+                "enabled": False,
+                "installation_id": str(uuid.uuid4()),
+            }
+        }
+    )
+
+    with pytest.raises(RuntimePolicyError, match="must be enabled"):
+        registry.action("example.provider", "deliver", {})
+
+
+def test_runtime_gateway_settings_use_active_package_path(tmp_path, monkeypatch) -> None:
+    from runtime import PluginSupervisor
+
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / ".settings.json").write_text(
+        json.dumps({"display_mode": "dark"}), encoding="utf-8"
+    )
+    supervisor = PluginSupervisor(
+        root=tmp_path / "work",
+        storage_root=tmp_path / "storage",
+        gateway_url="http://gateway",
+        gateway_token="x" * 32,
+    )
+    supervisor._package_paths["example.ui-api"] = package
+    approved = []
+    monkeypatch.setattr(supervisor, "_authorize_capability",
+                        lambda plugin_id, capability, **kwargs: approved.append(capability))
+    assert supervisor._handle_gateway_request(
+        "example.ui-api",
+        {
+            "method": "settings.get",
+            "capability": "plugin.settings",
+            "payload": {"key": "display_mode"},
+        },
+    )["payload"] == {"value": "dark"}
+    assert approved == ["plugin.settings"]
+
+
+def test_runtime_digest_ignores_python_runtime_cache(tmp_path) -> None:
+    from runtime import PluginRegistry
+
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "plugin.py").write_text("def main(): pass\n", encoding="utf-8")
+    digest = PluginRegistry.digest(package)
+    cache = package / "__pycache__"
+    cache.mkdir()
+    (cache / "plugin.cpython-312.pyc").write_bytes(b"runtime-generated")
+    assert PluginRegistry.digest(package) == digest
+    (package / "plugin.py").write_text("def main(): return 1\n", encoding="utf-8")
+    assert PluginRegistry.digest(package) != digest

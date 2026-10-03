@@ -123,14 +123,27 @@ const emit = defineEmits<{
 const router = useRouter();
 
 function maybeLoadMore() {
-  if (layout.value === "board" || props.loading || props.items.length >= props.total) return;
-  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1000) {
+  if (
+    layout.value === "board" ||
+    props.loading ||
+    props.items.length >= props.total
+  )
+    return;
+  if (
+    window.innerHeight + window.scrollY >=
+    document.documentElement.scrollHeight - 1000
+  ) {
     emit("load-more");
   }
 }
-onMounted(() => window.addEventListener("scroll", maybeLoadMore, { passive: true }));
+onMounted(() =>
+  window.addEventListener("scroll", maybeLoadMore, { passive: true }),
+);
 onBeforeUnmount(() => window.removeEventListener("scroll", maybeLoadMore));
-watch(() => props.items.length, () => requestAnimationFrame(maybeLoadMore));
+watch(
+  () => props.items.length,
+  () => requestAnimationFrame(maybeLoadMore),
+);
 
 // The mockup's per-item "type" field (TV/Movie/OVA/Series/Anthology) has
 // no real per-item equivalent — none of the three entities carry a
@@ -384,8 +397,16 @@ const boardPageStarts = reactive<Record<string, number>>({});
 const boardViewportWidth = ref(0);
 const boardContainer = ref<HTMLElement | null>(null);
 const boardVisibleCount = computed(() => {
-  const cardWidth = shelfCardSize.value === "compact" ? 150 : shelfCardSize.value === "large" ? 260 : 196;
-  return Math.max(1, Math.floor((boardViewportWidth.value + 14) / (cardWidth + 14)) || 1);
+  const cardWidth =
+    shelfCardSize.value === "compact"
+      ? 150
+      : shelfCardSize.value === "large"
+        ? 260
+        : 196;
+  return Math.max(
+    1,
+    Math.floor((boardViewportWidth.value + 14) / (cardWidth + 14)) || 1,
+  );
 });
 function resetBoardPages() {
   Object.keys(boardPageStarts).forEach((key) => delete boardPageStarts[key]);
@@ -396,7 +417,10 @@ function moveBoard(status: string, direction: -1 | 1, available: number) {
     boardPageStarts[status] = Math.max(0, current - available);
     return;
   }
-  if (current + available >= props.items.length && props.items.length < props.total) {
+  if (
+    current + available >= props.items.length &&
+    props.items.length < props.total
+  ) {
     emit("load-more");
   }
   boardPageStarts[status] = current + available;
@@ -409,7 +433,9 @@ function updateBoardViewport() {
 onMounted(updateBoardViewport);
 watch(shelfCardSize, () => requestAnimationFrame(updateBoardViewport));
 window.addEventListener("resize", updateBoardViewport);
-onBeforeUnmount(() => window.removeEventListener("resize", updateBoardViewport));
+onBeforeUnmount(() =>
+  window.removeEventListener("resize", updateBoardViewport),
+);
 
 const boardGroups = computed(() => {
   const statuses =
@@ -423,7 +449,12 @@ const boardGroups = computed(() => {
       );
       rowItems = rowItems.filter(matchesFilterState);
       const start = boardPageStarts[s.key] ?? 0;
-      return { status: s, rowItems, visibleItems: rowItems.slice(start, start + boardVisibleCount.value), start };
+      return {
+        status: s,
+        rowItems,
+        visibleItems: rowItems.slice(start, start + boardVisibleCount.value),
+        start,
+      };
     })
     .filter((g) => g.rowItems.length > 0);
 });
@@ -1319,8 +1350,23 @@ defineExpose({ openQuickAdd });
               <h2>{{ group.status.label }}</h2>
               <span class="n">{{ group.rowItems.length }}</span>
               <div class="board-nav">
-                <button type="button" :disabled="group.start === 0" @click="moveBoard(group.status.key, -1, boardVisibleCount)">‹</button>
-                <button type="button" :disabled="group.start + boardVisibleCount >= group.rowItems.length && items.length >= total" @click="moveBoard(group.status.key, 1, boardVisibleCount)">›</button>
+                <button
+                  type="button"
+                  :disabled="group.start === 0"
+                  @click="moveBoard(group.status.key, -1, boardVisibleCount)"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  :disabled="
+                    group.start + boardVisibleCount >= group.rowItems.length &&
+                    items.length >= total
+                  "
+                  @click="moveBoard(group.status.key, 1, boardVisibleCount)"
+                >
+                  ›
+                </button>
               </div>
             </div>
             <div ref="boardContainer" class="board-shelf">

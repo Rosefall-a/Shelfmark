@@ -1,0 +1,250 @@
+{
+  "observed_utc": "2026-10-02 17:46:30 UTC",
+  "final_code_checks": [
+    {
+      "label": "host-final",
+      "repo": "Rosefall-a/unnamed_tracking_app",
+      "sha": "31e97fcd0b9217a9398d052bf99613e69cba9174",
+      "checks": [
+        {
+          "name": "strict-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122302/job/110937961244"
+        },
+        {
+          "name": "build-and-push (frontend, ./src/frontend, ./src/frontend/Dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122209/job/110937961185"
+        },
+        {
+          "name": "backend-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122224/job/110937960814"
+        },
+        {
+          "name": "format",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122242/job/110937959943"
+        },
+        {
+          "name": "build-and-push (backend, ./src/backend, ./src/backend/dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122209/job/110937959623"
+        },
+        {
+          "name": "Package-Production-Container",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122197/job/110937959606"
+        },
+        {
+          "name": "Frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037122257/job/110937959582"
+        },
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114990/job/110937937440"
+        },
+        {
+          "name": "build-and-push (backend, ./src/backend, ./src/backend/dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114839/job/110937936768"
+        },
+        {
+          "name": "strict-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114968/job/110937936639"
+        },
+        {
+          "name": "Package-Production-Container",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114842/job/110937936529"
+        },
+        {
+          "name": "build-and-push (frontend, ./src/frontend, ./src/frontend/Dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114839/job/110937936378"
+        },
+        {
+          "name": "backend-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114831/job/110937936235"
+        },
+        {
+          "name": "Frontend",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app/actions/runs/37037114821/job/110937935783"
+        }
+      ]
+    },
+    {
+      "label": "plugins-final-main",
+      "repo": "Rosefall-a/unnamed_tracking_app_plugins",
+      "sha": "54649b50ecd422123cf244fe846bb59bc83a7ec0",
+      "checks": [
+        {
+          "name": "packages",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37042500226/job/110955791005"
+        },
+        {
+          "name": "test-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37042500264/job/110955790920"
+        },
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37042500221/job/110955790562"
+        }
+      ]
+    },
+    {
+      "label": "playnite",
+      "repo": "Rosefall-a/UnnamedTrackingPlaynite",
+      "sha": "154f6d45e504c9b04f20e08b865278a2b6ebdc8c",
+      "checks": [
+        {
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/UnnamedTrackingPlaynite/actions/runs/37019954440/job/110880179450"
+        },
+        {
+          "name": "wiki",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/UnnamedTrackingPlaynite/actions/runs/37019954440/job/110880179257"
+        },
+        {
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/UnnamedTrackingPlaynite/actions/runs/37019953667/job/110880177093"
+        }
+      ]
+    }
+  ],
+  "accepted_fix_pr_heads": [
+    {
+      "label": "plugins-signing",
+      "repo": "Rosefall-a/unnamed_tracking_app_plugins",
+      "sha": "0d8f0b4cf24c37bd6e1de290651de35227c70325",
+      "checks": [
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039334268/job/110945284171"
+        },
+        {
+          "name": "test-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039334170/job/110945283411"
+        },
+        {
+          "name": "test-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039222872/job/110944919832"
+        },
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039222792/job/110944919307"
+        }
+      ]
+    },
+    {
+      "label": "plugins-target-repair",
+      "repo": "Rosefall-a/unnamed_tracking_app_plugins",
+      "sha": "ddec72ec237152775abac42669273dbed970df3d",
+      "checks": [
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37041796884/job/110953430531"
+        },
+        {
+          "name": "test-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37041796629/job/110953429302"
+        },
+        {
+          "name": "lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37041660063/job/110952979772"
+        },
+        {
+          "name": "test-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37041659739/job/110952978461"
+        }
+      ]
+    }
+  ],
+  "corrected_post_merge_failure": {
+    "repo": "Rosefall-a/unnamed_tracking_app_plugins",
+    "sha": "4dd6836aeee3b754c3883d19e0c764f6ee97297a",
+    "checks": [
+      {
+        "name": "test-and-build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039855992/job/110947018208"
+      },
+      {
+        "name": "packages",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039856029/job/110947015141"
+      },
+      {
+        "name": "lifecycle",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/actions/runs/37039856067/job/110947013899"
+      }
+    ],
+    "cause": "main-to-main companion selection chose the wrong host target",
+    "fix_pr": "https://github.com/Rosefall-a/unnamed_tracking_app_plugins/pull/34"
+  },
+  "historical_invalid_release_trigger": {
+    "repo": "Rosefall-a/UnnamedTrackingPlaynite",
+    "sha": "154f6d45e504c9b04f20e08b865278a2b6ebdc8c",
+    "tag": "v0.2.0-beta.3",
+    "reason": "Tag 0.2.0 conflicts with the authoritative source manifest 0.1.2; release guard correctly refuses it. Main and PEXT branch builds passed.",
+    "checks": [
+      {
+        "name": "build",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/Rosefall-a/UnnamedTrackingPlaynite/actions/runs/37020257548/job/110881227377"
+      }
+    ]
+  }
+}

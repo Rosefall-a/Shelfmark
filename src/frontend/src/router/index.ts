@@ -141,6 +141,16 @@ const router = createRouter({
     },
     { path: "/profile", redirect: "/settings" },
     {
+      path: "/plugins/:pluginId",
+      name: "plugin-host",
+      component: () => import("../views/PluginHost.vue"),
+    },
+    {
+      path: "/plugins/:pluginId/:pluginPath(.*)*",
+      name: "plugin-route",
+      component: () => import("../views/PluginHost.vue"),
+    },
+    {
       path: "/settings",
       name: "settings",
       component: () => import("../views/Settings.vue"),
@@ -169,7 +179,12 @@ router.beforeEach(async (to, from) => {
     try {
       const status = await fetchSetupStatus();
       setupState = status.setup_required ? "required" : "complete";
-      if (!status.setup_required && !status.startup_ui_enabled && to.path !== "/setup" && !startupUiShown) {
+      if (
+        !status.setup_required &&
+        !status.startup_ui_enabled &&
+        to.path !== "/setup" &&
+        !startupUiShown
+      ) {
         startupUiShown = true;
         return { path: "/setup" };
       }
@@ -198,7 +213,10 @@ router.beforeEach(async (to, from) => {
   }
   if (to.path === "/setup") {
     const status = await fetchSetupStatus();
-    if (status.setup_required || !status.startup_ui_enabled) { startupUiShown = true; return; }
+    if (status.setup_required || !status.startup_ui_enabled) {
+      startupUiShown = true;
+      return;
+    }
     return currentUser.value ? "/" : "/login";
   }
 

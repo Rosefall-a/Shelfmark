@@ -1,0 +1,243 @@
+accepted-host-complete-backend.log
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-zip]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-content]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-url]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-catalogue]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-update]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-update-url]
+tests/test_plugin_install_sources.py::test_invalid_packages_are_hard_failures_from_every_source[duplicate-update-catalogue]
+  /usr/local/lib/python3.12/zipfile/__init__.py:1650: UserWarning: Duplicate name: 'payload/plugin.py'
+    return self._open_to_write(zinfo, force_zip64=force_zip64)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+763 passed, 18 warnings in 91.53s (0:01:31)
+
+accepted-host-runtime.log
+........................................................................ [ 86%]
+...........                                                              [100%]
+=============================== warnings summary ===============================
+tests/test_storage.py::test_backup_restore_is_namespace_bound_and_quota_checked
+tests/test_storage.py::test_backup_restore_is_namespace_bound_and_quota_checked
+tests/test_storage.py::test_backup_restore_is_namespace_bound_and_quota_checked
+  /acceptance/host-accepted/src/plugin-runtime/storage.py:185: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+    archive.extractall(staging)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+83 passed, 3 warnings in 3.65s
+
+accepted-host-mypy.log
+Success: no issues found in 195 source files
+
+accepted-host-pylint.log
+Your code has been rated at 9.25/10 (previous run: 9.24/10, +0.01)
+
+accepted-frontend-tests.log
+ [32m✓[39m src/tests/pluginExtensions.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m src/tests/pluginContributionHost.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m14 passed[39m[22m[90m (14)[39m
+[2m      Tests [22m [1m[32m79 passed[39m[22m[90m (79)[39m
+[2m   Start at [22m 16:59:29
+[2m   Duration [22m 5.37s[2m (import 57%, transform 37%, worker 4%, tests 3%)[22m
+
+[2m  Transform [22m [33mtransforming modules took 5.66s[39m[2m · 37% of tracked time, re-done on every run[22m
+[2m            [22m [2mpersist transforms across runs with [22m[33mfsModuleCache: true[39m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#caching-between-reruns[22m
+
+
+accepted-frontend-format.log
+
+> frontend@0.0.0 format
+> prettier --check .
+
+Checking formatting...
+All matched files use Prettier code style!
+
+accepted-frontend-lint.log
+
+> frontend@0.0.0 lint
+> eslint .
+
+
+accepted-frontend-types.log
+
+> frontend@0.0.0 typecheck
+> vue-tsc -b
+
+
+accepted-frontend-build.log
+dist/assets/index-Df2lsPsR.js                        128.67 kB │ gzip: 37.15 kB
+dist/assets/Settings-ChRuMBq9.js                     196.66 kB │ gzip: 52.12 kB
+
+✓ built in 5.41s
+[33m[PLUGIN_TIMINGS] [0mYour build spent 79% of 5.4s inside plugin hooks (4.3s).
+Measured inside the callback, so queue time is excluded and time the callback itself awaited is not:
+  - vite:vue transform (50%, 2.7s, 301 calls)
+Those rows are 50% of the build; the rest of the 79% is below.
+Not measurable — 1 hook whose calls overlap, so elapsed time covers work other calls were doing. Profile with `node --cpu-prof`:
+  - vite:asset load (6 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+
+
+accepted-plugin-clean-tests.log
+........................................................................ [ 40%]
+........................................................................ [ 81%]
+................................                                         [100%]
+176 passed in 57.98s
+
+accepted-plugin-browser.log
+  duration_ms: 2805.755836
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 36
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 39255.283903
+
+accepted-plugin-native.log
+  duration_ms: 1.159986
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 188.107936
+
+playnite-build.log
+  UnnamedTrackingPlaynite -> C:\Users\toast\.codex\visualizations\2026\10\02\01a0fd23-74d7-71a3-9d68-01067787d232\acceptance\playnite\src\UnnamedTrackingPlaynite\bin\Release\net462\UnnamedTrackingPlaynite.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.37
+
+playnite-tests.log
+Passed 174 assertions against production synchronization/save helpers.
+
+playnite-package-tests.log
+Validated extension UnnamedTrackingPlaynite 0.1.2
+Validated PEXT: UnnamedTrackingPlaynite-0.1.2.pext
+Packaging regression checks passed.
+
+playnite-real-http.log
+Real production client: connection, preview, game create, artwork, GUID rename/update, save upload/download and cancellation passed.
+Passed 8 assertions against production synchronization/save helpers.
+
+accepted-host-wiki.log
+[31m │  × [0mAll theme overrides will break – the theming system has been rewritten
+[31m │  × [0mNo migration path exists – existing projects cannot be upgraded
+[31m │  × [0mClosed contribution model – community members can't report bugs
+[31m │  × [0mCurrently unlicensed – unsuitable for production use
+[31m │[0m
+[31m │[0m  Our full analysis:
+[31m │[0m
+[31m │[0m  [4mhttps://squidfunk.github.io/mkdocs-material/blog/2026/02/18/mkdocs-2.0/[0m
+[0m
+INFO    -  Cleaning site directory
+INFO    -  Building documentation to directory: /acceptance/evidence/accepted-host-wiki
+INFO    -  Documentation built in 3.19 seconds
+
+accepted-plugin-clean-wiki.log
+[31m │  × [0mAll theme overrides will break – the theming system has been rewritten
+[31m │  × [0mNo migration path exists – existing projects cannot be upgraded
+[31m │  × [0mClosed contribution model – community members can't report bugs
+[31m │  × [0mCurrently unlicensed – unsuitable for production use
+[31m │[0m
+[31m │[0m  Our full analysis:
+[31m │[0m
+[31m │[0m  [4mhttps://squidfunk.github.io/mkdocs-material/blog/2026/02/18/mkdocs-2.0/[0m
+[0m
+INFO    -  Cleaning site directory
+INFO    -  Building documentation to directory: /acceptance/plugins-security/.validation/wiki
+INFO    -  Documentation built in 3.83 seconds
+
+playnite-wiki.log
+[31m │  × [0mAll theme overrides will break – the theming system has been rewritten
+[31m │  × [0mNo migration path exists – existing projects cannot be upgraded
+[31m │  × [0mClosed contribution model – community members can't report bugs
+[31m │  × [0mCurrently unlicensed – unsuitable for production use
+[31m │[0m
+[31m │[0m  Our full analysis:
+[31m │[0m
+[31m │[0m  [4mhttps://squidfunk.github.io/mkdocs-material/blog/2026/02/18/mkdocs-2.0/[0m
+[0m
+INFO    -  Cleaning site directory
+INFO    -  Building documentation to directory: /acceptance/evidence/playnite-wiki
+INFO    -  Documentation built in 1.72 seconds
+
+plugin-dependency-audit-fixed.log
+No known vulnerabilities found
+
+reference-lifecycle-process.log
+example.metadata-curator: real install/configure/start/restart/disable/update/rejected permission transaction/rollback/reinstall/failed activation restoration/purge/nonempty uninstall passed
+example.playtime-report: real install/configure/start/restart/disable/update/rejected permission transaction/rollback/reinstall/failed activation restoration/purge/nonempty uninstall passed
+example.recently-played-notifier: real install/configure/start/restart/disable/update/rejected permission transaction/rollback/reinstall/failed activation restoration/purge/nonempty uninstall passed
+example.ui-api: real install/configure/start/restart/disable/update/rejected permission transaction/rollback/reinstall/failed activation restoration/purge/nonempty uninstall passed
+
+accepted-frontend-audit.json
+{
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "dependencies": {
+    "prod": 32,
+    "dev": 173,
+    "optional": 27,
+    "peer": 1,
+    "peerOptional": 0,
+    "total": 204
+  }
+}
+
+plugin-npm-audit.json
+{
+  "vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "dependencies": {
+    "prod": 1,
+    "dev": 8,
+    "optional": 1,
+    "peer": 0,
+    "peerOptional": 0,
+    "total": 8
+  }
+}
+
+backend-dependency-audit-fixed.json
+{"resolved_packages": 58, "vulnerability_records": 0}
+
+plugin-dependency-audit-fixed.json
+{"resolved_packages": 44, "vulnerability_records": 0}
+
+playnite-dependency-audit.json
+NuGet transitive scan: no vulnerable package entries.
+
+Final companion-target regression suite (tested ddec72e; exact tree of merge 54649b5):
+.....................................                                    [100%]
+181 passed in 52.32s
+
+Production image: sha256:24feed350e5ce51b162f29bb705d8b05b4a88facb9656591a2a44cc7f7674555
+Runtime image: sha256:f71d4971fd8f3e57e9fa217f78d75abc5349f0b77fbf479d7d27f212974e0321
+Both built from host 31e97fcd0b9217a9398d052bf99613e69cba9174 Git archive.

@@ -1,0 +1,132 @@
+name: Plugin repository integration
+
+on:
+  push:
+    branches: [plugin-manager, 'fix/plugin-*', 'feat/official-pwa-*']
+  pull_request:
+    branches: [plugin-manager]
+  workflow_dispatch:
+    inputs:
+      plugins_ref:
+        description: "Companion repository ref (default: matching branch, then main)"
+        type: string
+        required: false
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: plugin_integration
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U test -d plugin_integration"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: plugin_integration
+      SECRET_KEY: XJVqc8r7Uj801VzGUYhlQV8A2tZTBepjOYEiP2pTzFk=
+      PYTHONPATH: ${{ github.workspace }}/src/backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select companion repository ref
+        id: companion
+        env:
+          REQUESTED_REF: ${{ inputs.plugins_ref }}
+          COMPANION_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          ref="$REQUESTED_REF"
+          if [ -z "$ref" ]; then
+            ref=main
+            if git ls-remote --exit-code --heads https://github.com/Rosefall-a/unnamed_tracking_app_plugins.git "refs/heads/$COMPANION_BRANCH" >/dev/null; then
+              ref="$COMPANION_BRANCH"
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Testing companion repository ref: $ref"
+      - uses: actions/checkout@v4
+        with:
+          repository: Rosefall-a/unnamed_tracking_app_plugins
+          ref: ${{ steps.companion.outputs.ref }}
+          fetch-depth: 0
+          path: .integration-plugins
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install host and builder dependencies
+        run: |
+          python -m pip install -r src/backend/requirements.txt jsonschema
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          # The disposable runner must permit namespaces for strict sandbox tests.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          bwrap --unshare-all --ro-bind / / -- /bin/true
+          sudo mkdir -p /data
+          sudo chown "$(id -u):$(id -g)" /data
+      - name: Prepare disposable database
+        working-directory: src/backend
+        run: alembic upgrade head
+      - name: Build the actual host frontend
+        working-directory: src/frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Verify generated plugin packages against the current host contract
+        working-directory: .integration-plugins
+        run: |
+          python tools/build_packages.py
+          python tools/distribution.py --root .validation --check-source
+          python tools/verify_packages.py .validation/dist/*.utp
+          python tools/validate_packages.py .validation/dist/*.utp
+          python tools/check_host_contract.py --host-root "$GITHUB_WORKSPACE"
+      - name: Install browser tooling from the plugin repository
+        working-directory: .integration-plugins
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium --only-shell
+      - name: Verify official distribution and the full real-worker lifecycle
+        env:
+          JELLYFIN_SCREENSHOT_DIR: ${{ runner.temp }}/plugin-acceptance/screenshots
+        run: |
+          python tools/check_plugin_repository_lifecycle.py \
+            --plugins-root .integration-plugins \
+            --work-root "${{ runner.temp }}/plugin-acceptance" --browser
+      - name: Test the official Jellyfin preview when supplied by the companion ref
+        run: |
+          if [ -f .integration-plugins/tools/check_jellyfin_official_lifecycle.py ]; then
+            bash tools/run_strict_plugin_acceptance.sh "$GITHUB_WORKSPACE" \
+              "$GITHUB_WORKSPACE/.integration-plugins" \
+              "${{ runner.temp }}/jellyfin-official-acceptance"
+          fi
+      - name: Verify official PWA signing and real browser lifecycle
+        run: |
+          python tools/check_pwa_lifecycle.py --plugins-root .integration-plugins \
+            --work-root "${{ runner.temp }}/pwa-acceptance"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-integration-evidence
+          path: |
+            ${{ runner.temp }}/plugin-acceptance/*.log
+            ${{ runner.temp }}/plugin-acceptance/**/*.png
+            ${{ runner.temp }}/plugin-acceptance/conformance.json
+            ${{ runner.temp }}/jellyfin-official-acceptance/*.log
+            ${{ runner.temp }}/jellyfin-official-acceptance/conformance.json
+            ${{ runner.temp }}/jellyfin-official-acceptance/screenshots/*.png
+            ${{ runner.temp }}/pwa-acceptance/*.log
+            ${{ runner.temp }}/pwa-acceptance/*.png
+            ${{ runner.temp }}/pwa-acceptance/pwa-conformance.json
+          if-no-files-found: warn

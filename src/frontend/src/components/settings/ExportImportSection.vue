@@ -367,14 +367,24 @@ async function onFileSelected(e: Event) {
       <div v-if="malError" class="form-error">{{ malError }}</div>
       <div v-if="yamtrackError" class="form-error">{{ yamtrackError }}</div>
       <div v-if="yamtrackResult" class="form-success">
-        Movies: {{ yamtrackResult.created.movies ?? 0 }} added,
-        TV shows: {{ yamtrackResult.created.tv_shows ?? 0 }} added,
-        anime: {{ yamtrackResult.created.anime ?? 0 }} added.
+        Movies: {{ yamtrackResult.created.movies ?? 0 }} added, TV shows:
+        {{ yamtrackResult.created.tv_shows ?? 0 }} added, anime:
+        {{ yamtrackResult.created.anime ?? 0 }} added.
         {{ yamtrackResult.seasons_created }} seasons and
         {{ yamtrackResult.episodes_created }} episodes imported.
-        <template v-if="yamtrackResult.skipped.movies || yamtrackResult.skipped.tv_shows || yamtrackResult.skipped.anime">
+        <template
+          v-if="
+            yamtrackResult.skipped.movies ||
+            yamtrackResult.skipped.tv_shows ||
+            yamtrackResult.skipped.anime
+          "
+        >
           Existing items skipped:
-          {{ (yamtrackResult.skipped.movies ?? 0) + (yamtrackResult.skipped.tv_shows ?? 0) + (yamtrackResult.skipped.anime ?? 0) }}.
+          {{
+            (yamtrackResult.skipped.movies ?? 0) +
+            (yamtrackResult.skipped.tv_shows ?? 0) +
+            (yamtrackResult.skipped.anime ?? 0)
+          }}.
         </template>
         <ul v-if="yamtrackResult.errors.length" class="import-errors">
           <li v-for="(err, i) in yamtrackResult.errors" :key="i">{{ err }}</li>
@@ -489,7 +499,13 @@ async function onFileSelected(e: Event) {
         </div>
       </div>
       <label v-else class="secondary-button upload-label">
-        {{ source === "yamtrack" ? "Choose Yamtrack CSV…" : malBusy ? "Reading…" : "Choose file…" }}
+        {{
+          source === "yamtrack"
+            ? "Choose Yamtrack CSV…"
+            : malBusy
+              ? "Reading…"
+              : "Choose file…"
+        }}
         <input
           type="file"
           :accept="sourceInfo.accept"

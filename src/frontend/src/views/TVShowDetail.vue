@@ -26,9 +26,12 @@ import type { ChainNode, BranchNode } from "../components/RelationsGraph.vue";
 import MediaPreviewModal from "../components/MediaPreviewModal.vue";
 import { useConfirm } from "../state/dialog";
 import MediaExtrasPanel from "../components/MediaExtrasPanel.vue";
+import MediaProviderPanel from "../components/MediaProviderPanel.vue";
 import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import RatingPicker from "../components/RatingPicker.vue";
+import PluginExtensionSlot from "../components/plugins/PluginExtensionSlot.vue";
+import PluginContextualActions from "../components/plugins/PluginContextualActions.vue";
 import { formatAiringCountdown } from "../utils/countdown";
 import {
   STATUS_BUCKETS,
@@ -606,6 +609,21 @@ async function onRatingChange(value: number | null) {
 
   <main v-else-if="show" class="detail">
     <MediaTopBar active="tv" />
+    <PluginExtensionSlot
+      slot-id="media.detail.after-header"
+      :context="{
+        host_page: 'media.detail',
+        media_id: show.id,
+        media_type: 'tv',
+      }"
+    />
+    <PluginContextualActions
+      :context="{
+        kind: 'media',
+        resource_id: String(show.id),
+        resource_type: 'tv',
+      }"
+    />
 
     <BackButton class="back-spot" @click="goBack" />
 
@@ -795,6 +813,7 @@ async function onRatingChange(value: number | null) {
           </button>
         </div>
         <MyNote :note="show.note" @save="saveNote" />
+        <MediaProviderPanel media-type="tv" :media-id="show.id" />
       </div>
 
       <div v-else-if="activeTab === 'episodes'" class="tab-panel">

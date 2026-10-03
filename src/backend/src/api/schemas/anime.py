@@ -7,6 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from src.api.schemas.provider_identity import ProviderIDs
 
 from src.database.models.anime import AnimeStatus
 
@@ -32,6 +33,7 @@ class AnimeBase(BaseModel):
     anilist_score: Decimal | None = Field(default=None, ge=0, le=10)
     mal_score: Decimal | None = Field(default=None, ge=0, le=10)
     source: str | None = Field(default=None, max_length=50)
+    provider_ids: ProviderIDs = Field(default_factory=dict)
     external_id: str | None = Field(default=None, max_length=50)
     anilist_id: str | None = Field(default=None, max_length=50)
     poster_url: str | None = None
@@ -78,6 +80,8 @@ class AnimeCreate(AnimeBase):
 class AnimeUpdate(BaseModel):
     """Payload for partial updates — every field optional. Seasons are
     never touched here; they have their own nested CRUD endpoints."""
+
+    provider_ids: ProviderIDs = Field(default_factory=dict)
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     title_english: str | None = Field(default=None, max_length=500)

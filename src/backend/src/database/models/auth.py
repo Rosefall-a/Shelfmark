@@ -22,6 +22,24 @@ class UserSession(Base):
     expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False, default=time.time)
 
+    last_seen_at: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=time.time, index=True
+    )
+    ip_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    geo_country: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_region: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_latitude: Mapped[float | None] = mapped_column(nullable=True)
+    geo_longitude: Mapped[float | None] = mapped_column(nullable=True)
+    geo_network_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    geo_network_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    geo_network_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    geo_network_organization: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    anomaly_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    anomaly_previous_location: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    revoked_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+
 
 class UserApiKey(Base):
     __tablename__ = "user_api_keys"

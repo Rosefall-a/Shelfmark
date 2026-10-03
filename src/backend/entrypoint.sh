@@ -2,7 +2,7 @@
 set -e
 
 echo "Starting application..."
-
+  
 echo "Applying database migrations..."
 MAX_RETRIES=30
 RETRY_DELAY=2

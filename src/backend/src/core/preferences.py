@@ -22,6 +22,7 @@ DEFAULTS: dict[str, Any] = {
     "notify_season_started": True,
     "notify_sequel_announced": True,
     "notify_movie_released": True,
+    "notify_session_anomaly": True,
     "notify_statuses": ["watching", "plan", "hold"],
     "notify_media_types": ["anime", "tv", "movie"],
     "notification_retention_days": 30,

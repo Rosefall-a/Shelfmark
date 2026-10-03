@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, ref, onMounted, onUnmounted } from "vue";
+import {
+  RouterLink,
+  useRoute,
+  useRouter,
+  type RouteLocationRaw,
+} from "vue-router";
 import { logout } from "../services/auth";
+import {
+  pluginNavigation,
+  refreshPluginExtensions,
+} from "../state/pluginExtensions";
 import { currentUser } from "../state/auth";
+import {
+  approvePluginAction,
+  dispatchPluginAction,
+} from "../services/pluginUi";
 import { inboxCount, refreshInboxCount } from "../state/inbox";
 import {
   notifications,
@@ -18,6 +31,7 @@ import {
 
 onMounted(refreshInboxCount);
 onMounted(refreshNotifications);
+onMounted(() => void refreshPluginExtensions());
 // Asking the server for notifications is also what makes it create the
 // newly due ones, so this poll is the whole "delivery" mechanism: cheap,
 // every 5 minutes while the app is open, nothing running when it is not.
@@ -61,6 +75,45 @@ function close() {
   open.value = false;
 }
 const router = useRouter();
+const mainPluginNavigation = computed(() =>
+  pluginNavigation.value.filter(
+    (item) =>
+      (item.location === "main.sidebar" ||
+        (item.location === "administration" && currentUser.value?.is_admin)) &&
+      (!item.adminOnly || currentUser.value?.is_admin),
+  ),
+);
+
+function pluginNavigationTarget(
+  item: (typeof mainPluginNavigation.value)[number],
+): RouteLocationRaw {
+  if (item.settingsSectionId)
+    return { path: "/settings", query: { section: item.settingsSectionId } };
+  if (item.routePath)
+    return {
+      name: "plugin-route",
+      params: { pluginId: item.pluginId, pluginPath: item.routePath },
+    };
+  return {
+    name: "plugin-route",
+    params: { pluginId: item.pluginId, pluginPath: item.pageId },
+  };
+}
+
+async function activatePluginNavigation(
+  item: (typeof mainPluginNavigation.value)[number],
+) {
+  if (!item.action) return;
+  if (!approvePluginAction(item.action, window.confirm)) return;
+  await dispatchPluginAction(
+    item.pluginId,
+    item.action.id,
+    {},
+    undefined,
+    Boolean(item.action.confirmation),
+  );
+  close();
+}
 
 async function handleLogout() {
   await logout();
@@ -676,6 +729,40 @@ async function handleLogout() {
         </svg>
         <span>Statistics</span>
       </router-link>
+
+      <component
+        :is="item.action ? 'button' : RouterLink"
+        v-for="item in mainPluginNavigation"
+        :key="`${item.pluginId}:${item.contributionId}`"
+        :to="item.action ? undefined : pluginNavigationTarget(item)"
+        :type="item.action ? 'button' : undefined"
+        class="sidebar-item plugin-sidebar-item"
+        :class="{ active: isActive(`/plugins/${item.pluginId}`) }"
+        @click="item.action ? activatePluginNavigation(item) : close()"
+      >
+        <span
+          v-if="item.icon"
+          class="plugin-navigation-icon"
+          aria-hidden="true"
+        >
+          {{ item.icon }}
+        </span>
+        <svg
+          v-else
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3m13 5h3a2 2 0 0 0 2-2v-3"
+          />
+          <rect x="8" y="8" width="8" height="8" rx="2" />
+        </svg>
+        <span>{{ item.label }}</span>
+      </component>
 
       <div class="sidebar-spacer"></div>
 

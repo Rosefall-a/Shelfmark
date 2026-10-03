@@ -7,7 +7,7 @@ import time
 from typing import Final
 
 from fastapi import Cookie, Depends, Header, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -81,9 +81,13 @@ def create_api_key() -> tuple[str, str, str]:
 
 
 async def revoke_session(db: AsyncSession, session_token: str) -> bool:
-    """Delete one opaque session using only the hash of its cookie value."""
+    """Revoke one browser session while preserving its audit metadata."""
     result = await db.execute(
-        delete(UserSession).where(UserSession.token_hash == hash_token(session_token))
+        update(UserSession)
+        .where(
+            UserSession.token_hash == hash_token(session_token), UserSession.revoked_at.is_(None)
+        )
+        .values(revoked_at=int(time.time()))
     )
     await db.commit()
     return bool(result.rowcount)
@@ -99,6 +103,10 @@ async def get_current_user(
 
     if authorization and authorization.startswith("Bearer "):
         api_key = authorization[7:].strip()
+        if api_key.startswith("utpm_"):
+            raise HTTPException(
+                status_code=403, detail="Plugin management tokens cannot access application APIs."
+            )
         if api_key.startswith(API_KEY_PREFIX):
             user = await db.scalar(
                 select(User)
@@ -117,9 +125,22 @@ async def get_current_user(
             .where(
                 UserSession.token_hash == hash_token(session_token),
                 UserSession.expires_at > now,
+                UserSession.revoked_at.is_(None),
                 User.is_active.is_(True),
             )
         )
+
+        if user is not None:
+            await db.execute(
+                update(UserSession)
+                .where(
+                    UserSession.token_hash == hash_token(session_token),
+                    UserSession.revoked_at.is_(None),
+                    UserSession.last_seen_at <= now - 60,
+                )
+                .values(last_seen_at=now)
+            )
+            await db.commit()
 
     if user is None:
         raise HTTPException(

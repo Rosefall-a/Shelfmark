@@ -116,7 +116,9 @@ async def test_duplicate_rename_returns_conflict_and_keeps_both_notes(note_stora
     db = FakeDB()
     user = FakeUser()
     await games.create_game_note(GAME_ID, "First note", games.NoteWrite(content="first"), db, user)
-    await games.create_game_note(GAME_ID, "Second note", games.NoteWrite(content="second"), db, user)
+    await games.create_game_note(
+        GAME_ID, "Second note", games.NoteWrite(content="second"), db, user
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await games.rename_game_note(
@@ -148,9 +150,7 @@ async def test_same_name_rename_is_a_no_op(note_storage: Path):
 async def test_rename_failure_does_not_remove_source(note_storage: Path, monkeypatch):
     db = FakeDB()
     user = FakeUser()
-    await games.create_game_note(
-        GAME_ID, "Source note", games.NoteWrite(content="safe"), db, user
-    )
+    await games.create_game_note(GAME_ID, "Source note", games.NoteWrite(content="safe"), db, user)
 
     def fail_link(_source, _destination):
         raise OSError("simulated rename failure")
