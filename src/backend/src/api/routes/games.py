@@ -1,6 +1,7 @@
 """API routes for managing games, notes, and game artwork."""
 
 import asyncio
+import os
 import re
 import time
 from pathlib import Path
@@ -72,7 +73,7 @@ router = APIRouter(
 )
 
 _DATA_ROOT = Path("/data/users")
-_NOTE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_NOTE_NAME_PATTERN = re.compile(r"^[^\x00-\x1f\x7f/\\]+$")
 _LEADING_ARTICLE = re.compile(r"^(a|an|the)\s+", flags=re.IGNORECASE)
 
 _DB_DEPENDENCY = Depends(get_db)
@@ -84,9 +85,15 @@ _NONE_QUERY_STATUS = Query(default=None, alias="status")
 
 
 class NoteWrite(BaseModel):
-    """Request body used to create or replace a game note."""
+    """Request body used to create or update a game note."""
 
     content: str
+
+
+class NoteRename(BaseModel):
+    """Request body used to rename a game note."""
+
+    new_name: str
 
 
 class MetadataSearchResponse(BaseModel):
@@ -294,12 +301,27 @@ def _normalize_note_name(note_name: str) -> str:
     if normalized.lower().endswith(".md"):
         normalized = normalized[:-3]
 
-    if not normalized or not _NOTE_NAME_PATTERN.fullmatch(normalized):
+    if (
+        not normalized
+        or normalized in {".", ".."}
+        or normalized.startswith(".")
+        or normalized.endswith(".")
+        or normalized.endswith(" ")
+        or ":" in normalized
+        or not _NOTE_NAME_PATTERN.fullmatch(normalized)
+        or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])", normalized)
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Note name must contain only letters, numbers, underscores, or hyphens and no file extension.",
+            detail={
+                "error": "invalid_note_name",
+                "message": (
+                    "Note title must be a normal file name: spaces and common punctuation are allowed, "
+                    "but path separators, control characters, absolute paths, drive-style names, "
+                    "and path-like titles are not allowed."
+                ),
+            },
         )
-
     return normalized
 
 
@@ -987,32 +1009,90 @@ async def restore_game_file(
     return {"status": "restored", "filename": name}
 
 
-@router.put(
+@router.post(
     "/{game_id}/notes/{note_name}",
-    responses={
-        status.HTTP_201_CREATED: {"description": "Note created or updated"},
-        status.HTTP_404_NOT_FOUND: {"description": "Game not found"},
-        status.HTTP_400_BAD_REQUEST: {"description": "Invalid note name"},
-    },
+    status_code=status.HTTP_201_CREATED,
 )
-async def set_game_note(
+async def create_game_note(
     game_id: UUID,
     note_name: str,
     payload: NoteWrite = _BODY_DOTDOTDOT,
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict[str, str | None]:
-    """Create or replace a markdown note for a game."""
+    """Create a markdown note without replacing an existing note."""
     game = await _get_game_or_404(game_id, db, current_user.id)
-    note_path = _game_note_path(game, note_name)
-    note_path.write_text(payload.content, encoding="utf-8")
+    normalized_name = _normalize_note_name(note_name)
+    note_path = _game_note_path(game, normalized_name)
+    try:
+        with note_path.open("x", encoding="utf-8") as note_file:
+            note_file.write(payload.content)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "note_already_exists", "message": f'A note titled "{normalized_name}" already exists.'},
+        ) from exc
+    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
 
-    return {
-        "game_id": str(game_id),
-        "note_name": _normalize_note_name(note_name),
-        "path": str(note_path),
-        "status": "saved",
-    }
+
+@router.put(
+    "/{game_id}/notes/{note_name}",
+)
+async def update_game_note(
+    game_id: UUID,
+    note_name: str,
+    payload: NoteWrite = _BODY_DOTDOTDOT,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, str | None]:
+    """Update an existing markdown note."""
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    normalized_name = _normalize_note_name(note_name)
+    note_path = _game_note_path(game, normalized_name)
+    if not note_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{normalized_name}" was not found.')
+    note_path.write_text(payload.content, encoding="utf-8")
+    return {"game_id": str(game_id), "note_name": normalized_name, "path": str(note_path), "status": "saved"}
+
+
+@router.patch(
+    "/{game_id}/notes/{note_name}/rename",
+)
+async def rename_game_note(
+    game_id: UUID,
+    note_name: str,
+    payload: NoteRename = _BODY_DOTDOTDOT,
+    db: AsyncSession = _DB_DEPENDENCY,
+    current_user: User = _CURRENT_USER_DEPENDENCY,
+) -> dict[str, str | None]:
+    """Rename a note without replacing the destination or losing its contents."""
+    game = await _get_game_or_404(game_id, db, current_user.id)
+    source_name = _normalize_note_name(note_name)
+    destination_name = _normalize_note_name(payload.new_name)
+    source_path = _game_note_path(game, source_name)
+    destination_path = _game_note_path(game, destination_name)
+    if not source_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f'Note "{source_name}" was not found.')
+    if source_name == destination_name:
+        return {"game_id": str(game_id), "note_name": source_name, "path": str(source_path), "status": "saved"}
+    try:
+        os.link(source_path, destination_path)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "note_already_exists", "message": f'A note titled "{destination_name}" already exists.'},
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
+    try:
+        source_path.unlink()
+    except OSError as exc:
+        try:
+            destination_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="The note could not be renamed.") from exc
+    return {"game_id": str(game_id), "note_name": destination_name, "path": str(destination_path), "status": "saved"}
 
 
 @router.get(
