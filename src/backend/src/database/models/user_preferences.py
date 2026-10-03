@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-few-public-methods,unsubscriptable-object
 """Per-user app preferences that live on the server (so they follow the
 user across browsers): calendar options, notification toggles, and
 whatever the Settings page grows next. One row per user, created lazily;

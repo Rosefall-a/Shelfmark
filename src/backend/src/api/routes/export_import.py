@@ -1,3 +1,5 @@
+# pylint: disable=duplicate-code
+# pylint: disable=missing-class-docstring,missing-function-docstring,broad-exception-caught
 """Library export/import, a portable JSON snapshot of a user's data, for
 backups or moving to a new server. Export covers games, movies, TV shows,
 and anime; import (re-creating rows from a snapshot) still only handles

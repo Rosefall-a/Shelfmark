@@ -14,6 +14,7 @@ game rather than a guess:
 Falls back to a small, fixed catalog of well-known challenge-run
 archetypes, picked deterministically from the game's own id — stable
 across regenerations, never re-rolled, never chosen by a person."""
+# pylint: disable=missing-class-docstring,missing-function-docstring
 
 import hashlib
 from dataclasses import dataclass

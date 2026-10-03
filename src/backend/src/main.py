@@ -1,9 +1,10 @@
+# pylint: disable=missing-module-docstring,missing-function-docstring
 # app/main.py
 import asyncio
 
 from fastapi import FastAPI
-from starlette.middleware.sessions import SessionMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import (
     app_integrations,

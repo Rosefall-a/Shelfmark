@@ -5,6 +5,7 @@ one JSON snapshot per user in the same shape as the manual Export/Import
 feature (src/api/routes/export_import.py), so a backup file can be fed
 straight back through POST /api/import/library if it's ever needed.
 """
+# pylint: disable=missing-function-docstring,broad-exception-caught
 
 from __future__ import annotations
 

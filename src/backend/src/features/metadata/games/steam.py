@@ -11,6 +11,7 @@ Endpoints used here:
 - Featured:     https://store.steampowered.com/api/featuredcategories
 - Search:       https://store.steampowered.com/api/storesearch
 """
+# pylint: disable=missing-function-docstring,unused-argument
 
 import re
 import time

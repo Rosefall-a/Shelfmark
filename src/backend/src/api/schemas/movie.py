@@ -1,3 +1,7 @@
+"""Pydantic schemas for movie metadata."""
+
+# Domain schemas intentionally mirror the corresponding database/provider models.
+
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -5,6 +9,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.database.models.movies import MovieStatus
+
+# pylint: disable=duplicate-code
 
 
 class MovieBase(BaseModel):

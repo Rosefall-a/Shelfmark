@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring
 from __future__ import annotations
 
 from typing import Any
@@ -29,7 +30,7 @@ class RetroAchievementsClient:
         except requests.RequestException as exc:
             raise RetroAchievementsError(f"Could not reach RetroAchievements: {exc}") from exc
 
-        if response.status_code == 401 or response.status_code == 403:
+        if response.status_code in (401, 403):
             raise RetroAchievementsError("RetroAchievements rejected the API key.")
         if response.status_code >= 400:
             raise RetroAchievementsError(

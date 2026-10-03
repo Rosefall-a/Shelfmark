@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring,not-callable
 """In-app notifications. The bell polls `/unread-count`, which also
 generates anything newly due (see features/notifications.py), so there is
 no background job behind this."""

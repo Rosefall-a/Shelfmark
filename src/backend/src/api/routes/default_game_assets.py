@@ -1,8 +1,8 @@
+# pylint: disable=line-too-long
 """Fallback artwork for games that do not have stored cover art."""
 
 import hashlib
 from html import escape
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status

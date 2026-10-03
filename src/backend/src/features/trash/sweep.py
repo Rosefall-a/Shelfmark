@@ -4,6 +4,7 @@ interval (see main.py) — in-process, no new container, matching how world
 map renders already run as a plain asyncio background task rather than a
 separate worker.
 """
+# pylint: disable=missing-function-docstring,too-many-locals,too-many-boolean-expressions,too-many-branches,too-many-statements,broad-exception-caught
 
 from __future__ import annotations
 

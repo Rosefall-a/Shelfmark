@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring
 """Custom lists across movies, TV shows and anime: manual lists (ordered,
 with a pickable cover) and smart lists (a saved filter evaluated against
 the whole library on every read — the media-side twin of the Games

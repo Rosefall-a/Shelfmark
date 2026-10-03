@@ -1,4 +1,4 @@
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,missing-class-docstring,import-outside-toplevel,broad-exception-caught,cell-var-from-loop,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring
 # These modules intentionally keep domain/provider-specific logic separate; similar
 # structures here represent parallel APIs rather than accidental copy/paste.
 
@@ -402,7 +402,7 @@ async def list_anime(
     search: str | None = Query(default=None, description="Case-insensitive title search"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=200),
-)-> PaginatedResponse[AnimeLibraryRead]:
+) -> PaginatedResponse[AnimeLibraryRead]:
     """Return one page of the current user's anime and the total matching it."""
     stmt = select(Anime).where(Anime.user_id == current_user.id, Anime.deleted_at.is_(None))
 

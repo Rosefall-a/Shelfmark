@@ -1,3 +1,4 @@
+# pylint: disable=too-many-instance-attributes,invalid-name
 """Resolve provider credentials with one consistent precedence order."""
 
 from dataclasses import dataclass

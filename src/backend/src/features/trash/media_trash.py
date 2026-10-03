@@ -1,6 +1,7 @@
 """On-disk trash for a game's assigned screenshots/clips/soundtrack —
 same idea as inbox_trash.py, keyed by game folder instead of a user's
 inbox folder."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

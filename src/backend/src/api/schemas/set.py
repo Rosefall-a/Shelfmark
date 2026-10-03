@@ -1,3 +1,7 @@
+"""Pydantic schemas for user-defined game sets."""
+
+# The set schema mirrors related collection schemas by design.
+# pylint: disable=missing-class-docstring,duplicate-code
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field

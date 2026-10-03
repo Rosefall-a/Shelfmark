@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code,too-many-positional-arguments,too-many-boolean-expressions
 """Named, versioned save archives for a game — "Main World", "Pre-Nether-
 Update Backup", etc. — plus the BlueMap world-map render/view routes for
 archives of kind "world_save". Replaces the old convention (still used by
@@ -88,9 +89,8 @@ def _get_archive_kind_from_string(kind_str: str) -> ArchiveKind:
     raise ValueError(f"Unknown archive kind: {kind_str}")
 
 
-def _archive_dir(
-    game_folder: str, kind: str, archive_id: UUID, user_id: UUID
-) -> Path:  # Kind should be ArchiveKind, however its easier to accept type of string and let the caller handle the type checking. This is because the kind is passed in from the route path parameter which is a string.
+def _archive_dir(game_folder: str, kind: str, archive_id: UUID, user_id: UUID) -> Path:
+    """Return the on-disk directory for an archive."""
     kind = _get_archive_kind_from_string(kind)
     return (
         _DATA_ROOT / str(user_id) / "games" / game_folder / _ARCHIVE_SUBDIRS[kind] / str(archive_id)
@@ -160,6 +160,8 @@ def _trash_entry(game_id: UUID, archive: GameArchive) -> dict:
 
 
 class RenameArchiveRequest(BaseModel):
+    """Payload used to rename an archive."""
+
     name: str
 
 
@@ -170,6 +172,7 @@ async def list_archives(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> list[dict]:
+    """List active archives of the requested kind for a game."""
     await _get_game_or_404(game_id, db, current_user.id)
     result = await db.execute(
         select(GameArchive)
@@ -304,6 +307,7 @@ async def rename_archive(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Rename an existing archive."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     if not payload.name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Name is required.")
@@ -342,6 +346,7 @@ async def restore_archive(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Restore a deleted archive and all of its versions."""
     archive = await _get_archive_or_404(
         game_id, archive_id, db, current_user.id, include_deleted=True
     )
@@ -373,6 +378,7 @@ async def delete_archive_version(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Soft-delete one version of an archive."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id)
     version = next(
@@ -407,6 +413,7 @@ async def restore_archive_version(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Restore one deleted archive version."""
     archive = await _get_archive_or_404(
         game_id, archive_id, db, current_user.id, include_deleted=True
     )
@@ -440,6 +447,7 @@ async def download_archive_version(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
+    """Download an archived save version."""
     archive = await _get_archive_or_404(game_id, archive_id, db, current_user.id)
     game = await _get_game_or_404(game_id, db, current_user.id)
     version = next(
@@ -541,6 +549,7 @@ async def get_world_map_status(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> dict:
+    """Return the current render status for a world map."""
     await _get_archive_or_404(game_id, archive_id, db, current_user.id, kind="world_save")
     return bluemap.get_status(game_id, archive_id)
 
@@ -552,6 +561,7 @@ async def get_world_map_thumbnail(
     db: AsyncSession = _DB_DEPENDENCY,
     current_user: User = _CURRENT_USER_DEPENDENCY,
 ) -> FileResponse:
+    """Return the rendered world-map thumbnail."""
     game = await _get_game_or_404(game_id, db, current_user.id)
     path = bluemap.thumbnail_path(
         _DATA_ROOT / str(current_user.id) / "games" / (game.folder_location or ""), archive_id

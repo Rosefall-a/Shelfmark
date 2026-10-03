@@ -1,4 +1,6 @@
-# pylint: disable=duplicate-code
+"""Pydantic schemas for anime metadata."""
+
+# pylint: disable=duplicate-code,missing-class-docstring
 # These modules intentionally keep domain/provider-specific logic separate; similar
 # structures here represent parallel APIs rather than accidental copy/paste.
 

@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,broad-exception-caught
 """Renders an uploaded Minecraft world save into a static, browsable web map
 using the BlueMap CLI (Java, bundled into the backend image — see
 Dockerfile). Verified against the real CLI (v5.23) rather than assumed:

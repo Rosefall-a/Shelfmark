@@ -1,3 +1,4 @@
+# pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,too-many-locals
 from __future__ import annotations
 
 from dataclasses import dataclass

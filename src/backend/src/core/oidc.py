@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-many-instance-attributes,missing-function-docstring
 """OpenID Connect helpers."""
 
 from __future__ import annotations

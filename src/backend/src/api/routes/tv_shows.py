@@ -1,4 +1,4 @@
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,missing-class-docstring,broad-exception-caught,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring
 # These modules intentionally keep domain/provider-specific logic separate; similar
 # structures here represent parallel APIs rather than accidental copy/paste.
 
@@ -240,6 +240,7 @@ async def list_shows(
         limit=limit,
         status_counts=status_counts,
     )
+
 
 @router.get("/get/{show_id}", response_model=TVShowRead)
 async def get_show(

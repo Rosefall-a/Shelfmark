@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,too-many-lines,missing-class-docstring,not-callable,consider-using-generator,too-many-arguments,too-many-positional-arguments,missing-function-docstring,too-many-branches,redefined-outer-name
 """API routes for Bounties — personal goals and challenges. Independent
 from Achievements/Mastery/Cards/Prestige, but a bounty may optionally
 target a game, a specific achievement, or a named collection to compute

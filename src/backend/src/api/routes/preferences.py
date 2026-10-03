@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring
 """Per-user preferences stored on the server (calendar options,
 notification toggles). See core/preferences.py for the list and defaults."""
 

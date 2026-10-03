@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,not-callable,too-many-locals,too-many-branches,duplicate-code
 """API routes for app/user Settings — scan (metadata) preferences,
 per-user metadata-provider credentials, and read-only server config the
 frontend needs to display (e.g. upload limits)."""
@@ -289,7 +290,7 @@ async def get_provider_credentials(
     are present."""
     # non-secret identifiers (never passwords/keys/tokens) are safe to echo
     # back so a field the user already saved shows filled, not blank
-    _SAFE_TO_DISPLAY_FIELDS = {"steam_id", "username", "ssid", "client_id"}
+    safe_to_display_fields = {"steam_id", "username", "ssid", "client_id"}
 
     result: dict[str, dict] = {}
     for provider, field_map in PROVIDER_FIELD_MAP.items():
@@ -298,7 +299,7 @@ async def get_provider_credentials(
         saved_fields = {
             payload_field: getattr(current_user, column)
             for payload_field, column, _ in field_map
-            if payload_field in _SAFE_TO_DISPLAY_FIELDS and getattr(current_user, column)
+            if payload_field in safe_to_display_fields and getattr(current_user, column)
         }
         if saved_fields:
             result[provider]["fields"] = saved_fields

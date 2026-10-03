@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring,too-many-locals,too-many-positional-arguments,broad-exception-caught,import-outside-toplevel,cyclic-import
 """Daily background refresh of episode data for shows/anime that already
 have episodes synced — catches newly aired episodes for shows still
 airing. Same in-process asyncio loop pattern as the trash sweep

@@ -21,6 +21,9 @@ router = APIRouter(
 class DeploymentProviderCredentials(BaseModel):
     """Optional deployment-wide credentials; omitted fields are unchanged."""
 
+    # Pylint attributes imported model similarity to this route module; the models are intentionally parallel.
+    # pylint: disable=duplicate-code
+
     steamgriddb_api_key: str | None = None
     retroachievements_api_key: str | None = None
     giantbomb_api_key: str | None = None

@@ -1,5 +1,9 @@
 """Shared response models for paginated library endpoints."""
 
+# Pylint associates the upload-route similarity with this shared schema module;
+# the routes intentionally retain separate media/game validation paths.
+# pylint: disable=duplicate-code
+
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field

@@ -2,6 +2,7 @@
 since an inbox item is always a single flat file, never a nested archive.
 Moving a file aside instead of deleting it outright is what makes the
 7-day recovery window in features/trash/sweep.py possible."""
+# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

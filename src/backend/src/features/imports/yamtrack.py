@@ -4,6 +4,7 @@ Yamtrack exports one parent row plus optional season and episode rows for the
 same media_id. The importer groups those rows before creating library items so
 season/episode records never become duplicate shows.
 """
+# pylint: disable=line-too-long,missing-class-docstring,missing-function-docstring,too-many-locals,too-many-branches
 
 from __future__ import annotations
 
@@ -143,7 +144,9 @@ def parse_yamtrack(raw: bytes) -> list[YamtrackGroup]:
     return [g for g in groups.values() if g.parent is not None]
 
 
-def _season_rows(group: YamtrackGroup, season_cls: type, episode_cls: type, enum_class: Any) -> list[Any]:
+def _season_rows(
+    group: YamtrackGroup, season_cls: type, episode_cls: type, enum_class: Any
+) -> list[Any]:
     result = []
     parent_progress = _int((group.parent or {}).get("progress")) or 0
     for number in sorted(group.seasons):
@@ -167,7 +170,9 @@ def _season_rows(group: YamtrackGroup, season_cls: type, episode_cls: type, enum
             air_date=_date(raw.get("start_date")),
         )
         season.episodes = [
-            episode_cls(episode_number=ep_number, watched=_watched(ep), note=ep.get("notes") or None)
+            episode_cls(
+                episode_number=ep_number, watched=_watched(ep), note=ep.get("notes") or None
+            )
             for ep_number, ep in sorted(episodes.items())
         ]
         result.append(season)
@@ -194,9 +199,43 @@ def build_yamtrack_item(group: YamtrackGroup) -> Movie | TVShow | Anime:
     row = group.parent or {}
     if group.media_type == "movie":
         p = _parent_fields(group)
-        return Movie(title=p["title"], sort_title=p["sort_title"], source=p["source"], status=_status(row.get("status"), MovieStatus), rating_overall=p["rating"], note=p["note"], start_date=p["start_date"], end_date=p["end_date"], poster_url=p["poster_url"])
+        return Movie(
+            title=p["title"],
+            sort_title=p["sort_title"],
+            source=p["source"],
+            status=_status(row.get("status"), MovieStatus),
+            rating_overall=p["rating"],
+            note=p["note"],
+            start_date=p["start_date"],
+            end_date=p["end_date"],
+            poster_url=p["poster_url"],
+        )
     if group.media_type == "anime":
         p = _parent_fields(group)
-        return Anime(title=p["title"], sort_title=p["sort_title"], source=p["source"], external_id=p["external_id"], status=_status(row.get("status"), AnimeStatus), rating_overall=p["rating"], note=p["note"], start_date=p["start_date"], end_date=p["end_date"], poster_url=p["poster_url"], seasons=_season_rows(group, AnimeSeason, AnimeEpisode, AnimeStatus))
+        return Anime(
+            title=p["title"],
+            sort_title=p["sort_title"],
+            source=p["source"],
+            external_id=p["external_id"],
+            status=_status(row.get("status"), AnimeStatus),
+            rating_overall=p["rating"],
+            note=p["note"],
+            start_date=p["start_date"],
+            end_date=p["end_date"],
+            poster_url=p["poster_url"],
+            seasons=_season_rows(group, AnimeSeason, AnimeEpisode, AnimeStatus),
+        )
     p = _parent_fields(group)
-    return TVShow(title=p["title"], sort_title=p["sort_title"], source=p["source"], external_id=p["external_id"], status=_status(row.get("status"), TVShowStatus), rating_overall=p["rating"], note=p["note"], start_date=p["start_date"], end_date=p["end_date"], poster_url=p["poster_url"], seasons=_season_rows(group, TVSeason, TVEpisode, TVShowStatus))
+    return TVShow(
+        title=p["title"],
+        sort_title=p["sort_title"],
+        source=p["source"],
+        external_id=p["external_id"],
+        status=_status(row.get("status"), TVShowStatus),
+        rating_overall=p["rating"],
+        note=p["note"],
+        start_date=p["start_date"],
+        end_date=p["end_date"],
+        poster_url=p["poster_url"],
+        seasons=_season_rows(group, TVSeason, TVEpisode, TVShowStatus),
+    )

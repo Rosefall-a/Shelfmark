@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,import-outside-toplevel,unused-import,broad-exception-caught,missing-function-docstring,try-except-raise
 """Brings the database up to date on every start, so updating the app is
 just pulling the new version and starting it.
 

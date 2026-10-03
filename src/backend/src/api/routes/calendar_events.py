@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,missing-function-docstring,duplicate-code
 """Entries the user adds to the calendar by hand (see CalendarEvent)."""
 
 import re

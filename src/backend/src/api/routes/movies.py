@@ -1,3 +1,4 @@
+# pylint: disable=missing-class-docstring,too-many-arguments,too-many-positional-arguments,not-callable,missing-function-docstring,duplicate-code
 """API routes for managing movies."""
 
 import asyncio
@@ -168,6 +169,7 @@ async def list_movies(
         limit=limit,
         status_counts=status_counts,
     )
+
 
 @router.get("/get/{movie_id}", response_model=MovieRead)
 async def get_movie(

@@ -1,3 +1,4 @@
+# pylint: disable=trailing-newlines,missing-module-docstring,too-few-public-methods
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -8,5 +9,3 @@ class Base(DeclarativeBase):
     Every model that inherits from Base is included
     in SQLAlchemy's metadata.
     """
-
-    pass

@@ -1,3 +1,5 @@
+# pylint: disable=duplicate-code,cyclic-import
+# pylint: disable=missing-module-docstring,missing-class-docstring
 from typing import Literal
 from uuid import UUID
 

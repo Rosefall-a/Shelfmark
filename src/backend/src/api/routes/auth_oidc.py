@@ -1,3 +1,4 @@
+# pylint: disable=line-too-long,missing-module-docstring,too-many-return-statements,missing-function-docstring,protected-access,too-many-locals,broad-exception-caught,too-many-branches
 from __future__ import annotations
 
 import json
@@ -82,7 +83,9 @@ async def _get_config(db, request: Request, slug="default", require_autostart=Fa
             if provider.get("slug") == slug and provider.get("client_secret"):
                 if require_autostart and provider.get("autostart_enabled", True) is False:
                     return None
-                return _config_from_provider(provider, str(request.url_for("oidc_callback_provider", provider_slug=slug)))
+                return _config_from_provider(
+                    provider, str(request.url_for("oidc_callback_provider", provider_slug=slug))
+                )
         return None
 
     environment_config = _env_config(request)

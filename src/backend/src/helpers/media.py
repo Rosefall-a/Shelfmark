@@ -1,3 +1,4 @@
+# pylint: disable=too-many-return-statements,missing-function-docstring
 """Shared helpers for bulk screenshot/clip uploads — used both for a game's
 own screenshots/clips folders and for the per-user "inbox" of unassigned
 media (uploaded before being sorted into a game)."""

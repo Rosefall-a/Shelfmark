@@ -8,6 +8,7 @@ other rows (a linked movie or show would point at a stranger's row on
 another server). A title already in the library, same name and same year, is
 skipped and never overwritten, so restoring twice or onto a live library is
 safe. One bad entry is reported and skipped without stopping the rest."""
+# pylint: disable=missing-function-docstring,too-many-locals,broad-exception-caught
 
 from __future__ import annotations
 

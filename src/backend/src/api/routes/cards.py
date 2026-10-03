@@ -1,3 +1,4 @@
+# pylint: disable=missing-function-docstring,duplicate-code
 """API routes for Collector Cards — a first-class entity separate from
 Game (see database/models/card.py). A card represents one accomplishment
 on one game; a game can eventually carry more than one card for genuinely

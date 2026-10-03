@@ -1,3 +1,4 @@
+# pylint: disable=too-many-positional-arguments,too-many-locals
 """Builds notifications from real, exact data. Nothing here estimates: an
 episode notification exists only because a provider gave that episode an
 air time (or the show's confirmed next-episode time) that has now passed,

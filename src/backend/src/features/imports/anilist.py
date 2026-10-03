@@ -23,7 +23,9 @@ async def import_anilist_library(
     db: AsyncSession, user_id: UUID, username: str, update_existing: bool = False
 ) -> dict[str, Any]:
     """Fetch and apply one public AniList list. The caller owns the session."""
-    entries = await __import__("asyncio").to_thread(AniListImportClient().fetch_user_anime, username)
+    entries = await __import__("asyncio").to_thread(
+        AniListImportClient().fetch_user_anime, username
+    )
     created = updated = skipped = 0
     errors: list[str] = []
     for entry in entries:
@@ -39,8 +41,7 @@ async def import_anilist_library(
                 skipped += 1
                 continue
 
-            def parsed(key: str):
-                value = entry[key]
+            def parsed(value: str | None) -> date | None:
                 return date.fromisoformat(value) if value else None
 
             if show is None:
@@ -49,7 +50,7 @@ async def import_anilist_library(
                     title=entry["title"],
                     sort_title=_derive_sort_title(entry["title"]),
                     description=entry["description"],
-                    first_air_date=parsed("first_air_date"),
+                    first_air_date=parsed(entry["first_air_date"]),
                     episode_runtime_minutes=entry["episode_runtime_minutes"],
                     studios=entry["studios"],
                     countries=entry["countries"],
@@ -66,8 +67,8 @@ async def import_anilist_library(
                     priority=entry["priority"],
                     rewatches=entry["repeat"],
                     note=entry["note"],
-                    start_date=parsed("start_date"),
-                    end_date=parsed("end_date"),
+                    start_date=parsed(entry["start_date"]),
+                    end_date=parsed(entry["end_date"]),
                     rating_overall=entry["rating_overall"],
                 )
                 db.add(show)
@@ -85,12 +86,32 @@ async def import_anilist_library(
             else:
                 show.sort_title = _derive_sort_title(entry["title"])
                 for field in (
-                    "title", "description", "first_air_date", "episode_runtime_minutes",
-                    "studios", "countries", "genres", "format", "anilist_score", "poster_url",
-                    "backdrop_url", "status", "priority", "rewatches", "note", "start_date",
-                    "end_date", "rating_overall",
+                    "title",
+                    "description",
+                    "first_air_date",
+                    "episode_runtime_minutes",
+                    "studios",
+                    "countries",
+                    "genres",
+                    "format",
+                    "anilist_score",
+                    "poster_url",
+                    "backdrop_url",
+                    "status",
+                    "priority",
+                    "rewatches",
+                    "note",
+                    "start_date",
+                    "end_date",
+                    "rating_overall",
                 ):
-                    setattr(show, field, parsed(field) if field in {"first_air_date", "start_date", "end_date"} else entry[field])
+                    setattr(
+                        show,
+                        field,
+                        parsed(field)
+                        if field in {"first_air_date", "start_date", "end_date"}
+                        else entry[field],
+                    )
                 season = show.seasons[0] if show.seasons else None
                 if season is None:
                     season = AnimeSeason(show_id=show.id, season_number=1)
@@ -100,8 +121,14 @@ async def import_anilist_library(
                 season.status = entry["status"]
                 updated += 1
             await db.commit()
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             await db.rollback()
             skipped += 1
             errors.append(f"{entry.get('title', 'Unknown title')}: {exc}")
-    return {"fetched": len(entries), "created": created, "updated": updated, "skipped": skipped, "errors": errors[:20]}
+    return {
+        "fetched": len(entries),
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors[:20],
+    }

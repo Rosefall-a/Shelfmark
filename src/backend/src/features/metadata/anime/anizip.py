@@ -48,11 +48,13 @@ def _description(raw: dict[str, Any]) -> str | None:
     if not text:
         return None
     # the summary variant ends with a "Source: ..." credit line
-    text = str(text).replace("`", "'").split("\nSource:")[0].strip()
+    text = str(text).replace("`", "'").split("\nSource:", maxsplit=1)[0].strip()
     return text or None
 
 
 class AniZipClient:
+    """Client for retrieving AniList episode mappings from ani.zip."""
+
     def __init__(self, *, session: requests.Session | None = None) -> None:
         self.session = session or requests.Session()
 
@@ -94,7 +96,7 @@ class AniZipClient:
             if not str(key).isdigit() or not isinstance(raw, dict):
                 continue
             number = int(key)
-            if isinstance(limit, int) and limit > 0 and number > limit:
+            if isinstance(limit, int) and number > limit > 0:
                 continue
             runtime = raw.get("runtime") or raw.get("length")
             results.append(

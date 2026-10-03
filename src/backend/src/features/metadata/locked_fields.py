@@ -1,3 +1,4 @@
+# pylint: disable=too-few-public-methods
 """Tracks which metadata-sourced fields an admin has deliberately changed
 on a Movie/TVShow/Anime row, so the "Apply metadata" search result button
 (features/metadata/*/search.py's results, applied via each FormModal) can

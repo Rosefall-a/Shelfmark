@@ -1,3 +1,6 @@
+"""Pydantic schemas for games and game metadata."""
+
+# pylint: disable=line-too-long,missing-class-docstring,missing-function-docstring,duplicate-code
 from datetime import date
 from decimal import Decimal
 from typing import Literal

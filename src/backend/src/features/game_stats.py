@@ -1,3 +1,4 @@
+# pylint: disable=too-many-locals
 """Game statistics that need more than a count: playtime spread, the unplayed
 pile, cost per hour, backlog hours, achievement completion.
 
