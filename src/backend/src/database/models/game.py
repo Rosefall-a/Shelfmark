@@ -120,6 +120,14 @@ class Game(Base):
         nullable=True,
     )
 
+    # Metadata fields a user has deliberately changed in the game editor.
+    # Provider refreshes skip these values rather than silently replacing a manual override.
+    locked_fields: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        default=list,
+    )
+
     release_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,

@@ -113,6 +113,7 @@ export function mapBackendGame(raw: BackendGame): Game {
     parentGameId: raw.parent_game_id,
     relationshipType: raw.relationship_type,
     dateAdded: unixSecondsToIso(raw.created_at),
+    updatedAt: raw.updated_at,
     resumeNote: raw.resume_note,
     lastPlayedAt: unixSecondsToIso(raw.last_played_at),
     staleSince: unixSecondsToIso(raw.stale_since),
@@ -365,29 +366,23 @@ export async function searchGameMetadata(
   return await response.json();
 }
 
+
 export type RefreshMetadataResult = "updated" | "no-match" | "error";
 
 export interface RefreshMetadataOutcome {
   status: RefreshMetadataResult;
+  provider: string | null;
+  providerErrors: string[];
+  changedFields: string[];
+  skippedLockedFields: string[];
   keyArtAdded: boolean;
   bannerAdded: boolean;
+  gameUpdatedAt: number;
 }
 
 export interface RefreshMetadataOptions {
-  // re-fetch description/developer/publisher/release date/age rating/tags/
-  // features, always a full refresh, replacing whatever's already there.
-  // Unlike art, text has no "did a person put this here on purpose" case:
-  // it's either provider data or something you typed in the edit form, and
-  // a refresh is explicitly asking for the provider's current answer. (A
-  // fresh result that comes back blank still never blanks an existing
-  // value, see mergeField below, that's a "provider didn't have this
-  // field" case, not a "the truth is now blank" case.)
   updateText: boolean;
-  // fetch cover + banner art for games that currently have none
   fillMissingArt: boolean;
-  // replace art even on games that already have some, off by default since
-  // this is the one setting that can actually destroy something you set
-  // deliberately (a manually-uploaded cover, art from an earlier refresh)
   overwriteExistingArt: boolean;
 }
 
@@ -397,250 +392,130 @@ export const DEFAULT_REFRESH_OPTIONS: RefreshMetadataOptions = {
   overwriteExistingArt: false,
 };
 
-// never actively replaces an existing value with a blank fresh one, the
-// bug this exists to fix: refreshing metadata could wipe out a field the
-// user had set/edited just because this particular search result didn't
-// happen to include it
-function mergeField<T>(
-  existing: T | null | undefined,
-  fresh: T | null | undefined,
-  overwrite: boolean,
-): T | null {
-  const existingValue = existing ?? null;
-  const freshValue = fresh ?? null;
-  if (overwrite) return freshValue ?? existingValue;
-  return existingValue ?? freshValue;
+export interface RefreshMetadataPreview {
+  status: RefreshMetadataResult;
+  provider: string | null;
+  providerErrors: string[];
+  changedFields: string[];
+  skippedLockedFields: string[];
+  wouldAddKeyArt: boolean;
+  wouldAddBanner: boolean;
+  gameUpdatedAt: number;
 }
 
-async function gameAssetExists(
-  gameId: string,
-  assetKind: "key_art" | "banner",
-): Promise<boolean> {
-  const response = await fetch(`/api/game/${gameId}/assets/${assetKind}`, {
+interface BackendMetadataRefreshResponse {
+  status: RefreshMetadataResult;
+  provider: string | null;
+  provider_errors: string[];
+  changed_fields: string[];
+  skipped_locked_fields: string[];
+  would_add_key_art: boolean;
+  would_add_banner: boolean;
+  game_updated_at: number;
+}
+
+async function requestGameMetadataRefresh(
+  game: Game,
+  options: RefreshMetadataOptions,
+  dryRun: boolean,
+): Promise<BackendMetadataRefreshResponse> {
+  const response = await fetch(`/api/game/${game.id}/metadata/refresh`, {
+    method: "POST",
     credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dry_run: dryRun,
+      update_text: options.updateText,
+      fill_missing_art: options.fillMissingArt,
+      overwrite_existing_art: options.overwriteExistingArt,
+      ...(dryRun || game.updatedAt === undefined
+        ? {}
+        : { expected_updated_at: game.updatedAt }),
+    }),
   });
-  return response.ok;
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(
+      `Metadata refresh failed: ${response.status} ${response.statusText} ${message}`,
+    );
+  }
+  return await response.json();
 }
 
-// Steam's storefront search routinely includes ™/® in the marketing title
-// (e.g. "Apex Legends™") while a library-synced game's title rarely does,
-// comparing raw strings silently failed the exact-match gate below for a
-// large fraction of perfectly normal titles.
-function normalizeTitleForMatch(title: string): string {
-  return title.replace(/[™®©]/g, "").trim().toLowerCase();
+export async function applyGameMetadataRefresh(
+  game: Game,
+  options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
+): Promise<RefreshMetadataOutcome> {
+  const raw = await requestGameMetadataRefresh(game, options, false);
+  return {
+    status: raw.status,
+    provider: raw.provider,
+    providerErrors: raw.provider_errors ?? [],
+    changedFields: raw.changed_fields ?? [],
+    skippedLockedFields: raw.skipped_locked_fields ?? [],
+    keyArtAdded: raw.would_add_key_art,
+    bannerAdded: raw.would_add_banner,
+    gameUpdatedAt: raw.game_updated_at,
+  };
 }
 
-// Re-pulls metadata for one game from Steam (+ SteamGridDB art data) and
-// applies whichever pieces `options` asks for. Only applies anything when a
-// result's title matches the game's current title exactly (case-insensitive)
-//, a fuzzy/no match is reported back rather than guessing. Never touches
-// notes (a wholly separate API this never calls). Image behavior is fully
-// opt-in per `options`: by default a currently-blank slot can be filled in,
-// but nothing already set is replaced unless overwriteExistingArt is on.
 export async function refreshGameMetadata(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
 ): Promise<RefreshMetadataOutcome> {
-  const outcome: RefreshMetadataOutcome = {
-    status: "error",
-    keyArtAdded: false,
-    bannerAdded: false,
-  };
   try {
-    const { results } = await searchGameMetadata(game.title);
-    const match = results.find(
-      (r) =>
-        normalizeTitleForMatch(r.title) === normalizeTitleForMatch(game.title),
-    );
-    if (!match) {
-      outcome.status = "no-match";
-      return outcome;
-    }
-
-    if (options.updateText) {
-      // text is always a full refresh (see RefreshMetadataOptions.updateText)
-      //, mergeField/mergeArr still refuse to blank a field the fresh
-      // result simply didn't have, they just always prefer fresh when it's
-      // there
-      const overwrite = true;
-      const mergeArr = (
-        existing: string[] | undefined,
-        fresh: string[] | undefined,
-      ): string[] => {
-        const e = existing?.length ? existing : [];
-        const f = fresh?.length ? fresh : [];
-        return f.length ? f : e;
-      };
-      const input: NewGameInput = {
-        title: game.title,
-        sortTitle: null,
-        folderLocation: game.folderLocation ?? "",
-        status: game.status,
-        description: mergeField(game.description, match.description, overwrite),
-        developer: mergeField(game.developer, match.developer, overwrite),
-        publisher: mergeField(game.publisher, match.publisher, overwrite),
-        series: mergeField(game.series, match.series, overwrite),
-        parentGameId: game.parentGameId,
-        relationshipType: game.relationshipType,
-        releaseDate: mergeField(
-          game.releaseDate,
-          match.release_date,
-          overwrite,
-        ),
-        dateAdded: game.dateAdded,
-        completionDate: game.completionDate,
-        // never touched by a metadata refresh, this is "how the game got
-        // into the library" (Steam sync, GOG sync, manual...), not "which
-        // provider happened to match this search," and overwriting it here
-        // used to silently break the library-sync game counts in Settings
-        source: game.source,
-        ageRating: mergeField(game.ageRating, match.age_rating, overwrite),
-        timeToBeatHours: mergeField(
-          game.timeToBeatHours,
-          toNumberOrNull(match.time_to_beat_hours),
-          overwrite,
-        ),
-        region: game.region,
-        language: game.language,
-        achievementsProvider: game.achievementsProvider,
-        ratingOverall: game.ratingOverall,
-        ratingStory: game.ratingStory,
-        ratingGameplay: game.ratingGameplay,
-        ratingSound: game.ratingSound,
-        tags: mergeArr(game.tags, match.tags),
-        features: mergeArr(game.features, match.features),
-        links: match.links?.length ? match.links : game.links,
-        ownership: game.ownership,
-        favorite: game.favorite,
-        collections: game.collections,
-        profilesEnabled: game.profilesEnabled,
-        osrsStatsEnabled: game.osrsStatsEnabled,
-      };
-      await updateGame(game.id, input);
-    }
-    outcome.status = "updated";
-
-    if (
-      import.meta.env.VITE_USE_MOCK_DATA !== "true" &&
-      (options.fillMissingArt || options.overwriteExistingArt)
-    ) {
-      if (
-        match.key_art_url &&
-        (options.overwriteExistingArt ||
-          !(await gameAssetExists(game.id, "key_art")))
-      ) {
-        await attachGameAssetFromUrl(game.id, "key_art", match.key_art_url);
-        outcome.keyArtAdded = true;
-      }
-      if (
-        match.banner_url &&
-        (options.overwriteExistingArt ||
-          !(await gameAssetExists(game.id, "banner")))
-      ) {
-        await attachGameAssetFromUrl(game.id, "banner", match.banner_url);
-        outcome.bannerAdded = true;
-      }
-    }
-
-    return outcome;
+    const raw = await requestGameMetadataRefresh(game, options, false);
+    return {
+      status: raw.status,
+      provider: raw.provider,
+      providerErrors: raw.provider_errors ?? [],
+      changedFields: raw.changed_fields ?? [],
+      skippedLockedFields: raw.skipped_locked_fields ?? [],
+      keyArtAdded: raw.would_add_key_art,
+      bannerAdded: raw.would_add_banner,
+      gameUpdatedAt: raw.game_updated_at,
+    };
   } catch {
-    outcome.status = "error";
-    return outcome;
+    return {
+      status: "error",
+      provider: null,
+      providerErrors: [],
+      changedFields: [],
+      skippedLockedFields: [],
+      keyArtAdded: false,
+      bannerAdded: false,
+      gameUpdatedAt: game.updatedAt ?? 0,
+    };
   }
 }
 
-export interface RefreshMetadataPreview {
-  status: RefreshMetadataResult;
-  // human-readable field names that would actually change, computed the
-  // same way refreshGameMetadata would apply them, but nothing is written
-  changedFields: string[];
-  wouldAddKeyArt: boolean;
-  wouldAddBanner: boolean;
-}
-
-// Read-only dry run of refreshGameMetadata: same search + same exact-title
-// match + same merge logic, but never calls updateGame/attachGameAssetFromUrl
-//, used to show "this is what refreshing would actually change" before the
-// user commits to a real bulk refresh.
 export async function previewGameMetadataRefresh(
   game: Game,
   options: RefreshMetadataOptions = DEFAULT_REFRESH_OPTIONS,
 ): Promise<RefreshMetadataPreview> {
-  const preview: RefreshMetadataPreview = {
-    status: "error",
-    changedFields: [],
-    wouldAddKeyArt: false,
-    wouldAddBanner: false,
-  };
   try {
-    const { results } = await searchGameMetadata(game.title);
-    const match = results.find(
-      (r) =>
-        normalizeTitleForMatch(r.title) === normalizeTitleForMatch(game.title),
-    );
-    if (!match) {
-      preview.status = "no-match";
-      return preview;
-    }
-    preview.status = "updated";
-
-    if (options.updateText) {
-      const textChecks: [
-        string,
-        string | number | null | undefined,
-        string | number | null | undefined,
-      ][] = [
-        ["description", game.description, match.description],
-        ["developer", game.developer, match.developer],
-        ["publisher", game.publisher, match.publisher],
-        ["series", game.series, match.series],
-        ["release date", game.releaseDate, match.release_date],
-        ["age rating", game.ageRating, match.age_rating],
-        [
-          "time to beat",
-          game.timeToBeatHours,
-          toNumberOrNull(match.time_to_beat_hours),
-        ],
-      ];
-      for (const [label, existing, fresh] of textChecks) {
-        if (fresh != null && fresh !== (existing ?? null))
-          preview.changedFields.push(label);
-      }
-      if (
-        match.tags?.length &&
-        JSON.stringify(match.tags) !== JSON.stringify(game.tags)
-      )
-        preview.changedFields.push("tags");
-      if (
-        match.features?.length &&
-        JSON.stringify(match.features) !== JSON.stringify(game.features)
-      )
-        preview.changedFields.push("features");
-    }
-
-    if (
-      import.meta.env.VITE_USE_MOCK_DATA !== "true" &&
-      (options.fillMissingArt || options.overwriteExistingArt)
-    ) {
-      if (
-        match.key_art_url &&
-        (options.overwriteExistingArt ||
-          !(await gameAssetExists(game.id, "key_art")))
-      ) {
-        preview.wouldAddKeyArt = true;
-      }
-      if (
-        match.banner_url &&
-        (options.overwriteExistingArt ||
-          !(await gameAssetExists(game.id, "banner")))
-      ) {
-        preview.wouldAddBanner = true;
-      }
-    }
-    return preview;
+    const raw = await requestGameMetadataRefresh(game, options, true);
+    return {
+      status: raw.status,
+      provider: raw.provider,
+      providerErrors: raw.provider_errors ?? [],
+      changedFields: raw.changed_fields ?? [],
+      skippedLockedFields: raw.skipped_locked_fields ?? [],
+      wouldAddKeyArt: raw.would_add_key_art,
+      wouldAddBanner: raw.would_add_banner,
+      gameUpdatedAt: raw.game_updated_at,
+    };
   } catch {
-    preview.status = "error";
-    return preview;
+    return {
+      status: "error",
+      provider: null,
+      providerErrors: [],
+      changedFields: [],
+      skippedLockedFields: [],
+      wouldAddKeyArt: false,
+      wouldAddBanner: false,
+      gameUpdatedAt: game.updatedAt ?? 0,
+    };
   }
 }
 
