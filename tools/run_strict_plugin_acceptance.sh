@@ -42,18 +42,22 @@ image_id=$(cat "$context/image.id")
 # Only the disposable evidence directory is mounted. There is no host network,
 # Docker socket or runner checkout/cache mount. SETFCAP permits the kernel's root
 # UID mapping check; bwrap drops it before running plugin code in its namespace.
+# The container's masked proc entries would prevent a nested private proc mount.
 # These container-scoped filters must permit bwrap to create its own namespaces;
 # bwrap still applies the full production filesystem/network/resource boundaries.
 status=0
 docker run --rm --cap-drop ALL --cap-add SETFCAP --security-opt no-new-privileges \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined \
   --add-host test-database:host-gateway \
   --volume "$context/evidence:/evidence" \
   --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_PORT \
   --env POSTGRES_DB --env SECRET_KEY --env POSTGRES_HOST=test-database \
   --env PYTHONPATH=/workspace/host/src/backend \
   "$image_id" bash -euc '
-    bwrap --unshare-all --ro-bind / / -- /bin/true
+    bwrap --unshare-all --cap-drop ALL \
+      --ro-bind /usr /usr --ro-bind /bin /bin --ro-bind /lib /lib \
+      --ro-bind /lib64 /lib64 --dev /dev --proc /proc -- /bin/true
     python tools/check_jellyfin_official_lifecycle.py \
       --host-root /workspace/host --work-root /evidence/run --browser
   ' || status=$?
