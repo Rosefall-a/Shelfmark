@@ -100,6 +100,14 @@ The container's entrypoint coordinates startup: it prepares the status page, wai
 
 This means the public HTTP endpoint can display startup status while the application is still initializing.
 
+### Logging architecture
+
+Production-container logging intentionally uses the existing stdout/stderr path rather than introducing a second log aggregation system. Entrypoint lifecycle messages go to stdout, Nginx errors go to stderr, backend output is retained in /run/unnamed-tracking/backend.log, and migration output is retained in /run/unnamed-tracking/migration.log.
+
+The structured startup endpoints expose only status and concise details. Raw backend and migration logs are not public HTTP resources. Operators retrieve detailed logs through Docker logging facilities or directly from the retained files inside the container.
+
+The production entrypoint does not print configuration secrets. New logging code must preserve that rule.
+
 ## API
 
 The backend exposes the application's REST API under `/api`.

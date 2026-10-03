@@ -18,7 +18,7 @@ const phaseNames = {
 const labels = ["database", "migrations", "backend", "frontend"];
 const pretty = v => v ? v.charAt(0).toUpperCase() + v.slice(1) : "unknown";
 
-let pollInterval = 50;   // fast until READY
+let pollInterval = 50;
 let ready = false;
 
 function render(s) {
@@ -28,7 +28,6 @@ function render(s) {
     const failureEl = document.querySelector("#failure-icon");
     const failed = s.overall === "failed" || /(?:_FAILED|_CRASHED)$/.test(s.phase || "");
 
-    // Title + heading
     if (s.overall === "ready") {
         document.title = "Unnamed Tracking";
         titleEl.textContent = "Application Started";
@@ -40,13 +39,9 @@ function render(s) {
         titleEl.textContent = "Starting application";
     }
 
-    // Phase + message
     document.querySelector("#phase").textContent = phaseNames[s.phase] || s.phase;
-    document.querySelector("#message").textContent = failed
-        ? (s.message || "The application could not finish starting.")
-        : (s.message || "");
+    document.querySelector("#message").textContent = s.message || "";
 
-    // Steps
     document.querySelector("#steps").innerHTML = labels.map(k =>
         `<div class="step ${s[k] || "unknown"}">
             <span>${k}</span>
@@ -54,42 +49,33 @@ function render(s) {
         </div>`
     ).join("");
 
-    // Details on failure
     const details = document.querySelector("details");
-    if (failed) {
-        spinnerEl.style.animationPlayState = "paused";
-        details.open = true;
-    }
+    // Details are intentionally collapsed during normal startup and after READY.
+    // On failure they contain concise diagnostic guidance, not raw backend logs.
+    details.open = failed;
 
-    // Icon and reload logic: only one status icon is visible
     if (s.phase === "READY") {
         if (!ready) {
             ready = true;
             pollInterval = 10000;
         }
-
         spinnerEl.hidden = true;
         tickEl.style.display = "inline-flex";
         failureEl.style.display = "none";
     } else if (failed) {
-        // failed: show failure icon, hide spinner and tick
         ready = false;
         pollInterval = 10000;
-
         spinnerEl.hidden = true;
         tickEl.style.display = "none";
         failureEl.style.display = "inline-flex";
     } else {
-        // not ready: show spinner, hide tick and failure icon
         ready = false;
         pollInterval = 200;
-
         spinnerEl.hidden = false;
         tickEl.style.display = "none";
         failureEl.style.display = "none";
     }
 }
-
 
 async function poll() {
     try {

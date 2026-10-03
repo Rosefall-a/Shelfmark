@@ -49,15 +49,23 @@ The entrypoint starts Nginx before the application stack is ready.
 
 If startup fails, the entrypoint deliberately keeps Nginx alive so the diagnostic page remains available.
 
+## Logging and diagnostics
+
+The production container uses Docker stdout/stderr rather than an application-specific log aggregation system. Use `docker logs <container>` or `docker logs -f <container>` for lifecycle, backend, and Nginx diagnostics.
+
+The backend log is also retained at `/run/unnamed-tracking/backend.log` and migration output at `/run/unnamed-tracking/migration.log`. Retrieve them with `docker exec <container> cat /run/unnamed-tracking/backend.log` and `docker exec <container> cat /run/unnamed-tracking/migration.log`, or copy them with `docker cp <container>:/run/unnamed-tracking/backend.log ./backend.log`. Raw logs are not exposed as public `/_startup` HTTP resources.
+
+The startup page deliberately shows concise lifecycle status instead of raw logs. This keeps normal startup readable while preserving detailed failure diagnostics for operators.
+
 ## Startup diagnostics
 
 The startup page is static HTML/CSS/JavaScript served directly by Nginx. It does not depend on Vue, FastAPI, or PostgreSQL.
 
-It displays the lifecycle phase, database status, migration status, backend status, frontend status, the current message, and expandable startup details.
+It displays the lifecycle phase, database status, migration status, backend status, frontend status, and the current message. On failure the loading indicator stops and the failure state is shown. Raw logs are deliberately not displayed by default.
 
-Diagnostic endpoints are /_startup/status.json, /_startup/details.txt, and /_startup/backend.log.
+Diagnostic endpoints are `/_startup/status.json` and `/_startup/details.txt`. Raw backend and migration logs are not public HTTP resources.
 
-The startup JavaScript polls asynchronously and slows down after READY. When a failure is reported, the loading animation stops and the diagnostic details open.
+The startup JavaScript polls asynchronously and slows down after READY. When a failure is reported, the loading animation stops and concise diagnostic details open.
 
 ## Failure states
 
@@ -84,6 +92,10 @@ Do not remove these storage locations when recreating the production container.
 .github/workflows/docker-container.yml builds the production image on pull requests and pushes images for non-pull-request events. For non-PR events it pushes both a ref-derived tag and a sha-<commit> tag to GHCR.
 
 The current workflow does not perform a full PostgreSQL/application runtime smoke test after building the image. Its failure diagnostics are Docker log commands if a workflow step fails.
+
+## Secrets
+
+The production entrypoint does not print passwords, tokens, API keys, SMTP credentials, private keys, webhook secrets, or session secrets.
 
 ## TLS
 
