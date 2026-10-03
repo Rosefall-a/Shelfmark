@@ -38,10 +38,17 @@ def acceptance(plugins_root: Path, work: Path) -> None:
     work.mkdir(parents=True, exist_ok=False)
     root = work / "release-source"
     root.mkdir()
-    for folder in ("tools", "sdk", "publishers", "official"):
+    for folder in ("tools", "sdk", "publishers"):
         shutil.copytree(
             plugins_root / folder, root / folder, ignore=shutil.ignore_patterns("__pycache__")
         )
+    # The disposable publisher covers PWA only; use its actual source rather
+    # than trying to sign unrelated official plugins with this narrow identity.
+    shutil.copytree(
+        plugins_root / "official/pwa",
+        root / "official/pwa",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
     shutil.copyfile(plugins_root / ".gitignore", root / ".gitignore")
     (root / "catalogue.json").write_text(
         json.dumps({"name": "PWA acceptance", "base_url": FIXTURE_BASE})
