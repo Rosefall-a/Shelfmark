@@ -40,11 +40,12 @@ trap cleanup_image EXIT
 docker build --iidfile "$context/image.id" "$context"
 image_id=$(cat "$context/image.id")
 # Only the disposable evidence directory is mounted. There is no host network,
-# Docker socket, runner checkout/cache mount, or elevated Linux capability.
+# Docker socket or runner checkout/cache mount. SETFCAP permits the kernel's root
+# UID mapping check; bwrap drops it before running plugin code in its namespace.
 # These container-scoped filters must permit bwrap to create its own namespaces;
 # bwrap still applies the full production filesystem/network/resource boundaries.
 status=0
-docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+docker run --rm --cap-drop ALL --cap-add SETFCAP --security-opt no-new-privileges \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
   --add-host test-database:host-gateway \
   --volume "$context/evidence:/evidence" \
