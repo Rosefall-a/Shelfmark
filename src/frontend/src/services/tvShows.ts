@@ -2,7 +2,6 @@ import { failedRequest } from "./apiError";
 import type { PaginatedResponse } from "../types/pagination";
 import type { Episode, Season, TVShow, TVShowStatus } from "../types/tv_show";
 
-
 // The exact shape FastAPI sends, snake_case, matching the Python model
 // field-for-field. Nothing outside this file should ever see raw backend
 // data directly.
@@ -206,7 +205,13 @@ export async function fetchTVShowsPage(
   offset = 0,
   limit = 100,
   search = "",
-): Promise<{ items: TVShow[]; total: number; offset: number; limit: number; statusCounts: Record<string, number> }> {
+): Promise<{
+  items: TVShow[];
+  total: number;
+  offset: number;
+  limit: number;
+  statusCounts: Record<string, number>;
+}> {
   const params = new URLSearchParams({
     skip: String(offset),
     limit: String(limit),
@@ -215,7 +220,10 @@ export async function fetchTVShowsPage(
   const response = await fetch(`/api/tv/list?${params}`, {
     credentials: "include",
   });
-  const page = await handle<PaginatedResponse<BackendTVShow>>(response, "fetch TV shows");
+  const page = await handle<PaginatedResponse<BackendTVShow>>(
+    response,
+    "fetch TV shows",
+  );
   return {
     items: page.items.map(mapBackendTVShow),
     total: page.total,

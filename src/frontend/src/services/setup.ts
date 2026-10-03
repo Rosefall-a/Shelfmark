@@ -84,10 +84,15 @@ export interface SetupSubmission {
   password?: string;
 }
 
-async function parseError(response: Response, fallback: string): Promise<Error> {
+async function parseError(
+  response: Response,
+  fallback: string,
+): Promise<Error> {
   const body = await response.text();
   try {
-    const parsed = JSON.parse(body) as { detail?: string | Array<{ msg?: string }> };
+    const parsed = JSON.parse(body) as {
+      detail?: string | Array<{ msg?: string }>;
+    };
     if (Array.isArray(parsed.detail)) {
       const details = parsed.detail.map((item) => item.msg).filter(Boolean);
       if (details.length) return new Error(details.join(" "));
@@ -101,13 +106,23 @@ async function parseError(response: Response, fallback: string): Promise<Error> 
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const response = await fetch("/api/setup/status", { credentials: "include" });
-  if (!response.ok) throw await parseError(response, `Failed to check setup status: ${response.status}`);
+  if (!response.ok)
+    throw await parseError(
+      response,
+      `Failed to check setup status: ${response.status}`,
+    );
   return (await response.json()) as SetupStatus;
 }
 
 export async function fetchSetupConfiguration(): Promise<SetupConfiguration> {
-  const response = await fetch("/api/setup/configuration", { credentials: "include" });
-  if (!response.ok) throw await parseError(response, `Failed to load setup configuration: ${response.status}`);
+  const response = await fetch("/api/setup/configuration", {
+    credentials: "include",
+  });
+  if (!response.ok)
+    throw await parseError(
+      response,
+      `Failed to load setup configuration: ${response.status}`,
+    );
   return (await response.json()) as SetupConfiguration;
 }
 
@@ -120,7 +135,11 @@ export async function saveSetupConfiguration(
     credentials: "include",
     body: JSON.stringify(submission),
   });
-  if (!response.ok) throw await parseError(response, `Failed to save configuration: ${response.status}`);
+  if (!response.ok)
+    throw await parseError(
+      response,
+      `Failed to save configuration: ${response.status}`,
+    );
   return (await response.json()) as SetupConfiguration;
 }
 
@@ -133,6 +152,11 @@ export async function createInitialAdmin(
     credentials: "include",
     body: JSON.stringify(submission),
   });
-  if (!response.ok) throw await parseError(response, `Setup failed: ${response.status}`);
-  return (await response.json()) as { status: string; user_id: string; is_admin: boolean };
+  if (!response.ok)
+    throw await parseError(response, `Setup failed: ${response.status}`);
+  return (await response.json()) as {
+    status: string;
+    user_id: string;
+    is_admin: boolean;
+  };
 }

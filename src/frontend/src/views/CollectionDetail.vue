@@ -4,13 +4,14 @@ import { useRoute, useRouter } from "vue-router";
 import GameCard from "../components/GameCard.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
+import BackButton from "../components/BackButton.vue";
+import AccountChip from "../components/AccountChip.vue";
 import {
   fetchGames,
   deleteGame,
   removeGameFromCollection,
 } from "../services/games";
 import type { Game } from "../types/game";
-import { currentUser } from "../state/auth";
 import {
   findSmartCollectionByName,
   matchesSmartCollection,
@@ -264,33 +265,9 @@ async function deleteCollection() {
 
 <template>
   <main class="collection-detail">
-    <button
-      type="button"
-      class="back-arrow-button"
-      title="Back"
-      @click="goBack"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M19 12H5" />
-        <path d="M12 19l-7-7 7-7" />
-      </svg>
-    </button>
+    <BackButton fixed @click="goBack" />
 
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
+    <AccountChip fixed />
 
     <div class="content">
       <div class="header-row">
@@ -458,63 +435,9 @@ async function deleteCollection() {
   position: relative;
   padding: 84px 24px 24px;
   font-family: system-ui, sans-serif;
-  background: #121212;
+  background: #0d0d0d;
   min-height: 100vh;
   color: #fff;
-}
-.back-arrow-button {
-  position: fixed;
-  top: 16px;
-  left: 62px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(20, 20, 20, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 100;
-  transition: background 0.15s ease;
-}
-.back-arrow-button:hover {
-  background: rgba(40, 40, 40, 0.85);
-}
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
 }
 .header-row {
   display: flex;

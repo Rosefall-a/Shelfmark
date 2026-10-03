@@ -17,8 +17,20 @@ const avatarUrl = computed(() =>
 );
 const avatarFailed = ref(false);
 
-const username = ref(currentUser.value?.username ?? "");
-const email = ref(currentUser.value?.email ?? "");
+const username = ref("");
+const email = ref("");
+// filled (and refilled after a save) from the signed-in user rather than
+// captured once at setup, so the fields are never blank if this mounts
+// before the account has finished loading
+watch(
+  currentUser,
+  (u) => {
+    if (!u) return;
+    username.value = u.username;
+    email.value = u.email;
+  },
+  { immediate: true },
+);
 const currentPassword = ref("");
 const newPassword = ref("");
 const saving = ref(false);
@@ -106,18 +118,24 @@ async function onAvatarFileChange(e: Event) {
         {{ (currentUser?.username ?? "?").slice(0, 2).toUpperCase() }}
       </div>
 
-      <label v-if="!isMock" class="upload-label">
-        <input
-          type="file"
-          accept="image/*"
-          @change="onAvatarFileChange"
-          hidden
-        />
-        {{ uploading ? "Uploading…" : "Change picture" }}
-      </label>
-      <p v-if="isMock" class="mock-note">
-        Profile pictures aren't available in mock mode.
-      </p>
+      <div class="avatar-meta">
+        <div class="avatar-name">{{ currentUser?.username }}</div>
+        <div v-if="currentUser?.email" class="avatar-email">
+          {{ currentUser.email }}
+        </div>
+        <label v-if="!isMock" class="upload-label">
+          <input
+            type="file"
+            accept="image/*"
+            @change="onAvatarFileChange"
+            hidden
+          />
+          {{ uploading ? "Uploading…" : "Change picture" }}
+        </label>
+        <p v-if="isMock" class="mock-note">
+          Profile pictures aren't available in mock mode.
+        </p>
+      </div>
     </div>
 
     <div v-if="uploadError" class="form-error">{{ uploadError }}</div>
@@ -192,6 +210,22 @@ async function onAvatarFileChange(e: Event) {
   justify-content: center;
   font-size: 20px;
   font-weight: 700;
+}
+.avatar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.avatar-name {
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.avatar-email {
+  color: #888;
+  font-size: 0.82rem;
+  margin-bottom: 4px;
 }
 .upload-label {
   color: #d68a34;

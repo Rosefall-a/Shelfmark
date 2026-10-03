@@ -2,6 +2,8 @@
 import { ref, watch } from "vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleButton from "./ToggleButton.vue";
+import { sidebarMode } from "../../state/sidebarMode";
+import type { SidebarMode } from "../../state/sidebarMode";
 
 type ViewMode = "cards" | "list" | "detail";
 type SortBy = "name" | "recent" | "rating" | "playtime";
@@ -30,6 +32,11 @@ const sortOptions = [
   { value: "recent", label: "Recently added" },
   { value: "rating", label: "Rating" },
   { value: "playtime", label: "Most played" },
+];
+const sidebarModeOptions = [
+  { value: "overlay", label: "Overlay" },
+  { value: "pinned", label: "Pinned open" },
+  { value: "rail", label: "Icon rail" },
 ];
 
 watch(defaultViewMode, (mode) =>
@@ -77,6 +84,21 @@ watch(highContrastMode, (enabled) => {
       />
     </div>
 
+    <div class="field">
+      <span>Sidebar</span>
+      <SegmentedControl
+        :model-value="sidebarMode"
+        :options="sidebarModeOptions"
+        @update:model-value="sidebarMode = $event as SidebarMode"
+      />
+      <span class="field-hint">
+        <strong>Overlay</strong>: hidden until you open it, floats over the
+        page. <strong>Pinned open</strong>: always visible at full width.
+        <strong>Icon rail</strong>: a thin strip of icons, expands on hover.
+        Takes effect immediately.
+      </span>
+    </div>
+
     <ToggleButton v-model="compactMode" label="Compact mode">
       <strong>Compact mode</strong>: tighter spacing across the app
     </ToggleButton>
@@ -115,5 +137,10 @@ watch(highContrastMode, (enabled) => {
   font-size: 0.85rem;
   color: #ccc;
   margin-bottom: 18px;
+}
+.field-hint {
+  color: #888;
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 </style>

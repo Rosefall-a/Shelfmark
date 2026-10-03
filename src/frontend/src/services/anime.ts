@@ -7,7 +7,6 @@ import type {
   AnimeStatus,
 } from "../types/anime";
 
-
 // The exact shape FastAPI sends, snake_case, matching the Python model
 // field-for-field. Nothing outside this file should ever see raw backend
 // data directly.
@@ -225,7 +224,13 @@ export async function fetchAnimePage(
   offset = 0,
   limit = 100,
   search = "",
-): Promise<{ items: Anime[]; total: number; offset: number; limit: number; statusCounts: Record<string, number> }> {
+): Promise<{
+  items: Anime[];
+  total: number;
+  offset: number;
+  limit: number;
+  statusCounts: Record<string, number>;
+}> {
   const params = new URLSearchParams({
     skip: String(offset),
     limit: String(limit),
@@ -234,7 +239,10 @@ export async function fetchAnimePage(
   const response = await fetch(`/api/anime/list?${params}`, {
     credentials: "include",
   });
-  const page = await handle<PaginatedResponse<BackendAnime>>(response, "fetch anime");
+  const page = await handle<PaginatedResponse<BackendAnime>>(
+    response,
+    "fetch anime",
+  );
   return {
     items: page.items.map(mapBackendAnime),
     total: page.total,
