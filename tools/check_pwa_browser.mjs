@@ -182,8 +182,15 @@ try {
   assert.equal((await api("GET", "/pwa/status")).enabled, false);
   assert.equal((await context.request.get(origin + "/manifest.webmanifest")).status(), 404);
   await page.goto(origin + "/?pwa=1");
-  await page.waitForFunction(async () => !(await navigator.serviceWorker.getRegistrations()).length);
+  // Unregistration and CacheStorage deletion are independent asynchronous
+  // browser operations. Observe both completed conditions before asserting
+  // retirement, without deleting data or bypassing actual lifecycle behavior.
+  await page.waitForFunction(async () =>
+    !(await navigator.serviceWorker.getRegistrations()).length &&
+    !(await caches.keys()).some(key => key.startsWith("unnamed-tracking:pwa:")),
+  );
   assert.ok(!(await cacheKeys()).some(key => key.startsWith("unnamed-tracking:pwa:")));
+  assert.ok((await cacheKeys()).includes("another-app-cache"));
   await page.getByText("PWA plugin is not enabled.", { exact: false }).waitFor();
   await page.screenshot({ path: path.join(process.env.PWA_ACCEPTANCE_WORK, "pwa-plugin-disabled.png") });
   await api("DELETE", pluginPath, 204);
