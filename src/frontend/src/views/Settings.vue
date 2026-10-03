@@ -18,12 +18,14 @@ import AdminSection from "../components/settings/AdminSection.vue";
 import StatsSection from "../components/settings/StatsSection.vue";
 import ExportImportSection from "../components/settings/ExportImportSection.vue";
 import CalendarNotificationsSection from "../components/settings/CalendarNotificationsSection.vue";
+import NotificationProvidersSection from "../components/settings/NotificationProvidersSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import MediaPreferencesSection from "../components/settings/MediaPreferencesSection.vue";
 import ComingSoonSection from "../components/settings/ComingSoonSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
 import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
 import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
+import SmtpSettingsSection from "../components/settings/SmtpSettingsSection.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -42,6 +44,7 @@ const groups = computed<SettingsGroup[]>(() => {
         { id: "appearance", label: "Appearance" },
         { id: "api-keys", label: "API Keys" },
         { id: "calendar-notifications", label: "Calendar and Notifications" },
+        { id: "notification-providers", label: "Notification Providers" },
       ],
     },
     {
@@ -71,6 +74,7 @@ const groups = computed<SettingsGroup[]>(() => {
       ? [{ id: "server-integrations", label: "Server Integrations" }]
       : []),
     ...(currentUser.value?.is_admin ? [{ id: "users", label: "Users" }] : []),
+    ...(currentUser.value?.is_admin ? [{ id: "smtp", label: "SMTP / Email" }] : []),
     { id: "stats", label: "Server Stats" },
     ...(currentUser.value?.is_admin
       ? [{ id: "tasks", label: "Tasks", comingSoon: true }]
@@ -141,6 +145,9 @@ watch(activeSection, async () => {
           <CalendarNotificationsSection
             v-else-if="activeSection === 'calendar-notifications'"
           />
+          <NotificationProvidersSection
+            v-else-if="activeSection === 'notification-providers'"
+          />
           <ApiKeysSection v-else-if="activeSection === 'api-keys'" />
           <UploadSection v-else-if="activeSection === 'upload'" />
           <LibraryManagementSection v-else-if="activeSection === 'library'" />
@@ -161,6 +168,9 @@ watch(activeSection, async () => {
           />
           <AdminSection
             v-else-if="activeSection === 'users' && currentUser?.is_admin"
+          />
+          <SmtpSettingsSection
+            v-else-if="activeSection === 'smtp' && currentUser?.is_admin"
           />
           <StatsSection v-else-if="activeSection === 'stats'" />
           <template v-else-if="activeSection === 'export'">

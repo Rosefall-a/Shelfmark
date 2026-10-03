@@ -109,6 +109,12 @@ CONFIG_SECTIONS: tuple[ConfigSectionSpec, ...] = (
         "Optional SSO configuration. Selecting this section enables OIDC once its provider credentials are saved.",
         40,
     ),
+    ConfigSectionSpec(
+        "smtp",
+        "SMTP / email",
+        "Optional SMTP configuration. Selecting this section enables email notifications once its provider credentials are saved.",
+        50,
+    ),
 )
 
 # Add a field here first when introducing a new deployment/setup variable.
@@ -431,6 +437,61 @@ CONFIG_REGISTRY: tuple[ConfigSpec, ...] = (
         default="",
         description="Optional profile: development, testing, or empty/default.",
         visible=False,
+    ),
+    ConfigSpec(
+        "SMTP_ENABLED",
+        "smtp",
+        ConfigSource.BOTH,
+        label="Enable SMTP notifications",
+        input_type="boolean",
+        default=False,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_HOST", "smtp", ConfigSource.BOTH, label="SMTP host", storage="app_integration"
+    ),
+    ConfigSpec(
+        "SMTP_PORT",
+        "smtp",
+        ConfigSource.BOTH,
+        label="SMTP port",
+        input_type="integer",
+        default=587,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_USERNAME",
+        "smtp",
+        ConfigSource.BOTH,
+        label="SMTP username",
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_PASSWORD",
+        "smtp",
+        ConfigSource.BOTH,
+        label="SMTP password",
+        input_type="secret",
+        secret=True,
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_FROM_EMAIL",
+        "smtp",
+        ConfigSource.BOTH,
+        label="SMTP sender address",
+        input_type="email",
+        storage="app_integration",
+    ),
+    ConfigSpec(
+        "SMTP_SECURITY",
+        "smtp",
+        ConfigSource.BOTH,
+        label="SMTP security",
+        input_type="choice",
+        choices=(("none", "None"), ("starttls", "STARTTLS"), ("ssl", "SSL/TLS")),
+        default="starttls",
+        storage="app_integration",
     ),
     ConfigSpec(
         "MAX_UPLOAD_SIZE_MB",

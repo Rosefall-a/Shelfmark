@@ -21,6 +21,16 @@ export interface OidcProviderSetting {
 export interface DeploymentSettings {
   providers: Record<string, string | boolean | null>;
   provider_locks: Record<string, boolean>;
+  smtp: {
+    smtp_enabled: boolean | null;
+    smtp_host: string | null;
+    smtp_port: number | null;
+    smtp_username: string | null;
+    smtp_from_email: string | null;
+    smtp_security: string | null;
+    smtp_password_configured: boolean;
+    locked_fields: Record<string, boolean>;
+  };
   oidc: {
     enabled: boolean;
     issuer_url: string | null;
@@ -47,7 +57,7 @@ export async function fetchDeploymentSettings(): Promise<DeploymentSettings> {
   return await response.json();
 }
 export async function updateDeploymentSettings(
-  payload: Record<string, string | boolean | null>,
+  payload: Record<string, string | number | boolean | null>,
 ): Promise<DeploymentSettings> {
   const response = await fetch("/api/settings/deployment", {
     method: "PUT",
@@ -62,4 +72,14 @@ export async function updateDeploymentSettings(
     );
   }
   return await response.json();
+}
+
+export async function sendSmtpTest(): Promise<void> {
+  const response = await fetch("/api/settings/deployment/smtp-test", {
+    method: "POST", credentials: "include",
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `SMTP test failed: ${response.status}`);
+  }
 }

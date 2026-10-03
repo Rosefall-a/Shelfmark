@@ -31,6 +31,8 @@ from src.database.models import (
     media_item,  # noqa: F401
     movies,  # noqa: F401
     notification,  # noqa: F401
+    notification_delivery,  # noqa: F401
+    notification_provider_setting,  # noqa: F401
     oidc_provider,
     oidc_settings,
     tv_show,  # noqa: F401

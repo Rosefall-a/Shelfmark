@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     MAX_CLIP_SIZE_MB: int = 500
     MAX_WORLD_SAVE_SIZE_MB: int = 2000
 
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM_EMAIL: str | None = None
+    SMTP_SECURITY: str = "starttls"
+
     IGDB_CLIENT_ID: str | None = None
     IGDB_CLIENT_SECRET: str | None = None
     TMDB_API_KEY: str | None = None

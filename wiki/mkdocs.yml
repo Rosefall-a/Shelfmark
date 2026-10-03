@@ -27,6 +27,8 @@ nav:
       - Overview: user-guide/index.md
       - Authentication: user-guide/authentication.md
       - OpenID Connect / SSO: user-guide/oidc.md
+      - Notification Providers: user-guide/notification-providers.md
+      - SMTP / Email: user-guide/smtp.md
       - Data, Exports & Backups: user-guide/data-and-backups.md
       - Games: user-guide/games.md
       - Anime: user-guide/anime.md

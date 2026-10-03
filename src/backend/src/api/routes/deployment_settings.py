@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -13,6 +15,8 @@ from src.core.provider_credentials import apply_deployment_provider_credentials
 from src.database.models.oidc_settings import OidcSettings
 from src.database.models.user import User
 from src.database.session import get_db
+from src.features.notification_providers.base import NotificationMessage
+from src.features.notification_providers.smtp import smtp_provider
 
 router = APIRouter(
     prefix="/api/settings/deployment", tags=["settings"], dependencies=[Depends(get_current_admin)]
@@ -61,6 +65,13 @@ class DeploymentSettingsRequest(BaseModel):
     oidc_login_button_text: str | None = None
     oidc_allow_new_users: bool | None = None
     oidc_providers_json: str | None = None
+    smtp_enabled: bool | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_security: str | None = None
 
 
 _SECRET_FIELDS = {
@@ -71,6 +82,7 @@ _SECRET_FIELDS = {
     "screenscraper_sspassword",
     "screenscraper_devpassword",
     "xbox_client_secret",
+    "smtp_password",
 }
 _SAFE_PROVIDER_FIELDS = {
     "igdb_client_id",
@@ -91,6 +103,25 @@ _PROVIDER_ENV_NAMES = {
     "screenscraper_devpassword": "SCREENSCRAPER_DEVPASSWORD",
     "xbox_client_id": "XBOX_CLIENT_ID",
     "xbox_client_secret": "XBOX_CLIENT_SECRET",
+}
+
+_SMTP_ENV_NAMES = {
+    "smtp_enabled": "SMTP_ENABLED",
+    "smtp_host": "SMTP_HOST",
+    "smtp_port": "SMTP_PORT",
+    "smtp_username": "SMTP_USERNAME",
+    "smtp_password": "SMTP_PASSWORD",
+    "smtp_from_email": "SMTP_FROM_EMAIL",
+    "smtp_security": "SMTP_SECURITY",
+}
+_SMTP_FIELDS = {
+    "smtp_enabled",
+    "smtp_host",
+    "smtp_port",
+    "smtp_username",
+    "smtp_password",
+    "smtp_from_email",
+    "smtp_security",
 }
 
 _OIDC_ENV_NAMES = {
@@ -148,32 +179,37 @@ async def get_deployment_settings(db: AsyncSession, admin: User) -> dict:
     oidc = await _oidc_row(db)
     handler = EnvConfigHandler()
     provider_locks = {
-        field: handler.has(env_name)
-        for field, env_name in _PROVIDER_ENV_NAMES.items()
+        field: handler.has(env_name) for field, env_name in _PROVIDER_ENV_NAMES.items()
     }
     providers = {
         field: None if provider_locks[field] else getattr(app, field)
         for field in _SAFE_PROVIDER_FIELDS
     }
     for field in _SECRET_FIELDS:
-        providers[field + "_configured"] = bool(getattr(app, field)) or provider_locks[field]
-    oidc_locks = {
-        field: handler.has(env_name)
-        for field, env_name in _OIDC_ENV_NAMES.items()
-    }
+        providers[field + "_configured"] = bool(getattr(app, field)) or provider_locks.get(
+            field, False
+        )
+
+    smtp_locks = {field: handler.has(env) for field, env in _SMTP_ENV_NAMES.items()}
+    smtp = {field: None if smtp_locks[field] else getattr(app, field) for field in _SMTP_FIELDS}
+    smtp["smtp_password_configured"] = bool(app.smtp_password) or smtp_locks["smtp_password"]
+    smtp["locked_fields"] = smtp_locks
+    oidc_locks = {field: handler.has(env_name) for field, env_name in _OIDC_ENV_NAMES.items()}
     named = [_provider_view(p) for p in _provider_rows(oidc)]
     return {
         "providers": providers,
         "provider_locks": provider_locks,
+        "smtp": smtp,
         "oidc": {
-
             "issuer_url": None if oidc_locks["issuer_url"] else oidc.issuer_url,
             "client_id": None if oidc_locks["client_id"] else oidc.client_id,
             "scopes": None if oidc_locks["scopes"] else oidc.scopes,
             "redirect_uri": None if oidc_locks["redirect_uri"] else oidc.redirect_uri,
             "groups_claim": None if oidc_locks["groups_claim"] else oidc.groups_claim,
             "admin_group": None if oidc_locks["admin_group"] else oidc.admin_group,
-            "user_match_field": None if oidc_locks["user_match_field"] else (oidc.user_match_field or "email"),
+            "user_match_field": None
+            if oidc_locks["user_match_field"]
+            else (oidc.user_match_field or "email"),
             "enabled": oidc.enabled,
             "default_login_method": oidc.default_login_method
             if oidc.default_login_method in {"local", "sso"}
@@ -208,21 +244,27 @@ async def update_deployment_settings(
     oidc = await _oidc_row(db)
     handler = EnvConfigHandler()
     provider_locks = {
-        field: handler.has(env_name)
-        for field, env_name in _PROVIDER_ENV_NAMES.items()
+        field: handler.has(env_name) for field, env_name in _PROVIDER_ENV_NAMES.items()
     }
+    smtp_locks = {field: handler.has(env) for field, env in _SMTP_ENV_NAMES.items()}
     locked_fields = {
-        f"oidc_{name}": handler.has(env_name)
-        for name, env_name in _OIDC_ENV_NAMES.items()
+        f"oidc_{name}": handler.has(env_name) for name, env_name in _OIDC_ENV_NAMES.items()
     }
     locked_fields["oidc_allow_new_users"] = handler.has("OIDC_ISSUER_URL")
     locked_fields["oidc_enabled"] = False
     effective_oidc_enabled = bool(oidc.enabled)
+    smtp_fields = set(_SMTP_ENV_NAMES)
     if payload.oidc_enabled is not None:
         effective_oidc_enabled = bool(payload.oidc_enabled)
     for field, value in payload.model_dump(exclude_unset=True).items():
-        if provider_locks.get(field) or field in _OIDC_ENV_LOCKED_FIELDS and locked_fields.get(field):
-            raise HTTPException(409, f"{field} is managed by the deployment environment and cannot be changed here.")
+        if (
+            provider_locks.get(field)
+            or (field in _OIDC_ENV_LOCKED_FIELDS and locked_fields.get(field))
+            or (field in smtp_fields and smtp_locks.get(field))
+        ):
+            raise HTTPException(
+                409, f"{field} is managed by the deployment environment and cannot be changed here."
+            )
         if field == "oidc_providers_json":
             try:
                 incoming = json.loads(value or "[]")
@@ -255,7 +297,8 @@ async def update_deployment_settings(
                 secret = item.get("client_secret") or existing.get(slug, {}).get("client_secret")
                 if not secret and effective_oidc_enabled:
                     raise HTTPException(
-                        400, f"Client secret is required for OIDC provider '{name}' while OIDC is enabled."
+                        400,
+                        f"Client secret is required for OIDC provider '{name}' while OIDC is enabled.",
                     )
                 if item.get("client_secret"):
                     secret = encrypt_secret(str(item["client_secret"]))
@@ -310,8 +353,58 @@ async def update_deployment_settings(
         elif field in _SECRET_FIELDS:
             if value:
                 setattr(app, field, encrypt_secret(value))
+        elif field in _SMTP_FIELDS:
+            if field == "smtp_enabled":
+                setattr(app, field, bool(value))
+            elif field == "smtp_port":
+                try:
+                    port = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise HTTPException(400, "SMTP port must be an integer.") from exc
+                if not 1 <= port <= 65535:
+                    raise HTTPException(400, "SMTP port must be between 1 and 65535.")
+                setattr(app, field, port)
+            elif field == "smtp_security":
+                if value not in {"none", "starttls", "ssl"}:
+                    raise HTTPException(400, "SMTP security must be none, starttls, or ssl.")
+                setattr(app, field, value)
+            elif field == "smtp_password":
+                if value and value.strip():
+                    app.smtp_password = encrypt_secret(value.strip())
+            else:
+                setattr(app, field, value.strip() or None)
         elif field in _SAFE_PROVIDER_FIELDS:
             setattr(app, field, value or None)
     await db.commit()
     apply_deployment_provider_credentials(app)
     return await get_deployment_settings(db, admin)
+
+
+@router.post("/smtp-test")
+async def send_smtp_test(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> dict[str, str]:
+    if not (admin.email or "").strip():
+        raise HTTPException(400, "The administrator account has no email address.")
+    provider = await smtp_provider(db)
+    if not provider.available():
+        raise HTTPException(400, "SMTP is not fully configured and enabled.")
+    destination = await provider.lookup_destination(db, admin, None)
+    if destination is None:
+        raise HTTPException(400, "The administrator account email address is invalid.")
+    result = await provider.deliver(
+        destination,
+        NotificationMessage(
+            uuid4(),
+            "smtp_test",
+            "Unnamed Tracking App SMTP test",
+            "This is a test email from Unnamed Tracking App.",
+            "system",
+            uuid4(),
+            int(time.time()),
+        ),
+    )
+    if not result.success:
+        raise HTTPException(502, result.error or "SMTP test delivery failed.")
+    return {"status": "sent"}

@@ -18,6 +18,7 @@ from src.database.session import SessionLocal
 from src.features.imports.anilist import import_anilist_library
 from src.features.metadata import refresh_job
 from src.features.metadata.refresh import check_airing_episodes
+from src.features.notification_providers.delivery import process_pending_deliveries
 
 logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
@@ -154,6 +155,8 @@ async def run_jobs_loop() -> None:
     while True:
         await asyncio.sleep(TICK_SECONDS)
         try:
+            async with SessionLocal() as db:
+                await process_pending_deliveries(db)
             now = int(time.time())
             await _run_due_anilist_imports(now)
             async with SessionLocal() as db:

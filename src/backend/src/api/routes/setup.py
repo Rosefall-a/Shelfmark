@@ -94,11 +94,18 @@ def _persisted_values(app: AppIntegrationSettings, oidc: OidcSettings) -> dict[s
         "SCREENSCRAPER_SSPASSWORD": "screenscraper_sspassword",
         "XBOX_CLIENT_ID": "xbox_client_id",
         "XBOX_CLIENT_SECRET": "xbox_client_secret",
+        "SMTP_ENABLED": "smtp_enabled",
+        "SMTP_HOST": "smtp_host",
+        "SMTP_PORT": "smtp_port",
+        "SMTP_USERNAME": "smtp_username",
+        "SMTP_PASSWORD": "smtp_password",
+        "SMTP_FROM_EMAIL": "smtp_from_email",
+        "SMTP_SECURITY": "smtp_security",
     }.items():
         value = getattr(app, attribute)
         if value:
             values[f"{spec_name}__configured"] = True
-            if spec_name in {"IGDB_CLIENT_ID", "SCREENSCRAPER_DEVID", "SCREENSCRAPER_SSID", "XBOX_CLIENT_ID"}:
+            if spec_name in {"IGDB_CLIENT_ID", "SCREENSCRAPER_DEVID", "SCREENSCRAPER_SSID", "XBOX_CLIENT_ID", "SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_FROM_EMAIL", "SMTP_SECURITY"}:
                 values[spec_name] = value
 
     provider_name = "Provider 1"
@@ -173,6 +180,13 @@ async def _save_configuration(
         "SCREENSCRAPER_SSPASSWORD": "screenscraper_sspassword",
         "XBOX_CLIENT_ID": "xbox_client_id",
         "XBOX_CLIENT_SECRET": "xbox_client_secret",
+        "SMTP_ENABLED": "smtp_enabled",
+        "SMTP_HOST": "smtp_host",
+        "SMTP_PORT": "smtp_port",
+        "SMTP_USERNAME": "smtp_username",
+        "SMTP_PASSWORD": "smtp_password",
+        "SMTP_FROM_EMAIL": "smtp_from_email",
+        "SMTP_SECURITY": "smtp_security",
     }
     for name, attribute in app_fields.items():
         if name not in values or handler.has(name):
@@ -181,7 +195,11 @@ async def _save_configuration(
         if value in (None, ""):
             continue
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
-        setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else str(value))
+        if name == "SMTP_ENABLED":
+            value = bool(value)
+        elif name == "SMTP_PORT":
+            value = int(value)
+        setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else value)
 
     oidc_env_complete = all(
         handler.has(name)
