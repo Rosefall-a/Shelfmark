@@ -17,6 +17,8 @@ services:
       NGINX_TLS_CERTIFICATE: ${NGINX_TLS_CERTIFICATE:-}
       NGINX_TLS_PRIVATE_KEY: ${NGINX_TLS_PRIVATE_KEY:-}
       NGINX_TLS_REDIRECT_HTTP: ${NGINX_TLS_REDIRECT_HTTP:-false}
+      NGINX_REALIP_HEADER: ${NGINX_REALIP_HEADER:-X-Forwarded-For}
+      NGINX_REALIP_TRUSTED_PROXIES: ${NGINX_REALIP_TRUSTED_PROXIES-}
     volumes:
       - ./data:/data
       # For TLS, mount externally managed certificates read-only:
