@@ -1,0 +1,49 @@
+services:
+  app:
+    image: ghcr.io/rosefall-a/unnamed_tracking_app:${IMAGE_TAG:-main}
+    pull_policy: ${DEV_PULL_POLICY:-build}
+    build:
+      context: ../..
+      dockerfile: src/docker-container/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${DEVCONTAINER_APP_PORT:-8180}:80"
+    environment:
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      SECRET_KEY: ${DEV_SECRET_KEY:-devcontainer-not-for-production}
+      PRIMARY_USER_USERNAME: ${DEV_PRIMARY_USER_USERNAME:-admin}
+      PRIMARY_USER_EMAIL: ${DEV_PRIMARY_USER_EMAIL:-admin@example.invalid}
+      PRIMARY_USER_PASSWORD: ${DEV_PRIMARY_USER_PASSWORD:-debug-admin-password}
+      AUTH_COOKIE_SECURE: ${DEV_AUTH_COOKIE_SECURE:-false}
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost/ >/dev/null" ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    volumes:
+      - devcontainer_prod_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+    volumes:
+      - devcontainer_prod_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  devcontainer_prod_data:
+  devcontainer_prod_pgdata:

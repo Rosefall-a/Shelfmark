@@ -48,6 +48,7 @@ nav:
   - Development:
       - Overview: development/index.md
       - Architecture: development/architecture.md
+      - Developer control container: development/devcontainer.md
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md

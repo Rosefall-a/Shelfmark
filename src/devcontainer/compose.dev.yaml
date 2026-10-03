@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+    volumes:
+      - devcontainer_dev_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DEV_POSTGRES_USER:-unnamed_tracking} -d ${DEV_POSTGRES_DB:-unnamed_tracking}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    image: ghcr.io/rosefall-a/unnamed_tracking_app-backend:${IMAGE_TAG:-main}
+    pull_policy: ${DEV_PULL_POLICY:-build}
+    build:
+      context: ../backend
+      dockerfile: dockerfile
+    environment:
+      POSTGRES_USER: ${DEV_POSTGRES_USER:-unnamed_tracking}
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-debug-password}
+      POSTGRES_DB: ${DEV_POSTGRES_DB:-unnamed_tracking}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      PYTHONUNBUFFERED: 1
+      STARTUP_MODE: dev
+    volumes:
+      - devcontainer_dev_data:/data
+      - ../backend/src:/app/src:ro
+    command: [ "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/rosefall-a/unnamed_tracking_app-frontend:${IMAGE_TAG:-main}
+    pull_policy: ${DEV_PULL_POLICY:-build}
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${DEVCONTAINER_APP_PORT:-5173}:80"
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://127.0.0.1/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))" ]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    volumes:
+      - ../frontend/src:/app/src:ro
+      - ../frontend/public:/app/public:ro
+    depends_on:
+      - backend
+
+volumes:
+  devcontainer_dev_pgdata:
+  devcontainer_dev_data:
