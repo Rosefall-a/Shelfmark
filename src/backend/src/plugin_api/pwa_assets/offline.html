@@ -1,0 +1,5 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Waiting for internet · Unnamed Tracking</title>
+<style>body{margin:0;background:#0f1117;color:#f7f7fb;font:16px system-ui;display:grid;place-items:center;min-height:100vh}main{max-width:34rem;padding:2rem}p{color:#bec0cc}button,a{font:inherit;color:inherit}button{padding:.65rem 1rem;background:#7557e8;border:0;border-radius:.5rem;cursor:pointer}</style></head>
+<body><main><h1>Waiting for internet</h1><p>Reconnect to your tracking server to use Unnamed Tracking. Your account data and API responses are never stored in this offline page.</p><p>The installed app opens the complete web application when you reconnect. If its plugin was disabled or removed, the ordinary website remains available.</p><button type="button" id="retry">Try again</button><p><a href="/settings?section=plugins">Open plugin settings when online</a></p></main>
+<script>document.getElementById('retry').addEventListener('click',()=>location.reload());window.addEventListener('online',()=>location.reload());</script></body></html>

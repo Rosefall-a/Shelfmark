@@ -68,6 +68,10 @@ class PluginRuntimeClient:
         data = await self._request("GET", f"/plugins/{plugin_id}/frontend/{path}")
         return base64.b64decode(str(data["content"]))
 
+    async def pwa_asset(self, plugin_id: str, path: str) -> bytes:
+        data = await self._request("GET", f"/plugins/{quote(plugin_id, safe='')}/pwa/{path}")
+        return base64.b64decode(str(data["content"]), validate=True)
+
     async def native_frontend_asset(self, plugin_id: str, path: str) -> bytes:
         data = await self._request("GET", f"/plugins/{plugin_id}/native-frontend/{path}")
         return base64.b64decode(str(data["content"]))
