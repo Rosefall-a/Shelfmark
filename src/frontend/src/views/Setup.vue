@@ -133,18 +133,21 @@ function initialize(config: SetupConfiguration) {
   configuration.value = config;
   values.value = {};
 
-  // Required sections are always selected. Optional sections containing
-  // deployment-provided values are selected automatically so a half-filled
-  // .env file is visible rather than silently ignored.
+  // Required sections and the explicitly defaulted optional sections are
+  // selected automatically. OIDC is different: a partial environment
+  // configuration must not implicitly enable it or force the user into the
+  // provider page. A complete environment configuration may still select it
+  // automatically.
   selectedSections.value = config.sections
     .filter(
       (section) =>
         section.required ||
         (!section.required && section.default) ||
-        section.status === "partial" ||
-        section.status === "configured" ||
-        section.env_configured ||
-        section.status === "completed_by_env",
+        section.status === "completed_by_env" ||
+        (
+          section.id !== "oidc" &&
+          (section.status === "partial" || section.status === "configured" || section.env_configured)
+        ),
     )
     .map((section) => section.id);
 

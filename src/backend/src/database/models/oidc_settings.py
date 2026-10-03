@@ -16,7 +16,7 @@ class OidcSettings(Base):
     __tablename__ = "oidc_settings"
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     issuer_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)

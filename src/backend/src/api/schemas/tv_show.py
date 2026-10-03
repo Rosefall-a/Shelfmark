@@ -1,3 +1,7 @@
+# pylint: disable=duplicate-code
+# These modules intentionally keep domain/provider-specific logic separate; similar
+# structures here represent parallel APIs rather than accidental copy/paste.
+
 from datetime import date
 from decimal import Decimal
 from uuid import UUID

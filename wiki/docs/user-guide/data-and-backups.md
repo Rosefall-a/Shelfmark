@@ -51,6 +51,19 @@ A game's persistent directory is:
 
 Game assets use files such as \`key_art.png\`, \`banner.png\`, \`logo.png\`, and \`icon.png\`. Notes, screenshots and clips have their own directories.
 
+
+### Game note titles
+
+Game notes use a human-readable title rather than requiring a filesystem-style name. Titles may contain spaces and common punctuation, for example "what is this for", "Quest Log - Main Story", or "Build #2 (final!)".
+
+Titles must not contain path separators, control characters, drive-style paths, or other path-like values. Empty titles, ".", "..", hidden/path-like names, and Windows-reserved device names are rejected. A trailing ".md" is treated as the note's display title without the extension for compatibility.
+
+Creating a note whose title already exists does **not** replace the existing note. The API returns a conflict and the Notes editor keeps the operation in an editable state so the user can choose another title or cancel.
+
+Editing an existing note saves its current title normally. Renaming uses a dedicated rename operation: the destination must be unused, the existing content is preserved, and renaming to the same title is a no-op. A failed rename leaves the original note in place.
+
+The Notes UI translates validation, conflict, loading, saving, deletion, and rename failures into user-facing messages rather than displaying raw backend status or JSON responses.
+
 Named save archives are stored under the game directory in \`saves/\` or \`world_saves/\`.
 
 ## Moving a deployment

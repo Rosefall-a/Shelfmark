@@ -183,76 +183,95 @@ async def _save_configuration(
         spec = next(spec for spec in CONFIG_REGISTRY if spec.name == name)
         setattr(app, attribute, encrypt_secret(str(value)) if spec.secret else str(value))
 
-    if "oidc" in selected_sections or handler.has("OIDC_ISSUER_URL") or handler.has("OIDC_CLIENT_ID") or handler.has("OIDC_CLIENT_SECRET"):
-        oidc.redirect_uri = generated_redirect_uri
-        oidc_fields = {
-            "OIDC_ISSUER_URL": "issuer_url",
-            "OIDC_CLIENT_ID": "client_id",
-            "OIDC_SCOPES": "scopes",
-            "OIDC_GROUPS_CLAIM": "groups_claim",
-            "OIDC_ADMIN_GROUP": "admin_group",
-            "OIDC_USER_MATCH_FIELD": "user_match_field",
-            "OIDC_ALLOW_NEW_USERS": "allow_new_users",
-            "OIDC_DEFAULT_LOGIN_METHOD": "default_login_method",
-            "OIDC_LOGIN_BUTTON_TEXT": "login_button_text",
-        }
-        for name, attribute in oidc_fields.items():
-            if handler.has(name):
-                # Environment overrides remain authoritative, but mirror them into
-                # the OIDC row so status/settings recognise a complete provider.
-                value = handler.get(name)
-            elif name in values:
-                value = values[name]
-            else:
-                continue
-            if value is None or value == "":
-                continue
-            setattr(oidc, attribute, value)
-        if handler.has("OIDC_CLIENT_SECRET"):
-            oidc.client_secret = encrypt_secret(str(handler.get("OIDC_CLIENT_SECRET")))
-        elif "OIDC_CLIENT_SECRET" in values and values["OIDC_CLIENT_SECRET"]:
-            oidc.client_secret = encrypt_secret(str(values["OIDC_CLIENT_SECRET"]))
+    oidc_env_complete = all(
+        handler.has(name)
+        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+    )
+    oidc_selected = "oidc" in selected_sections
 
-        if oidc.enabled and oidc.issuer_url and oidc.client_id and oidc.client_secret:
-            # Register the initial/default provider in the same provider format
-            # used by the OIDC settings UI. This makes an OIDC configured during
-            # first-run setup visible to the normal application OIDC status/login
-            # endpoints immediately after setup.
-            try:
-                providers = json.loads(oidc.providers_json or "[]")
-            except (TypeError, ValueError):
-                providers = []
-            providers = [item for item in providers if isinstance(item, dict) and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")]
-            providers.insert(0, {
-                "name": values.get("OIDC_PROVIDER_NAME") or "Provider 1",
-                "slug": values.get("OIDC_PROVIDER_SLUG") or "provider-1",
-                "issuer_url": oidc.issuer_url,
-                "client_id": oidc.client_id,
-                "client_secret": oidc.client_secret,
-                "scopes": oidc.scopes or "openid profile email",
-                "groups_claim": oidc.groups_claim or "groups",
-                "admin_group": oidc.admin_group,
-                "user_match_field": oidc.user_match_field or "email",
-                "allow_new_users": oidc.allow_new_users,
-                "button_text": oidc.login_button_text or "Continue with SSO",
-                "enabled": True,
-                "show_on_login": True,
-                "autostart_enabled": True,
-            })
-            oidc.providers_json = json.dumps(providers)
+    # OIDC is optional during first-run setup. Do not enable it merely because
+    # an OIDC row exists (the row is created while building the setup schema).
+    # Environment configuration is only considered OIDC configuration when all
+    # three required provider credentials are supplied.
+    if not oidc_selected and not oidc_env_complete:
+        oidc.enabled = False
+        return
 
-        # Selecting OIDC in setup means it is being configured. There is no
-        # separate enable switch in setup, so a complete provider is enabled
-        # automatically.
-        oidc.enabled = True
+    oidc.redirect_uri = generated_redirect_uri
+    oidc_fields = {
+        "OIDC_ISSUER_URL": "issuer_url",
+        "OIDC_CLIENT_ID": "client_id",
+        "OIDC_SCOPES": "scopes",
+        "OIDC_GROUPS_CLAIM": "groups_claim",
+        "OIDC_ADMIN_GROUP": "admin_group",
+        "OIDC_USER_MATCH_FIELD": "user_match_field",
+        "OIDC_ALLOW_NEW_USERS": "allow_new_users",
+        "OIDC_DEFAULT_LOGIN_METHOD": "default_login_method",
+        "OIDC_LOGIN_BUTTON_TEXT": "login_button_text",
+    }
+    for name, attribute in oidc_fields.items():
+        if handler.has(name):
+            # Environment overrides remain authoritative, but mirror them into
+            # the OIDC row so status/settings recognise a complete provider.
+            value = handler.get(name)
+        elif name in values:
+            value = values[name]
+        else:
+            continue
+        if value is None or value == "":
+            continue
+        setattr(oidc, attribute, value)
+    if handler.has("OIDC_CLIENT_SECRET"):
+        oidc.client_secret = encrypt_secret(str(handler.get("OIDC_CLIENT_SECRET")))
+    elif "OIDC_CLIENT_SECRET" in values and values["OIDC_CLIENT_SECRET"]:
+        oidc.client_secret = encrypt_secret(str(values["OIDC_CLIENT_SECRET"]))
 
-        missing = [
-            name
-            for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
-            if not (handler.has(name) or (values.get(name) or getattr(oidc, {"OIDC_ISSUER_URL": "issuer_url", "OIDC_CLIENT_ID": "client_id"}.get(name, "client_secret"))))
-        ]
-        if missing:
-            raise HTTPException(400, "OIDC requires an issuer URL, client ID, and client secret when enabled.")
+    missing = [
+        name
+        for name, value in (
+            ("OIDC_ISSUER_URL", oidc.issuer_url),
+            ("OIDC_CLIENT_ID", oidc.client_id),
+            ("OIDC_CLIENT_SECRET", oidc.client_secret),
+        )
+        if not value
+    ]
+    if missing:
+        raise HTTPException(400, "OIDC requires an issuer URL, client ID, and client secret when enabled.")
+
+    # A provider is only enabled after all required credentials have been
+    # resolved. This prevents an empty setup OIDC row from being treated as
+    # enabled.
+    oidc.enabled = True
+
+    # Register the initial/default provider in the same provider format used by
+    # the OIDC settings UI. This makes an OIDC configuration supplied during
+    # first-run setup visible to the normal OIDC status/login endpoints.
+    try:
+        providers = json.loads(oidc.providers_json or "[]")
+    except (TypeError, ValueError):
+        providers = []
+    providers = [
+        item for item in providers
+        if isinstance(item, dict)
+        and item.get("slug") != (values.get("OIDC_PROVIDER_SLUG") or "provider-1")
+    ]
+    providers.insert(0, {
+        "name": values.get("OIDC_PROVIDER_NAME") or "Provider 1",
+        "slug": values.get("OIDC_PROVIDER_SLUG") or "provider-1",
+        "issuer_url": oidc.issuer_url,
+        "client_id": oidc.client_id,
+        "client_secret": oidc.client_secret,
+        "scopes": oidc.scopes or "openid profile email",
+        "groups_claim": oidc.groups_claim or "groups",
+        "admin_group": oidc.admin_group,
+        "user_match_field": oidc.user_match_field or "email",
+        "allow_new_users": oidc.allow_new_users,
+        "button_text": oidc.login_button_text or "Continue with SSO",
+        "enabled": True,
+        "show_on_login": True,
+        "autostart_enabled": True,
+    })
+    oidc.providers_json = json.dumps(providers)
 
 
 @router.get("/configuration")
@@ -314,7 +333,11 @@ async def setup_admin(
     # OIDC is optional as a section. Selecting it means it is being configured
     # and will enable OIDC after complete provider credentials are saved.
     selected = set(payload.sections)
-    if any(handler.has(spec.name) for spec in CONFIG_REGISTRY if spec.name.startswith("OIDC_")):
+    oidc_env_complete = all(
+        handler.has(name)
+        for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+    )
+    if oidc_env_complete:
         selected.add("oidc")
 
     await _save_configuration(db, values, selected, str(request.url_for("oidc_callback")))

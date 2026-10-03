@@ -3,8 +3,12 @@
 
 # Running the API
 
-docker compose down -v
-docker compose up -d --build
+docker compose down -v 
+docker compose up --build
+docker compose -f example-docker-compose.yaml up --build
+
+Use -v on the down to remove database and reconfigure app, use the bottom compose for production container, and standard for dev containers.
+
 docker compose run --rm backend
 
 

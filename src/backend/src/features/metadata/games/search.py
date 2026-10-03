@@ -1,3 +1,7 @@
+# pylint: disable=duplicate-code
+# These modules intentionally keep domain/provider-specific logic separate; similar
+# structures here represent parallel APIs rather than accidental copy/paste.
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor

@@ -302,16 +302,16 @@ class EnvConfigHandler:
             missing = [name for name, present in zip(primary_names, primary_present) if not present]
             issues.append(ConfigIssue("primary_user", "error", "Primary user configuration is incomplete: " + ", ".join(missing), recoverable=False))
 
-        if any(str(values.get(name) or "").strip() for name in ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")):
+        # OIDC is optional. A partial environment configuration must not
+        # activate startup validation; only a complete environment provider is
+        # considered deployment-managed OIDC configuration.
+        oidc_names = ("OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+        if all(str(values.get(name) or "").strip() for name in oidc_names):
             issuer = str(values.get("OIDC_ISSUER_URL") or "").strip()
-            if issuer:
-                scopes = set(str(values.get("OIDC_SCOPES") or "").split())
-                missing_scopes = {"openid", "profile", "email"} - scopes
-                if missing_scopes:
-                    issues.append(ConfigIssue("oidc", "warning", "OIDC issuer is configured but recommended scopes are missing: " + ", ".join(sorted(missing_scopes))))
-                for name in ("OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET"):
-                    if not str(values.get(name) or "").strip():
-                        issues.append(ConfigIssue("oidc", "error", f"OIDC issuer is configured but {name} is missing.", recoverable=False))
+            scopes = set(str(values.get("OIDC_SCOPES") or "").split())
+            missing_scopes = {"openid", "profile", "email"} - scopes
+            if missing_scopes:
+                issues.append(ConfigIssue("oidc", "warning", "OIDC issuer is configured but recommended scopes are missing: " + ", ".join(sorted(missing_scopes))))
 
         return issues
 
