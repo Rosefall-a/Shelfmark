@@ -801,13 +801,33 @@ export async function listGameNotes(gameId: string): Promise<string[]> {
     credentials: "include",
   });
   if (!response.ok) {
-    throw new Error(
-      `Failed to list notes for game ${gameId}: ${response.status} ${response.statusText}`,
-    );
+    throw new Error("The game notes could not be loaded.");
   }
 
   const data: GameNoteListResponse = await response.json();
   return data.notes ?? [];
+}
+
+async function noteErrorMessage(
+  response: Response,
+  action: "create" | "save" | "rename" | "load" | "delete",
+  noteName: string,
+): Promise<string> {
+  if (response.status === 409) {
+    return `A note titled "${noteName}" already exists. Choose a different title or cancel the operation.`;
+  }
+  if (response.status === 400) {
+    return `The note title "${noteName}" is not valid. Use a normal title without path separators or control characters.`;
+  }
+  if (response.status === 404) {
+    return action === "load"
+      ? `The note "${noteName}" could not be found.`
+      : `The note "${noteName}" no longer exists.`;
+  }
+  if (action === "rename") return `The note "${noteName}" could not be renamed.`;
+  if (action === "delete") return `The note "${noteName}" could not be deleted.`;
+  if (action === "load") return `The note "${noteName}" could not be loaded.`;
+  return `The note "${noteName}" could not be saved.`;
 }
 
 export async function fetchGameNote(
@@ -817,17 +837,32 @@ export async function fetchGameNote(
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return getMockNoteMap(gameId).get(noteName) ?? "";
   }
-
-  const response = await fetch(`/api/game/${gameId}/notes/${noteName}`, {
+  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
     credentials: "include",
   });
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch note ${noteName}: ${response.status} ${response.statusText}`,
-    );
-  }
-
+  if (!response.ok) throw new Error(await noteErrorMessage(response, "load", noteName));
   return await response.text();
+}
+
+export async function createGameNote(
+  gameId: string,
+  noteName: string,
+  content: string,
+): Promise<GameNoteActionResponse> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    const notes = getMockNoteMap(gameId);
+    if (notes.has(noteName)) throw new Error(`A note titled "${noteName}" already exists. Choose a different title or cancel the operation.`);
+    notes.set(noteName, content);
+    return { game_id: gameId, note_name: noteName, status: "saved" };
+  }
+  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) throw new Error(await noteErrorMessage(response, "create", noteName));
+  return await response.json();
 }
 
 export async function saveGameNote(
@@ -836,26 +871,46 @@ export async function saveGameNote(
   content: string,
 ): Promise<GameNoteActionResponse> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
-    getMockNoteMap(gameId).set(noteName, content);
+    const notes = getMockNoteMap(gameId);
+    if (!notes.has(noteName)) throw new Error(`The note "${noteName}" no longer exists.`);
+    notes.set(noteName, content);
     return { game_id: gameId, note_name: noteName, status: "saved" };
   }
-
-  const response = await fetch(`/api/game/${gameId}/notes/${noteName}`, {
+  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
     method: "PUT",
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
+  if (!response.ok) throw new Error(await noteErrorMessage(response, "save", noteName));
+  return await response.json();
+}
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to save note ${noteName}: ${response.status} ${response.statusText} ${message}`,
-    );
+export async function renameGameNote(
+  gameId: string,
+  noteName: string,
+  newName: string,
+): Promise<GameNoteActionResponse> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    const notes = getMockNoteMap(gameId);
+    if (!notes.has(noteName)) throw new Error(`The note "${noteName}" no longer exists.`);
+    if (noteName !== newName && notes.has(newName)) {
+      throw new Error(`A note titled "${newName}" already exists. Choose a different title or cancel the operation.`);
+    }
+    const content = notes.get(noteName) ?? "";
+    if (noteName !== newName) {
+      notes.delete(noteName);
+      notes.set(newName, content);
+    }
+    return { game_id: gameId, note_name: newName, status: "saved" };
   }
-
+  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}/rename`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_name: newName }),
+  });
+  if (!response.ok) throw new Error(await noteErrorMessage(response, "rename", newName));
   return await response.json();
 }
 
@@ -868,16 +923,13 @@ export async function deleteGameNote(
     return { game_id: gameId, note_name: noteName, status: "deleted" };
   }
 
-  const response = await fetch(`/api/game/${gameId}/notes/${noteName}`, {
+  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
     method: "DELETE",
     credentials: "include",
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to delete note ${noteName}: ${response.status} ${response.statusText} ${message}`,
-    );
+    throw new Error(await noteErrorMessage(response, "delete", noteName));
   }
 
   return await response.json();
