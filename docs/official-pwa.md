@@ -106,8 +106,9 @@ offline navigation, private API exclusion, automatic update/cache migration,
 rollback, old versions, disable/uninstall/reinstall, actual session expiry,
 unsigned consent, invalid signatures, malformed packages and unhealthy startup.
 `pwa-conformance.json`, logs and screenshots record evidence. No plugin API is
-mocked; only HTTPS catalogue acquisition maps to the disposable local release
-fixture. The mobile source has separate worker cache-failure/migration tests.
+mocked; HTTPS catalogue/package acquisition and the fixture's public catalogue
+icon map to the disposable local release fixture. The mobile source has separate
+worker cache-failure/migration tests.
 
 Headless browser verification cannot operate native OS installation dialogs or
 prove physical Android Chrome, iOS Safari and Windows install surfaces. Those

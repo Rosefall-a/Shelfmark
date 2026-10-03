@@ -32,6 +32,12 @@ await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+// The disposable HTTPS catalogue points at a fixture branch which is never
+// published. Map its public icon acquisition to the same real source bytes;
+// host/plugin routes and browser service-worker infrastructure remain real.
+await context.route("https://raw.githubusercontent.com/Rosefall-a/unnamed_tracking_app_plugins/integration-fixture/official/pwa/pwa/pwa-icon.svg", async route => {
+  await route.fulfill({ contentType: "image/svg+xml", body: await readFile(path.join(process.env.PWA_ACCEPTANCE_ROOT, "official/pwa/pwa/pwa-icon.svg")) });
+});
 const page = await context.newPage();
 const checkpoints = [];
 async function checkpoint(name) {
@@ -101,6 +107,7 @@ try {
   await reloadControlled();
   await page.goto(origin + "/settings?section=plugins");
   await page.getByText("Official · verified", { exact: true }).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll(".plugin img")].every(icon => icon.complete && icon.naturalWidth > 0));
   await page.screenshot({ path: path.join(process.env.PWA_ACCEPTANCE_WORK, "pwa-plugin-installed.png"), fullPage: true });
   const status1 = await api("GET", "/pwa/status");
   const manifest = await api("GET", "/manifest.webmanifest");

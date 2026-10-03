@@ -1,7 +1,7 @@
 """Real PostgreSQL/host/runtime/browser PWA acceptance with disposable signers.
 
 Use a disposable migrated database and a clean --work-root. No production key is
-created. Only catalogue acquisition is substituted with fixture HTTPS downloads;
+created. Only catalogue/artifact acquisition uses disposable fixture downloads;
 verification, installation, grants, runtime workers and browser routes are real.
 """
 

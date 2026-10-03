@@ -56,14 +56,34 @@ const visible = computed(
 
 <style scoped>
 .pwa-status {
-  padding: 0.5rem 1rem;
-  background: var(--panel-bg, #242530);
-  color: var(--text-color, #f7f7fb);
+  box-sizing: border-box;
+  min-height: 70px;
+  padding: 1rem 1rem 1rem 112px;
+  background: var(--ui-surface, #242530);
+  color: var(--ui-text, #f7f7fb);
+  border-bottom: 1px solid var(--ui-border, #2b2b2b);
+  font-family: system-ui, sans-serif;
+  font-size: 0.9rem;
 }
 .pwa-status:empty {
   display: none;
 }
 button {
   margin-left: 0.5rem;
+  border: 1px solid var(--ui-accent-line, #d68a34);
+  border-radius: var(--ui-radius-control, 8px);
+  padding: 0.35rem 0.65rem;
+  background: var(--ui-surface-2, #222);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+a {
+  color: var(--ui-accent, #d68a34);
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ui-accent, #d68a34);
+  outline-offset: 3px;
 }
 </style>
