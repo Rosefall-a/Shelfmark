@@ -11,6 +11,17 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
   -keyout "$work/tls/key.pem" -out "$work/tls/cert.pem" \
   -subj "/CN=localhost" >/dev/null 2>&1
 
+rendered="$work/http-defaults.conf"
+"$render" /etc/nginx/ready.conf "$rendered"
+grep -q 'real_ip_header X-Forwarded-For;' "$rendered"
+grep -q 'real_ip_recursive on;' "$rendered"
+grep -q 'set_real_ip_from 10.0.0.0/8;' "$rendered"
+grep -q 'set_real_ip_from 100.64.0.0/10;' "$rendered"
+grep -q 'set_real_ip_from fc00::/7;' "$rendered"
+grep -q 'set_real_ip_from 173.245.48.0/20;' "$rendered"
+grep -q 'set_real_ip_from 2606:4700::/32;' "$rendered"
+nginx -t -c "$rendered"
+
 rendered="$work/http.conf"
 NGINX_REALIP_TRUSTED_PROXIES="10.0.0.0/8 192.0.2.0/24" "$render" /etc/nginx/ready.conf "$rendered"
 ! grep -q 'listen 443 ssl;' "$rendered"
