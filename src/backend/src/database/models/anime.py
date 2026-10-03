@@ -69,6 +69,9 @@ class Anime(Base):
     # ------------------------------------------------------------------
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    provider_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     sort_title: Mapped[str] = mapped_column(String(500), nullable=False)
     # the same title as AniList spells it, so the app can show whichever the
     # user prefers (`title` stays the canonical one everything else uses)

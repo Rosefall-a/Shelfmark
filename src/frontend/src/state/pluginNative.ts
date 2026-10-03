@@ -1,6 +1,7 @@
 import {
   computed,
   defineComponent,
+  onBeforeUnmount,
   h,
   markRaw,
   reactive,
@@ -24,11 +25,13 @@ export interface NativeFrontendSource {
 
 export interface NativePluginContext {
   pluginId: string;
+  version: string;
   registerComponent(pageId: string, component: Component): void;
   onCleanup(callback: () => void): void;
   vue: {
     computed: typeof computed;
     defineComponent: typeof defineComponent;
+    onBeforeUnmount: typeof onBeforeUnmount;
     h: typeof h;
     reactive: typeof reactive;
     readonly: typeof readonly;
@@ -197,6 +200,7 @@ async function activate(
       );
     const result = await entry({
       pluginId: source.pluginId,
+      version: source.version,
       registerComponent(pageId, component) {
         requireActive();
         if (!/^[a-z0-9][a-z0-9._-]*$/.test(pageId))
@@ -216,7 +220,15 @@ async function activate(
         if (disposed) callback();
         else cleanups.push(callback);
       },
-      vue: { computed, defineComponent, h, reactive, readonly, ref },
+      vue: {
+        computed,
+        defineComponent,
+        h,
+        reactive,
+        readonly,
+        ref,
+        onBeforeUnmount,
+      },
       host: {
         async navigate(path) {
           requireActive();

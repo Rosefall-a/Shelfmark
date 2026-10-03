@@ -51,6 +51,7 @@ from src.plugin_api.documents import (
 from src.plugin_api.grants import has_capability_grant
 from src.plugin_api.sessions import dispatch_sessions
 from src.plugin_api.media_sync import dispatch_media_sync
+from src.plugin_api.media_enrichment import dispatch_enrichment
 from src.plugin_api.outbound import outbound_json
 
 _DATA_ROOT = Path("/data/users")
@@ -139,6 +140,10 @@ async def dispatch_gateway_request(
         return {"authorized": True}
 
     if method == "media.sync":
+        if payload.get("sync_mode") == "enrich":
+            return await dispatch_enrichment(
+                db, plugin_id=plugin_id, user_id=user_id, payload=payload
+            )
         return await dispatch_media_sync(db, plugin_id=plugin_id, user_id=user_id, payload=payload)
 
     if method == "network.request":

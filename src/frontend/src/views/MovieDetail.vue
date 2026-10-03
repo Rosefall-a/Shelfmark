@@ -20,6 +20,7 @@ import RelationsGraph from "../components/RelationsGraph.vue";
 import type { ChainNode, BranchNode } from "../components/RelationsGraph.vue";
 import MediaPreviewModal from "../components/MediaPreviewModal.vue";
 import MediaExtrasPanel from "../components/MediaExtrasPanel.vue";
+import MediaProviderPanel from "../components/MediaProviderPanel.vue";
 import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import RatingPicker from "../components/RatingPicker.vue";
@@ -563,6 +564,7 @@ async function onRatingChange(value: number | null) {
           </button>
         </div>
         <MyNote :note="movie.note" @save="saveNote" />
+        <MediaProviderPanel media-type="movie" :media-id="movie.id" />
       </div>
 
       <div v-else-if="activeTab === 'related'" class="tab-panel">

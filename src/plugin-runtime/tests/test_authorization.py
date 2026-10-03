@@ -1,6 +1,7 @@
 """Runtime authorization must fail closed without an affirmative host decision."""
 
 from unittest.mock import Mock
+from pathlib import Path
 
 import pytest
 from runtime import PluginSpec, PluginSupervisor, RuntimePolicyError
@@ -64,3 +65,6 @@ def test_sandbox_does_not_expose_broker_storage_or_settings(
     index = command.index("/plugin/.settings.json")
     assert command[index - 2 : index] == ["--ro-bind", "/dev/null"]
     assert (package / ".settings.json").is_file()
+    if Path("/lib64").exists():
+        index = command.index("/lib64")
+        assert command[index - 1 : index + 2] == ["--ro-bind", "/lib64", "/lib64"]

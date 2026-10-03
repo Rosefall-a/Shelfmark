@@ -1374,8 +1374,10 @@ async def revoke_management_token(
 
 async def _purge_plugin_database(db: AsyncSession, plugin_id: str) -> None:
     from src.database.models.plugin_permissions import PluginLifecycleTransaction
+    from src.database.models.media_provider import MediaProviderLink
 
     for model in (
+        MediaProviderLink,
         PluginLifecycleTransaction,
         PluginPermissionGrant,
         PluginPermissionRequest,

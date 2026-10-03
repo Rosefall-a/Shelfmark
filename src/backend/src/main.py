@@ -22,6 +22,7 @@ from src.api.routes import (
     library_sync,
     media,
     media_extras,
+    media_provider,
     media_io,
     media_lists,
     media_stats,
@@ -94,6 +95,7 @@ app.include_router(export_import.router)
 app.include_router(jobs.router)
 app.include_router(media_io.router)
 app.include_router(media_extras.router)
+app.include_router(media_provider.router)
 app.include_router(media_lists.router)
 app.include_router(notifications.router)
 app.include_router(notification_providers.router)

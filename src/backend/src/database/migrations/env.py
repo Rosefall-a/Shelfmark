@@ -28,6 +28,7 @@ from src.database.models import (
     inbox_item,  # noqa: F401
     job_setting,  # noqa: F401
     media_extras,  # noqa: F401
+    media_provider,  # noqa: F401
     media_item,  # noqa: F401
     movies,  # noqa: F401
     notification,  # noqa: F401

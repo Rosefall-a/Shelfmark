@@ -19,7 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base
@@ -70,6 +70,9 @@ class TVShow(Base):
     # ------------------------------------------------------------------
 
     title: Mapped[str] = mapped_column(String(500), nullable=False)
+    provider_ids: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     sort_title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_air_date: Mapped[date | None] = mapped_column(Date, nullable=True)
