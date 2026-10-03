@@ -73,6 +73,7 @@ class Capability(StrEnum):
     FRONTEND_PAGE_REPLACE_SETTINGS = "frontend.page.replace.settings"
     FRONTEND_ROUTES = "frontend.routes"
     FRONTEND_NATIVE = "frontend.native"
+    FRONTEND_PWA = "frontend.pwa"
     BACKEND_ROUTES = "backend.routes"
     BACKEND_ROUTES_PLUGIN = "backend.routes.plugin"
     BACKEND_ROUTES_HOST = "backend.routes.host"
@@ -631,6 +632,24 @@ class PluginBackendRoute(ContractModel):
         return self
 
 
+class PluginPwaDeclaration(ContractModel):
+    """Non-executable install metadata; the host owns the worker and root routes."""
+
+    name: str = Field(min_length=1, max_length=128)
+    short_name: str = Field(min_length=1, max_length=32)
+    theme_color: str = Field(default="#0f1117", pattern=r"^#[0-9a-fA-F]{6}$")
+    background_color: str = Field(default="#0f1117", pattern=r"^#[0-9a-fA-F]{6}$")
+    manifest: str = Field(default="pwa/manifest.webmanifest", pattern=r"^pwa/manifest\.webmanifest$")
+    icons: tuple[str, str] = ("pwa/icon-192.png", "pwa/icon-512.png")
+
+    @field_validator("icons")
+    @classmethod
+    def validate_icons(cls, values: tuple[str, str]) -> tuple[str, str]:
+        if values != ("pwa/icon-192.png", "pwa/icon-512.png"):
+            raise ValueError("PWA v1 requires the two bounded PNG icons")
+        return values
+
+
 class PluginManifest(ContractModel):
     """Static plugin manifest validated without importing or executing the plugin."""
 
@@ -658,6 +677,7 @@ class PluginManifest(ContractModel):
     frontend: PluginFrontendDeclaration | None = None
     native_frontend: PluginNativeFrontendDeclaration | None = None
     backend_routes: tuple[PluginBackendRoute, ...] = ()
+    pwa: PluginPwaDeclaration | None = None
 
     @field_validator("version")
     @classmethod
@@ -693,6 +713,11 @@ class PluginManifest(ContractModel):
                 )
         if self.native_frontend is not None and Capability.FRONTEND_NATIVE not in capability_names:
             raise ValueError("native_frontend requires the frontend.native capability")
+        if self.pwa is not None and not any(
+            permission.capability == CapabilityRef(name=Capability.FRONTEND_PWA)
+            for permission in self.permissions
+        ):
+            raise ValueError("pwa requires an explicit frontend.pwa v1 permission")
         route_ids = [route.id for route in self.backend_routes]
         if len(route_ids) != len(set(route_ids)):
             raise ValueError("manifest contains duplicate backend route declarations")
@@ -1401,6 +1426,7 @@ __all__ = [
     "PluginUiDocument",
     "PluginFrontendDeclaration",
     "PluginNativeFrontendDeclaration",
+    "PluginPwaDeclaration",
     "BackendRouteAuthorization",
     "BackendRouteMethod",
     "BackendRouteScope",

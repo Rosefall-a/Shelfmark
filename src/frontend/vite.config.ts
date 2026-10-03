@@ -15,6 +15,9 @@ export default defineConfig({
       usePolling: true,
     },
     proxy: {
+      "/service-worker.js": { target: "http://backend:8000" },
+      "/manifest.webmanifest": { target: "http://backend:8000" },
+      "/pwa/": { target: "http://backend:8000" },
       "/api": {
         target: "http://backend:8000",
         changeOrigin: true,
