@@ -13,6 +13,8 @@ case "$work_root" in "$runner_temp/"*) ;; *) exit 2 ;; esac
 [ ! -e "$work_root" ] || exit 2
 context=$(mktemp -d "$runner_temp/strict-plugin-build.XXXXXX")
 mkdir "$context/host" "$context/plugins" "$context/evidence" "$work_root"
+# The capability-free container cannot override the runner-owned directory mode.
+chmod 0777 "$context/evidence"
 # Archives exclude checkout credentials, untracked files and the runner's home.
 git -C "$host_root" archive HEAD | tar -x -C "$context/host"
 git -C "$plugins_root" archive HEAD | tar -x -C "$context/plugins"
@@ -55,6 +57,10 @@ docker run --rm --cap-drop ALL --security-opt no-new-privileges \
       --host-root /workspace/host --work-root /evidence/run --browser
   ' || status=$?
 if [ -d "$context/evidence/run" ]; then
-  cp -a "$context/evidence/run/." "$work_root/"
+  find "$context/evidence/run" -maxdepth 1 -type f \
+    \( -name '*.log' -o -name conformance.json \) -exec cp {} "$work_root/" \;
+  if [ -d "$context/evidence/run/screenshots" ]; then
+    cp -R "$context/evidence/run/screenshots" "$work_root/"
+  fi
 fi
 exit "$status"
