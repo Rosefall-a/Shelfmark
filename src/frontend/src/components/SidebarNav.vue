@@ -110,6 +110,8 @@ async function handleLogout() {
     v-if="sidebarMode === 'overlay'"
     type="button"
     class="menu-toggle"
+    aria-label="Open menu"
+    :aria-expanded="open"
     @click="open = true"
   >
     <svg

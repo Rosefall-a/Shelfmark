@@ -1,4 +1,5 @@
 import { mockGames } from "../data/mockGames";
+import { failedRequest } from "./apiError";
 import type {
   Achievement,
   AchievementsProvider,
@@ -24,6 +25,9 @@ export interface BackendGame {
   tags: string[];
   features: string[];
   source: string | null;
+  platform: string | null;
+  region: string | null;
+  language: string | null;
   age_rating: string | null;
   parent_game_id: string | null;
   relationship_type: GameRelationshipType | null;
@@ -77,6 +81,15 @@ function dateInputToUnixSeconds(dateStr: string | null): number | null {
   return Math.floor(new Date(dateStr).getTime() / 1000);
 }
 
+// mirrors the backend's _derive_sort_title ('The Witcher 3' -> 'witcher 3'),
+// so a derived sorting name isn't shown back to the user as a custom one
+function deriveSortTitle(title: string): string {
+  return title
+    .replace(/^(the|a|an)\s+/i, "")
+    .trim()
+    .toLowerCase();
+}
+
 // backend sends "ON_HOLD", "WISHLIST", etc., frontend expects
 // 'on hold', 'wishlist' (lowercase, spaces not underscores)
 function normalizeStatus(raw: string): GameStatus {
@@ -122,11 +135,21 @@ export function mapBackendGame(raw: BackendGame): Game {
     folderLocation: raw.folder_location,
     releaseDate: raw.release_date,
     source: raw.source,
+    platform: raw.platform,
+    priority: raw.priority,
+    // only a sorting name someone chose, not the one derived from the title
+    sortTitle:
+      raw.sort_title === deriveSortTitle(raw.title) ? null : raw.sort_title,
     ageRating: raw.age_rating,
     timeToBeatHours: toNumberOrNull(raw.time_to_beat_hours),
-    region: null,
-    language: null,
-    achievementsProvider: null,
+    region: raw.region ?? null,
+    language: raw.language ?? null,
+    // not stored per game: a RetroAchievements library sync is the one
+    // source whose achievements come from somewhere other than the store
+    achievementsProvider:
+      raw.source?.toLowerCase() === "retroachievements"
+        ? "retroachievements"
+        : null,
     links: raw.links,
     ownership: {
       // no backend column for digital-vs-physical, inferred from whether
@@ -142,12 +165,12 @@ export function mapBackendGame(raw: BackendGame): Game {
     favorite: raw.favorite,
     collections: raw.collections,
     // the backend only tracks one flat playtime total, not real per-platform
-    // data, synthesize a single entry labeled by where the game actually
-    // came from (Steam/GOG/PlayStation/etc.), falling back to "PC" only for
-    // manually-added games with no known source
+    // data, synthesize a single entry labeled by the platform the game is
+    // played on, else where it came from (Steam/GOG/PlayStation/etc.),
+    // falling back to "PC" only when neither is known
     platforms: [
       {
-        platform: raw.source || "PC",
+        platform: raw.platform || raw.source || "PC",
         playtimeMinutes: Math.round(raw.playtime_seconds / 60),
         completionPercent: null,
         lastPlayedAt: unixSecondsToIso(raw.last_played_at),
@@ -358,11 +381,31 @@ export async function searchGameMetadata(
       credentials: "include",
     },
   );
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Metadata search failed: ${response.status} ${message}`);
-  }
+  if (!response.ok) throw await failedRequest(response);
   return await response.json();
+}
+
+// Providers return results grouped by provider, not by how well they match,
+// so an exact title match could sit below a dozen loose ones. Exact matches
+// first, then titles starting with the query, then containing it, keeping
+// the providers' own order within each group.
+export function rankMetadataResults<T extends { title: string }>(
+  results: T[],
+  query: string,
+): T[] {
+  const q = normalizeTitleForMatch(query);
+  const rank = (title: string): number => {
+    const t = normalizeTitleForMatch(title);
+    if (!q) return 0;
+    if (t === q) return 0;
+    if (t.startsWith(q)) return 1;
+    if (t.includes(q)) return 2;
+    return 3;
+  };
+  return results
+    .map((result, index) => ({ result, index, rank: rank(result.title) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ result }) => result);
 }
 
 export type RefreshMetadataResult = "updated" | "no-match" | "error";
@@ -473,7 +516,6 @@ export async function refreshGameMetadata(
       };
       const input: NewGameInput = {
         title: game.title,
-        sortTitle: null,
         folderLocation: game.folderLocation ?? "",
         status: game.status,
         description: mergeField(game.description, match.description, overwrite),
@@ -646,7 +688,13 @@ export async function previewGameMetadataRefresh(
 
 export interface NewGameInput {
   title: string;
-  sortTitle: string | null;
+  // undefined leaves the saved sorting name alone, null resets it to the title
+  sortTitle?: string | null;
+  // undefined leaves the saved value alone on update
+  platform?: string | null;
+  priority?: string | null;
+  // unix seconds; only sent when set, to back-date when the game was added
+  createdAt?: number | null;
   folderLocation: string;
   status: GameStatus;
   description: string | null;
@@ -747,6 +795,10 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       relationship_type: input.relationshipType,
       release_date: input.releaseDate,
       source: input.source,
+      platform: input.platform ?? null,
+      priority: input.priority ?? null,
+      region: input.region,
+      language: input.language,
       age_rating: input.ageRating,
       time_to_beat_hours: input.timeToBeatHours,
       rating_overall: input.ratingOverall,
@@ -761,39 +813,16 @@ export async function createGame(input: NewGameInput): Promise<Game> {
       purchase_price: input.ownership.price,
       purchase_price_currency_code: input.ownership.priceCurrency,
       physical_condition: input.ownership.condition,
+      ...(input.createdAt != null ? { created_at: input.createdAt } : {}),
     }),
   });
 
-  if (response.status === 409) {
-    const body = await response.json();
-    throw new Error(
-      body.detail?.message ?? "A game with that folder name already exists.",
-    );
-  }
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to create game: ${response.status} ${response.statusText} ${message}`,
-    );
-  }
+  // 409 (folder name taken) carries its own message, see friendlyError
+  if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
   return mapBackendGame(raw);
 }
-function stripEmpty<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  const result: Partial<T> = {};
-  for (const key in obj) {
-    const value = obj[key];
-    const isEmpty =
-      value === null ||
-      value === "" ||
-      (Array.isArray(value) && value.length === 0);
-    if (!isEmpty) result[key] = value;
-  }
-  return result;
-}
-
 export async function updateGame(
   id: string,
   input: NewGameInput,
@@ -838,10 +867,11 @@ export async function updateGame(
     return updated;
   }
 
-  const body = stripEmpty({
+  // Every field is sent, including nulls and empty lists, so clearing a
+  // field in the form actually clears it (dropping empty values used to make
+  // that impossible). Fields the caller leaves undefined are left alone.
+  const body: Record<string, unknown> = {
     title: input.title,
-    sort_title: input.sortTitle,
-    folder_location: input.folderLocation,
     status: denormalizeStatus(input.status),
     favorite: input.favorite,
     profiles_enabled: input.profilesEnabled,
@@ -854,6 +884,8 @@ export async function updateGame(
     relationship_type: input.relationshipType,
     release_date: input.releaseDate,
     source: input.source,
+    region: input.region,
+    language: input.language,
     age_rating: input.ageRating,
     time_to_beat_hours: input.timeToBeatHours,
     rating_overall: input.ratingOverall,
@@ -865,10 +897,17 @@ export async function updateGame(
     links: input.links,
     collections: input.collections,
     purchase_date: dateInputToUnixSeconds(input.ownership.purchaseDate),
+    completion_date: dateInputToUnixSeconds(input.completionDate),
     purchase_price: input.ownership.price,
     purchase_price_currency_code: input.ownership.priceCurrency,
     physical_condition: input.ownership.condition,
-  });
+  };
+  // blank means "keep the current folder" (see the edit form's placeholder)
+  if (input.folderLocation) body.folder_location = input.folderLocation;
+  if (input.sortTitle !== undefined) body.sort_title = input.sortTitle;
+  if (input.platform !== undefined) body.platform = input.platform;
+  if (input.priority !== undefined) body.priority = input.priority;
+  if (input.createdAt != null) body.created_at = input.createdAt;
 
   const response = await fetch(`/api/game/update/${id}`, {
     method: "PATCH",
@@ -877,19 +916,7 @@ export async function updateGame(
     body: JSON.stringify(body),
   });
 
-  if (response.status === 409) {
-    const errBody = await response.json();
-    throw new Error(
-      errBody.detail?.message ?? "A game with that folder name already exists.",
-    );
-  }
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to update game ${id}: ${response.status} ${response.statusText} ${message}`,
-    );
-  }
+  if (!response.ok) throw await failedRequest(response);
 
   const raw: BackendGame = await response.json();
   return mapBackendGame(raw);
@@ -1277,6 +1304,8 @@ export interface BulkEditFields {
   publisher?: string | null;
   series?: string | null;
   ageRating?: string | null;
+  platform?: string | null;
+  priority?: string | null;
   tags?: string[];
   features?: string[];
 }
@@ -1293,6 +1322,8 @@ export async function bulkUpdateGames(
   if (fields.publisher !== undefined) payload.publisher = fields.publisher;
   if (fields.series !== undefined) payload.series = fields.series;
   if (fields.ageRating !== undefined) payload.age_rating = fields.ageRating;
+  if (fields.platform !== undefined) payload.platform = fields.platform;
+  if (fields.priority !== undefined) payload.priority = fields.priority;
   if (fields.tags !== undefined) payload.tags = fields.tags;
   if (fields.features !== undefined) payload.features = fields.features;
 
@@ -1319,20 +1350,14 @@ export async function bulkUpdateGames(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to bulk-update games: ${response.status} ${response.statusText} ${message}`,
-    );
-  }
+  if (!response.ok) throw await failedRequest(response);
   const result: { updated: number } = await response.json();
   return result.updated;
 }
 
-// PATCHes `collections` directly rather than going through updateGame's
-// NewGameInput/stripEmpty path, stripEmpty treats an empty array as "leave
-// untouched", which would make removing a game's last collection silently
-// no-op.
+// PATCHes `collections` alone rather than the whole game through updateGame,
+// so adding/removing a collection can't overwrite an edit made elsewhere in
+// the meantime.
 async function patchCollections(
   gameId: string,
   collections: string[],
@@ -1343,12 +1368,7 @@ async function patchCollections(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ collections }),
   });
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      `Failed to update collections for ${gameId}: ${response.status} ${response.statusText} ${message}`,
-    );
-  }
+  if (!response.ok) throw await failedRequest(response);
   const raw: BackendGame = await response.json();
   return mapBackendGame(raw);
 }

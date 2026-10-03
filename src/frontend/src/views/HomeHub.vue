@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
-import { useRouter } from "vue-router";
 import GameCard from "../components/GameCard.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import { fetchGames, deleteGame } from "../services/games";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
+import RandomGamePicker from "../components/RandomGamePicker.vue";
 import AccountChip from "../components/AccountChip.vue";
 import { fetchBounties } from "../services/bounties";
 import type { Bounty } from "../services/bounties";
@@ -12,8 +12,6 @@ import type { Game } from "../types/game";
 import { currentUser } from "../state/auth";
 import { fetchWeeklyDigest } from "../services/stats";
 import type { WeeklyDigest } from "../services/stats";
-
-const router = useRouter();
 
 const games = ref<Game[]>([]);
 const loading = ref(true);
@@ -31,10 +29,12 @@ const favoriteCount = computed(
   () => games.value.filter((g) => g.favorite).length,
 );
 
+// opens the filtered picker (#33) rather than jumping to any game at all,
+// finished and wishlisted ones included
+const showRandomPicker = ref(false);
 function pickRandomGame() {
   if (!games.value.length) return;
-  const random = games.value[Math.floor(Math.random() * games.value.length)];
-  router.push(`/games/${random.id}`);
+  showRandomPicker.value = true;
 }
 
 // same overlapping-call guard as GameLibrary.vue's loadGames, this is
@@ -912,6 +912,12 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
         @added="onCollectionAdded"
       />
 
+      <RandomGamePicker
+        v-if="showRandomPicker"
+        :games="games"
+        @close="showRandomPicker = false"
+      />
+
       <div
         v-if="deletingGame"
         class="confirm-backdrop"
@@ -1133,6 +1139,10 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   color: #a3703c;
   cursor: pointer;
   font-size: 12px;
+  min-width: 28px;
+  min-height: 28px;
+  margin-top: -5px;
+  margin-bottom: -5px;
   padding: 2px 4px;
 }
 .onboarding-dismiss:hover {
@@ -1195,6 +1205,18 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
     transform 0.15s ease;
 }
 .random-widget:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #3a3a3a;
+  transform: translateY(-2px);
+}
+.bounty-widget,
+.goals-widget {
+  max-width: 340px;
+  text-decoration: none;
+  color: inherit;
+}
+.bounty-widget:hover,
+.goals-widget:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: #3a3a3a;
   transform: translateY(-2px);

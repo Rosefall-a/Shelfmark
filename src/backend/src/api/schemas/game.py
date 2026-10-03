@@ -38,6 +38,9 @@ class GameBase(BaseModel):
     collections: list[str] = Field(default_factory=list)
     links: list[GameLinkSchema] = Field(default_factory=list)
     source: str | None = Field(default=None, max_length=50)
+    platform: str | None = Field(default=None, max_length=50)
+    region: str | None = Field(default=None, max_length=50)
+    language: str | None = Field(default=None, max_length=50)
     parent_game_id: UUID | None = None
     relationship_type: GameRelationshipType | None = None
     age_rating: str | None = Field(default=None, max_length=20)
@@ -102,10 +105,17 @@ class GameBase(BaseModel):
         return value
 
 
+_CREATED_AT_DESCRIPTION = (
+    "Unix timestamp in seconds for when the game was added to the library. "
+    "Defaults to now; set it to back-date a game you've had for a while."
+)
+
+
 class GameCreate(GameBase):
     """Payload for creating a game. sort_title is derived if not given."""
 
     sort_title: str | None = Field(default=None, max_length=500)
+    created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
 
 
 class GameUpdate(BaseModel):
@@ -113,6 +123,7 @@ class GameUpdate(BaseModel):
 
     title: str | None = Field(default=None, min_length=1, max_length=500)
     sort_title: str | None = Field(default=None, max_length=500)
+    created_at: int | None = Field(default=None, ge=0, description=_CREATED_AT_DESCRIPTION)
     description: str | None = None
     release_date: date | None = None
     developer: str | None = Field(default=None, max_length=200)
@@ -123,6 +134,9 @@ class GameUpdate(BaseModel):
     collections: list[str] | None = None
     links: list[GameLinkSchema] | None = None
     source: str | None = Field(default=None, max_length=50)
+    platform: str | None = Field(default=None, max_length=50)
+    region: str | None = Field(default=None, max_length=50)
+    language: str | None = Field(default=None, max_length=50)
     age_rating: str | None = Field(default=None, max_length=20)
     time_to_beat_hours: Decimal | None = Field(default=None, ge=0)
     parent_game_id: UUID | None = None
@@ -197,6 +211,8 @@ class GameBulkUpdate(BaseModel):
     publisher: str | None = Field(default=None, max_length=200)
     series: str | None = Field(default=None, max_length=200)
     age_rating: str | None = Field(default=None, max_length=20)
+    platform: str | None = Field(default=None, max_length=50)
+    priority: str | None = Field(default=None, max_length=20)
     tags: list[str] | None = None
     features: list[str] | None = None
 

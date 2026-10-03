@@ -6,6 +6,9 @@ import GameCard from "../components/GameCard.vue";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import BulkEditModal from "../components/BulkEditModal.vue";
+import RandomGamePicker from "../components/RandomGamePicker.vue";
+import { activePriority, priorityLabel } from "../utils/priority";
+import { formatDisplayDate } from "../utils/dates";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import {
   fetchGames,
@@ -33,7 +36,19 @@ import { usePrompt } from "../state/dialog";
 const prompt = usePrompt();
 
 type ViewMode = "cards" | "list" | "detail" | "shelves";
-type SortBy = "name" | "recent" | "rating" | "playtime" | "neglected";
+const SORT_KEYS = [
+  "name",
+  "name_desc",
+  "recent",
+  "rating",
+  "playtime",
+  "last_played",
+  "neglected",
+  "priority",
+  "release",
+  "length",
+] as const;
+type SortBy = (typeof SORT_KEYS)[number];
 type AchievementsFilter = "all" | "has" | "none";
 type MissingFilter = "none" | "playtime" | "rating" | "tags" | "description";
 type CardDensity = "compact" | "cozy" | "large";
@@ -66,6 +81,7 @@ const gridFocusIndex = ref<number | null>(null);
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const showBulkEditModal = ref(false);
+const showRandomPicker = ref(false);
 
 // one-time nudge toward bulk edit, gone for good the first time it's
 // dismissed or the feature is actually used, not re-shown once discovered
@@ -481,7 +497,7 @@ if (
 const querySort = route.query.sort;
 if (
   typeof querySort === "string" &&
-  ["name", "recent", "rating", "playtime", "neglected"].includes(querySort)
+  (SORT_KEYS as readonly string[]).includes(querySort)
 ) {
   sortBy.value = querySort as SortBy;
 }
@@ -898,8 +914,20 @@ const filteredGames = computed(() => {
     result = result.filter((g) => fuzzyTitleMatch(g.title, q));
   }
 
+  // missing values always sort last, whichever way the sort runs
+  const lastIfNull = <T,>(
+    x: T | null,
+    y: T | null,
+    compare: (x: T, y: T) => number,
+  ): number => {
+    if (x === null && y === null) return 0;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return compare(x, y);
+  };
   result = [...result].sort((a, b) => {
     if (sortBy.value === "name") return a.title.localeCompare(b.title);
+    if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
     if (sortBy.value === "recent")
       return (b.dateAdded ?? "").localeCompare(a.dateAdded ?? "");
     if (sortBy.value === "rating") {
@@ -909,9 +937,26 @@ const filteredGames = computed(() => {
     }
     if (sortBy.value === "playtime")
       return gameTotalMinutes(b) - gameTotalMinutes(a);
+    if (sortBy.value === "last_played")
+      return lastIfNull(gameLastPlayed(a), gameLastPlayed(b), (x, y) =>
+        y.localeCompare(x),
+      );
     // never-played games sort first (most neglected), then oldest-last-played first
     if (sortBy.value === "neglected")
       return (gameLastPlayed(a) ?? "").localeCompare(gameLastPlayed(b) ?? "");
+    // 1 (highest) first; finished games have no priority, so they go last
+    if (sortBy.value === "priority")
+      return (
+        lastIfNull(activePriority(a), activePriority(b), (x, y) => x - y) ||
+        a.title.localeCompare(b.title)
+      );
+    if (sortBy.value === "release")
+      return lastIfNull(a.releaseDate, b.releaseDate, (x, y) =>
+        y.localeCompare(x),
+      );
+    // shortest first, for "something I can finish this weekend"
+    if (sortBy.value === "length")
+      return lastIfNull(a.timeToBeatHours, b.timeToBeatHours, (x, y) => x - y);
     return 0;
   });
 
@@ -1228,6 +1273,7 @@ watch(viewMode, (mode) => {
               type="text"
               class="search-input"
               placeholder="Search games… (/)"
+              aria-label="Search games"
               @focus="showRecentSearches = true"
               @blur="
                 showRecentSearches = false;
@@ -1260,7 +1306,11 @@ watch(viewMode, (mode) => {
               </button>
             </div>
           </div>
-          <select v-model="statusFilter" class="filter-select">
+          <select
+            v-model="statusFilter"
+            class="filter-select"
+            aria-label="Filter by status"
+          >
             <option v-for="s in statusOptions" :key="s" :value="s">
               {{ s === "all" ? "All statuses" : s }}
             </option>
@@ -1279,12 +1329,17 @@ watch(viewMode, (mode) => {
             placeholder="Genre"
             all-label="All genres"
           />
-          <select v-model="sortBy" class="filter-select">
-            <option value="name">Name</option>
+          <select v-model="sortBy" class="filter-select" aria-label="Sort by">
+            <option value="name">Name (A–Z)</option>
+            <option value="name_desc">Name (Z–A)</option>
             <option value="recent">Recently added</option>
             <option value="rating">Rating</option>
             <option value="playtime">Most Played</option>
+            <option value="last_played">Recently played</option>
             <option value="neglected">Neglected (least recently played)</option>
+            <option value="priority">Priority</option>
+            <option value="release">Release date (newest)</option>
+            <option value="length">Time to beat (shortest)</option>
           </select>
 
           <div
@@ -1470,6 +1525,16 @@ watch(viewMode, (mode) => {
             </div>
           </div>
 
+          <button
+            type="button"
+            class="advanced-toggle"
+            :disabled="!games.length"
+            title="Pick a game to play, filtered by status, platform, genre, length and priority"
+            @click="showRandomPicker = true"
+          >
+            Random
+          </button>
+
           <button type="button" class="add-button" @click="openAddModal">
             + Add Game
           </button>
@@ -1586,7 +1651,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>Achievements</label>
-          <select v-model="achievementsFilter" class="filter-select">
+          <select
+            v-model="achievementsFilter"
+            class="filter-select"
+            aria-label="Achievements"
+          >
             <option value="all">All games</option>
             <option value="has">Has achievements</option>
             <option value="none">No achievements</option>
@@ -1594,7 +1663,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>What's missing</label>
-          <select v-model="missingFilter" class="filter-select">
+          <select
+            v-model="missingFilter"
+            class="filter-select"
+            aria-label="What's missing"
+          >
             <option value="none">Nothing, show everything</option>
             <option value="playtime">No playtime logged</option>
             <option value="rating">No rating</option>
@@ -1873,9 +1946,7 @@ watch(viewMode, (mode) => {
             </span>
             <span class="list-release">
               {{
-                game.releaseDate
-                  ? new Date(game.releaseDate).toLocaleDateString()
-                  : "N/A"
+                game.releaseDate ? formatDisplayDate(game.releaseDate) : "N/A"
               }}
             </span>
             <div class="list-actions">
@@ -2046,7 +2117,16 @@ watch(viewMode, (mode) => {
                   >
                     <span class="preview-detail-label">Released</span>
                     <span>{{
-                      new Date(selectedGame.releaseDate).toLocaleDateString()
+                      formatDisplayDate(selectedGame.releaseDate)
+                    }}</span>
+                  </div>
+                  <div
+                    v-if="activePriority(selectedGame) !== null"
+                    class="preview-detail-row"
+                  >
+                    <span class="preview-detail-label">Priority</span>
+                    <span>{{
+                      priorityLabel(activePriority(selectedGame)!)
                     }}</span>
                   </div>
                   <div v-if="selectedGame.dateAdded" class="preview-detail-row">
@@ -2239,6 +2319,12 @@ watch(viewMode, (mode) => {
         :game-ids="Array.from(selectedIds)"
         @close="showBulkEditModal = false"
         @saved="onBulkEditSaved"
+      />
+
+      <RandomGamePicker
+        v-if="showRandomPicker"
+        :games="games"
+        @close="showRandomPicker = false"
       />
 
       <div
@@ -2590,6 +2676,17 @@ watch(viewMode, (mode) => {
 }
 .first-use-hint-dismiss:hover {
   background: rgba(214, 138, 52, 0.24);
+}
+/* anchored to Select, the tip ran off a phone screen */
+@media (max-width: 600px) {
+  .first-use-hint {
+    position: fixed;
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
 }
 .density-toggle {
   display: flex;

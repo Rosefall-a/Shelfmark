@@ -30,6 +30,7 @@ export interface BackendMovie {
   priority: string | null;
   favorite: boolean;
   rewatches: number;
+  progress_minutes: number | null;
   note: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -100,6 +101,7 @@ export function mapBackendMovieRaw(raw: BackendMovie): Movie {
     priority: raw.priority,
     favorite: raw.favorite,
     rewatches: raw.rewatches,
+    progressMinutes: raw.progress_minutes ?? null,
     note: raw.note,
     startDate: raw.start_date,
     endDate: raw.end_date,
@@ -236,6 +238,8 @@ export interface MovieInput {
   priority?: string | null;
   favorite?: boolean;
   rewatches?: number;
+  // left out = leave the saved position alone
+  progressMinutes?: number | null;
   note?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -278,6 +282,8 @@ function inputToBody(input: MovieInput): Record<string, unknown> {
     personal_rank: input.personalRank ?? null,
   };
   if (input.status) body.status = denormalizeStatus(input.status);
+  if (input.progressMinutes !== undefined)
+    body.progress_minutes = input.progressMinutes;
   return body;
 }
 

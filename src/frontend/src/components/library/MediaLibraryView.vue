@@ -824,9 +824,13 @@ defineExpose({ openQuickAdd });
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
-          <input v-model="searchQuery" placeholder="Search your library..." />
+          <input
+            v-model="searchQuery"
+            placeholder="Search your library..."
+            aria-label="Search your library"
+          />
         </div>
-        <select v-model="sortKey" class="sort-select">
+        <select v-model="sortKey" class="sort-select" aria-label="Sort by">
           <option value="rank">Sort: Rank</option>
           <option value="score">Sort: Score, highest first</option>
           <option value="title">Sort: Title A–Z</option>

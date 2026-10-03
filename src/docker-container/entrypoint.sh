@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-
+   
 log() {
   printf '[ENTRYPOINT] %s\n' "$1"
 }
@@ -115,12 +115,12 @@ write_status "DATABASE_READY" "starting" "ready" "unknown" "unknown" "unknown" "
 log "Running database migrations"
 write_status "MIGRATING_DATABASE" "starting" "ready" "starting" "unknown" "unknown" "Applying database migrations."
 
-attempt=1
-until alembic upgrade heads >>"$DETAILS_FILE" 2>&1; do
-  log "Migration attempt $attempt failed"
-  if [ "$attempt" -ge 30 ]; then fail_startup "MIGRATION_FAILED" "Database migrations failed after 30 attempts." "ready" "failed" "unknown" "unknown"; fi
-  attempt=$((attempt + 1)); sleep 2
-done
+# src/database/migrate.py adopts a database made by an older (squashed)
+# migration history instead of failing on its unknown revision, and stops
+# with the reason on a real error rather than retrying it.
+if ! python -m src.database.migrate >>"$DETAILS_FILE" 2>&1; then
+  fail_startup "MIGRATION_FAILED" "Database migrations failed. See startup details for the reason." "ready" "failed" "unknown" "unknown"
+fi
 
 log "Migrations completed"
 write_status "DATABASE_READY" "starting" "ready" "ready" "unknown" "unknown" "Database migrations completed."

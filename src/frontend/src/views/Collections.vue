@@ -270,8 +270,9 @@ function smartIdForName(name: string): string | undefined {
             type="text"
             class="search-input"
             placeholder="Search collections…"
+            aria-label="Search collections"
           />
-          <select v-model="sortBy" class="filter-select">
+          <select v-model="sortBy" class="filter-select" aria-label="Sort by">
             <option value="name">Name</option>
             <option value="count">Most Games</option>
           </select>
