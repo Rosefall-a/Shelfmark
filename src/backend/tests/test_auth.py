@@ -58,15 +58,16 @@ def test_api_key_contains_only_safe_persisted_derivatives() -> None:
 
 
 @pytest.mark.asyncio
-async def test_revoke_session_deletes_hash_and_commits() -> None:
+async def test_revoke_session_marks_hash_revoked_and_commits() -> None:
     db = AsyncMock()
     db.execute.return_value = Mock(rowcount=1)
 
     assert await revoke_session(db, "raw-browser-cookie") is True
 
     statement = db.execute.await_args.args[0]
-    assert "DELETE FROM user_sessions" in str(statement)
+    assert "UPDATE user_sessions" in str(statement)
     assert hash_token("raw-browser-cookie") in statement.compile().params.values()
+    assert "revoked_at" in str(statement)
     db.commit.assert_awaited_once()
 
 

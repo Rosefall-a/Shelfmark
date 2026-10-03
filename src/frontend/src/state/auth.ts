@@ -17,3 +17,8 @@ export async function checkAuth() {
   }
   authChecked.value = true;
 }
+
+export function handleUnauthorized() {
+  currentUser.value = null;
+  authChecked.value = true;
+}

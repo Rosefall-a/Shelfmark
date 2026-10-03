@@ -42,6 +42,7 @@ async def process_pending_deliveries(db:AsyncSession, limit:int=50)->int:
             "season_started": "notify_season_started",
             "sequel_announced": "notify_sequel_announced",
             "movie_released": "notify_movie_released",
+            "session_anomaly": "notify_session_anomaly",
         }
         preference = preference_by_kind.get(notification.kind)
         if preference is None or not prefs.get(preference, False):

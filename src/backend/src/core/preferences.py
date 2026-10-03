@@ -22,9 +22,10 @@ DEFAULTS: dict[str, Any] = {
     "notify_season_started": True,
     "notify_sequel_announced": True,
     "notify_movie_released": True,
+    "notify_session_anomaly": True,
     "notification_provider_routes": {
-        "smtp": ["episode_aired", "season_started", "sequel_announced", "movie_released"],
-        "discord": ["episode_aired", "season_started", "sequel_announced", "movie_released"],
+        "smtp": ["episode_aired", "season_started", "sequel_announced", "movie_released", "session_anomaly"],
+        "discord": ["episode_aired", "season_started", "sequel_announced", "movie_released", "session_anomaly"],
     },
     # which titles may notify: by where they sit in the library, and by kind.
     # (Completed and Dropped titles never get episode alerts.)
@@ -53,7 +54,7 @@ _CHOICES: dict[str, tuple[Any, ...]] = {
 
 
 # preferences that hold a set of choices, kept in this order
-_NOTIFICATION_KINDS = ("episode_aired", "season_started", "sequel_announced", "movie_released")
+_NOTIFICATION_KINDS = ("episode_aired", "season_started", "sequel_announced", "movie_released", "session_anomaly")
 
 _SET_CHOICES: dict[str, tuple[str, ...]] = {
     "notify_statuses": ("watching", "plan", "hold"),
@@ -107,7 +108,14 @@ def validate_preference(key: str, value: Any) -> Any:
 
 async def load_preferences(db: AsyncSession, user_id: UUID) -> dict[str, Any]:
     row = await db.scalar(select(UserPreferences).where(UserPreferences.user_id == user_id))
-    return {**DEFAULTS, **(row.data if row else {})}
+    data = {**DEFAULTS, **(row.data if row else {})}
+    if row is None or "notify_session_anomaly" not in row.data:
+        routes = {provider: list(kinds) for provider, kinds in data["notification_provider_routes"].items()}
+        for provider in routes:
+            if "session_anomaly" not in routes[provider]:
+                routes[provider].append("session_anomaly")
+        data["notification_provider_routes"] = routes
+    return data
 
 
 async def save_preferences(

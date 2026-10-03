@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     MAX_SAVE_ARCHIVE_SIZE_MB: int = 4096
     MAX_CLIP_SIZE_MB: int = 500
     MAX_WORLD_SAVE_SIZE_MB: int = 2000
+    GEOIP_DATABASE_PATH: str = "/data/GeoIP.mmdb"
+    GEOIP_COUNTRY_DATABASE_PATH: str = "/data/GeoIP-Country.mmdb"
+    GEOIP_ASN_DATABASE_PATH: str = "/data/GeoIP-ASN.mmdb"
 
     SMTP_ENABLED: bool = False
     SMTP_HOST: str | None = None

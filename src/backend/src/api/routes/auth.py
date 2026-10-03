@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -30,6 +30,7 @@ from src.core.crypto import encrypt_secret
 from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.user import User
 from src.database.session import get_db
+from src.core.session_manager import create_session
 from src.features.metadata.games.psn import PSNClient, PSNError
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -82,7 +83,7 @@ class UserProfileUpdateRequest(BaseModel):
 
 @router.post("/login")
 async def login(
-    payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+    payload: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     identifier = payload.username_or_email.strip()
     user = await db.scalar(
@@ -95,14 +96,8 @@ async def login(
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
 
-    session_token = secrets.token_urlsafe(32)
-    db.add(
-        UserSession(
-            user_id=user.id,
-            token_hash=hash_token(session_token),
-            expires_at=int(time.time()) + SESSION_TTL_SECONDS,
-        )
-    )
+    session_context = await create_session(db, user, request)
+    session_token = session_context.token
     await db.commit()
     response.set_cookie(
         key=SESSION_COOKIE,

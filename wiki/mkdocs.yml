@@ -28,11 +28,11 @@ nav:
       - Authentication: user-guide/authentication.md
       - OpenID Connect / SSO: user-guide/oidc.md
       - Notification Providers: user-guide/notification-providers.md
+      - Session Management: user-guide/session-management.md
       - SMTP / Email: user-guide/smtp.md
       - Data, Exports & Backups: user-guide/data-and-backups.md
       - Games: user-guide/games.md
       - Anime: user-guide/anime.md
-      - AniList Import: user-guide/anilist.md
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
   - Integrations:
@@ -42,6 +42,7 @@ nav:
   - Administration:
       - Overview: administration/index.md
       - Users: administration/users.md
+      - Session Management: administration/session-management.md
       - Scheduled Tasks: administration/tasks.md
   - Deployment:
       - Overview: deployment/index.md
@@ -53,3 +54,4 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md
+      - Session Manager: development/session-manager.md

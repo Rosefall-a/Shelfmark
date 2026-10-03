@@ -14,6 +14,7 @@ httpx==0.27.2
 # Image processing
 Pillow==11.0.0
 python-multipart
+maxminddb==2.6.3
 
 # Environment variables
 python-dotenv==1.0.1

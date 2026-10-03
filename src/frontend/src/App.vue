@@ -7,9 +7,33 @@ import CommandPalette from "./components/CommandPalette.vue";
 import AppDialog from "./components/AppDialog.vue";
 import { authChecked, currentUser } from "./state/auth";
 import { loadSharedPreferences } from "./state/preferences";
-import { watch } from "vue";
+import { onBeforeUnmount, onMounted, watch } from "vue";
+import { fetchCurrentUser } from "./services/auth";
+import router from "./router";
 
 const route = useRoute();
+let authPoll: number | undefined;
+
+onMounted(() => {
+  authPoll = window.setInterval(async () => {
+    if (!currentUser.value || route.path === "/login" || route.path === "/setup") return;
+    try {
+      const user = await fetchCurrentUser();
+      if (!user && route.path !== "/login") {
+        currentUser.value = null;
+        await router.replace("/login");
+      } else if (user) {
+        currentUser.value = user;
+      }
+    } catch {
+      // Keep the existing page during transient connectivity failures.
+    }
+  }, 5000);
+});
+
+onBeforeUnmount(() => {
+  if (authPoll !== undefined) window.clearInterval(authPoll);
+});
 // preferences are per user, so load them once someone is signed in
 watch(
   () => currentUser.value?.id,
