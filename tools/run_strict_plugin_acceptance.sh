@@ -22,7 +22,7 @@ cat > "$context/Dockerfile" <<'DOCKERFILE'
 FROM node:24-bookworm-slim AS node
 FROM python:3.12-slim-bookworm
 COPY --from=node /usr/local/ /usr/local/
-RUN apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap git
+RUN apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap git libpq5
 COPY host /workspace/host
 COPY plugins /workspace/plugins
 RUN python -m pip install -r /workspace/host/src/backend/requirements.txt -r /workspace/plugins/requirements-dev.txt
