@@ -958,29 +958,30 @@ async function submit() {
   min-height: 380px;
 }
 .metadata-search {
-  border: 1px solid #3a3a3a;
-  border-radius: 8px;
-  padding: 12px;
-  background: #151515;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .search-heading {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-bottom: 10px;
+  gap: 4px;
+}
+.search-heading strong {
+  font-size: 0.85rem;
+  color: #ccc;
 }
 .search-heading span,
 .metadata-result small {
-  color: #999;
+  color: #888;
   font-size: 0.78rem;
 }
 .steamgriddb-hint {
-  margin: 0 0 10px;
-  padding: 8px 10px;
-  background: rgba(214, 138, 52, 0.1);
-  border: 1px solid rgba(214, 138, 52, 0.3);
-  border-radius: 8px;
-  color: #ddd;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #888;
   font-size: 0.78rem;
   line-height: 1.5;
 }
@@ -995,10 +996,25 @@ async function submit() {
 .search-row {
   display: flex;
   gap: 8px;
+  align-items: stretch;
 }
 .search-row input {
   flex: 1;
   min-width: 0;
+  background: #111;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 11px;
+  font: inherit;
+  transition: border-color 0.15s ease;
+}
+.search-row input:focus {
+  outline: none;
+  border-color: #d68a34;
+}
+.search-row .secondary-button {
+  flex-shrink: 0;
 }
 .metadata-results {
   display: grid;
