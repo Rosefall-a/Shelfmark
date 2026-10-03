@@ -1,0 +1,28 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: smoke-password
+      POSTGRES_DB: smoke
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smoke -d smoke"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    image: ${SMOKE_IMAGE:-unnamed_tracking_app:runtime-smoke}
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: smoke-password
+      POSTGRES_DB: smoke
+      SECRET_KEY: smoke-test-secret-key
+      PRIMARY_USER_USERNAME: smoke
+      PRIMARY_USER_EMAIL: smoke@example.invalid
+      PRIMARY_USER_PASSWORD: Smoke-password
+      AUTH_COOKIE_SECURE: "false"
+    ports:
+      - "127.0.0.1:18080:80"
