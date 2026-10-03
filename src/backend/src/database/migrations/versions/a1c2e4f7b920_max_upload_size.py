@@ -11,6 +11,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from src.database import migration_helpers as h
+
 # revision identifiers, used by Alembic.
 revision: str = "a1c2e4f7b920"
 down_revision: Union[str, None] = "7b2d4a9e8c11"
@@ -19,11 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
+    h.add_column_if_missing(
         "app_integration_settings",
         sa.Column("max_upload_size_mb", sa.Integer(), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column("app_integration_settings", "max_upload_size_mb")
+    op.execute("ALTER TABLE app_integration_settings DROP COLUMN IF EXISTS max_upload_size_mb")
