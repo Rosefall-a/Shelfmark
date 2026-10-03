@@ -35,6 +35,7 @@ import MediaPreviewModal from "../components/MediaPreviewModal.vue";
 import { useConfirm } from "../state/dialog";
 import { displayTitle } from "../utils/displayTitle";
 import MediaExtrasPanel from "../components/MediaExtrasPanel.vue";
+import MediaProviderPanel from "../components/MediaProviderPanel.vue";
 import MediaTopBar from "../components/MediaTopBar.vue";
 import BackButton from "../components/BackButton.vue";
 import RatingPicker from "../components/RatingPicker.vue";
@@ -1103,6 +1104,7 @@ async function onRatingChange(value: number | null) {
           </button>
         </div>
         <MyNote :note="show.note" @save="saveNote" />
+        <MediaProviderPanel media-type="anime" :media-id="show.id" />
 
         <div v-if="allSeasons.length > 1" class="seasons-section">
           <h3 class="seasons-heading">
