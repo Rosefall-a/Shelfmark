@@ -82,6 +82,8 @@ def test_supervisor_starts_a_validated_plugin_in_its_sandbox(
     assert process.pid == 123
     assert supervisor.running("example") is True
     assert calls[0][0][0][:2] == ["bwrap", "--unshare-all"]
+    sandbox_command = calls[0][0][0]
+    assert sandbox_command[sandbox_command.index("--cap-drop") + 1] == "ALL"
     assert calls[0][1]["env"]["HOME"] == "/plugin"
     assert (tmp_path / "work" / "example").is_dir()
 

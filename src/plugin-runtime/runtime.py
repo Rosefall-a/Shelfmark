@@ -662,6 +662,9 @@ class PluginSupervisor:
             "--unshare-all",
             "--die-with-parent",
             "--new-session",
+            # Container launch capabilities are never plugin capabilities.
+            "--cap-drop",
+            "ALL",
             "--ro-bind",
             "/usr",
             "/usr",
