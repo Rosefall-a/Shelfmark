@@ -10,7 +10,7 @@ Both are create-if-missing, so this is safe on a database adopted from an
 older history (see src/database/migrate.py).
 
 revision: a3f1c7e9d2b4
-down_revision: 7b2d4a9e8c11
+down_revision: a1c2e4f7b920
 """
 
 from collections.abc import Sequence
@@ -21,7 +21,7 @@ from alembic import op
 from src.database import migration_helpers as h
 
 revision: str = "a3f1c7e9d2b4"
-down_revision: str | None = "7b2d4a9e8c11"
+down_revision: str | None = "a1c2e4f7b920"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

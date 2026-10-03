@@ -21,6 +21,7 @@ import { takeLibraryScroll } from "../state/libraryScroll";
 import { setLibraryNavOrder } from "../state/libraryNav";
 import { isCommandPaletteOpen } from "../state/commandPalette";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
+import AppTopBar from "../components/AppTopBar.vue";
 import { computeScore } from "../utils/scoring";
 import DOMPurify from "dompurify";
 import {
@@ -30,7 +31,6 @@ import {
 } from "../utils/platforms";
 import { GENRE_OPTIONS } from "../utils/genres";
 import type { Game, GameStatus } from "../types/game";
-import { currentUser } from "../state/auth";
 import { usePrompt } from "../state/dialog";
 
 const prompt = usePrompt();
@@ -569,30 +569,6 @@ function setView(mode: ViewMode) {
   if (mode === "detail" && !selectedGame.value && games.value.length) {
     selectedGame.value = games.value[0];
   }
-}
-
-const bgLayers = ref<{ url: string | null; visible: boolean }[]>([
-  { url: null, visible: false },
-  { url: null, visible: false },
-]);
-const activeLayer = ref(0);
-
-// only crossfade once the cursor has settled on a card briefly, gliding
-// across many cards shouldn't flicker the ambient background
-let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-function setHoverImage(url: string | null) {
-  if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
-  hoverDebounceTimer = setTimeout(() => {
-    if (url === null) {
-      bgLayers.value[activeLayer.value].visible = false;
-      return;
-    }
-    const nextLayer = activeLayer.value === 0 ? 1 : 0;
-    bgLayers.value[nextLayer] = { url, visible: true };
-    bgLayers.value[activeLayer.value].visible = false;
-    activeLayer.value = nextLayer;
-  }, 400);
 }
 
 // guards against a slower, earlier loadGames() call overwriting a newer
@@ -1193,18 +1169,34 @@ function onResize() {
 onMounted(() => window.addEventListener("resize", onResize));
 onUnmounted(() => window.removeEventListener("resize", onResize));
 
+// Same card widths as the Media shelf (150 / 200 / 260px, 14px gap): the
+// column count is what an auto-fill grid of that minimum width would give
+// for the width the page actually has, so a "small" card is the same size
+// on both pages.
+const MIN_CARD_WIDTH: Record<CardDensity, number> = {
+  compact: 150,
+  cozy: 200,
+  large: 260,
+};
+const GRID_GAP = 14;
+const contentEl = ref<HTMLElement | null>(null);
+const gridWidth = ref(document.documentElement.clientWidth - 72);
+let contentObserver: ResizeObserver | null = null;
+onMounted(() => {
+  if (!contentEl.value) return;
+  contentObserver = new ResizeObserver((entries) => {
+    gridWidth.value = entries[0].contentRect.width;
+  });
+  contentObserver.observe(contentEl.value);
+});
+onUnmounted(() => contentObserver?.disconnect());
+
 const CARD_COLUMNS = computed(() => {
-  const w = viewportWidth.value;
-  let base: number;
-  if (w < 480) base = 2;
-  else if (w < 700) base = 3;
-  else if (w < 900) base = 4;
-  else if (w < 1150) base = 6;
-  else if (w < 1400) base = 8;
-  else base = 10;
-  if (cardDensity.value === "compact") return Math.round(base * 1.35);
-  if (cardDensity.value === "large") return Math.max(1, Math.round(base * 0.6));
-  return base;
+  const min = MIN_CARD_WIDTH[cardDensity.value];
+  return Math.max(
+    1,
+    Math.floor((gridWidth.value + GRID_GAP) / (min + GRID_GAP)),
+  );
 });
 const cardRowCount = computed(() =>
   Math.ceil(filteredGames.value.length / CARD_COLUMNS.value),
@@ -1263,24 +1255,16 @@ watch(viewMode, (mode) => {
 
 <template>
   <main class="library" :class="{ locked: viewMode === 'detail' }">
-    <div
-      v-for="(layer, i) in bgLayers"
-      :key="i"
-      class="ambient-bg"
-      :class="{ visible: layer.visible }"
-      :style="layer.url ? { backgroundImage: `url(${layer.url})` } : {}"
-    ></div>
+    <AppTopBar />
 
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
-
-    <div class="content">
+    <div ref="contentEl" class="content">
       <div class="header-row">
-        <h1>Games</h1>
+        <div>
+          <h1>Games</h1>
+          <div class="sub">
+            {{ games.length }} {{ games.length === 1 ? "game" : "games" }}
+          </div>
+        </div>
         <div class="header-actions">
           <div class="search-wrap">
             <input
@@ -1826,7 +1810,7 @@ watch(viewMode, (mode) => {
               to sync a library
             </li>
             <li>
-              Drop screenshots or files into the Inbox and assign them to a game
+              Drop screenshots or files into Upload and assign them to a game
               later
             </li>
             <li>
@@ -1863,7 +1847,6 @@ watch(viewMode, (mode) => {
               :keyboard-focused="
                 gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
               "
-              @hover="setHoverImage"
               @edit="openEditModal"
               @add-to-collection="handleAddToCollection"
               @toggle-select="toggleSelect"
@@ -2382,9 +2365,8 @@ watch(viewMode, (mode) => {
 <style scoped>
 .library {
   position: relative;
-  padding: 84px 24px 24px;
   font-family: system-ui, sans-serif;
-  background: #121212;
+  background: #0d0d0d;
   min-height: 100vh;
   color: #fff;
   overflow-x: hidden;
@@ -2408,55 +2390,16 @@ watch(viewMode, (mode) => {
   height: auto;
   min-height: 0;
 }
-.ambient-bg {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  filter: blur(90px);
-  opacity: 0;
-  transform: scale(1.2);
-  transition: opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 0;
-}
-.ambient-bg.visible {
-  opacity: 0.35;
-}
 .content {
   position: relative;
   z-index: 1;
+  padding: 24px 24px 24px 48px;
+  box-sizing: border-box;
 }
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+@media (max-width: 720px) {
+  .content {
+    padding: 16px 14px 24px;
+  }
 }
 .header-row {
   display: flex;
@@ -2471,14 +2414,19 @@ watch(viewMode, (mode) => {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: #121212;
+  background: #0d0d0d;
   padding: 20px 0 16px;
   margin-top: -20px;
 }
 .header-row h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+.header-row .sub {
+  margin-top: 2px;
+  color: #888;
+  font-size: 0.85rem;
 }
 .header-actions {
   display: flex;
@@ -2488,7 +2436,7 @@ watch(viewMode, (mode) => {
 }
 .search-input,
 .filter-select {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #111;
   border: 1px solid #3a3a3a;
@@ -2747,7 +2695,7 @@ watch(viewMode, (mode) => {
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   padding: 3px;
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
 }
 .density-button {
@@ -2865,7 +2813,7 @@ watch(viewMode, (mode) => {
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   padding: 3px;
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
 }
 .view-toggle-button {
@@ -2893,7 +2841,7 @@ watch(viewMode, (mode) => {
   box-shadow: 0 2px 8px rgba(214, 138, 52, 0.4);
 }
 .add-button {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #d68a34;
   color: #111;
@@ -2917,8 +2865,8 @@ watch(viewMode, (mode) => {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  gap: 16px;
-  padding-bottom: 16px;
+  gap: 14px;
+  padding-bottom: 14px;
 }
 .grid-row :deep(.game-card-wrap) {
   width: auto;
@@ -2927,7 +2875,7 @@ watch(viewMode, (mode) => {
 
 /* Advanced filters */
 .advanced-toggle {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid #3a3a3a;

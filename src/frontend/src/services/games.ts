@@ -976,8 +976,10 @@ async function noteErrorMessage(
       ? `The note "${noteName}" could not be found.`
       : `The note "${noteName}" no longer exists.`;
   }
-  if (action === "rename") return `The note "${noteName}" could not be renamed.`;
-  if (action === "delete") return `The note "${noteName}" could not be deleted.`;
+  if (action === "rename")
+    return `The note "${noteName}" could not be renamed.`;
+  if (action === "delete")
+    return `The note "${noteName}" could not be deleted.`;
   if (action === "load") return `The note "${noteName}" could not be loaded.`;
   return `The note "${noteName}" could not be saved.`;
 }
@@ -989,10 +991,14 @@ export async function fetchGameNote(
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     return getMockNoteMap(gameId).get(noteName) ?? "";
   }
-  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
-    credentials: "include",
-  });
-  if (!response.ok) throw new Error(await noteErrorMessage(response, "load", noteName));
+  const response = await fetch(
+    `/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`,
+    {
+      credentials: "include",
+    },
+  );
+  if (!response.ok)
+    throw new Error(await noteErrorMessage(response, "load", noteName));
   return await response.text();
 }
 
@@ -1003,17 +1009,24 @@ export async function createGameNote(
 ): Promise<GameNoteActionResponse> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const notes = getMockNoteMap(gameId);
-    if (notes.has(noteName)) throw new Error(`A note titled "${noteName}" already exists. Choose a different title or cancel the operation.`);
+    if (notes.has(noteName))
+      throw new Error(
+        `A note titled "${noteName}" already exists. Choose a different title or cancel the operation.`,
+      );
     notes.set(noteName, content);
     return { game_id: gameId, note_name: noteName, status: "saved" };
   }
-  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!response.ok) throw new Error(await noteErrorMessage(response, "create", noteName));
+  const response = await fetch(
+    `/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!response.ok)
+    throw new Error(await noteErrorMessage(response, "create", noteName));
   return await response.json();
 }
 
@@ -1024,17 +1037,22 @@ export async function saveGameNote(
 ): Promise<GameNoteActionResponse> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const notes = getMockNoteMap(gameId);
-    if (!notes.has(noteName)) throw new Error(`The note "${noteName}" no longer exists.`);
+    if (!notes.has(noteName))
+      throw new Error(`The note "${noteName}" no longer exists.`);
     notes.set(noteName, content);
     return { game_id: gameId, note_name: noteName, status: "saved" };
   }
-  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!response.ok) throw new Error(await noteErrorMessage(response, "save", noteName));
+  const response = await fetch(
+    `/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!response.ok)
+    throw new Error(await noteErrorMessage(response, "save", noteName));
   return await response.json();
 }
 
@@ -1045,9 +1063,12 @@ export async function renameGameNote(
 ): Promise<GameNoteActionResponse> {
   if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
     const notes = getMockNoteMap(gameId);
-    if (!notes.has(noteName)) throw new Error(`The note "${noteName}" no longer exists.`);
+    if (!notes.has(noteName))
+      throw new Error(`The note "${noteName}" no longer exists.`);
     if (noteName !== newName && notes.has(newName)) {
-      throw new Error(`A note titled "${newName}" already exists. Choose a different title or cancel the operation.`);
+      throw new Error(
+        `A note titled "${newName}" already exists. Choose a different title or cancel the operation.`,
+      );
     }
     const content = notes.get(noteName) ?? "";
     if (noteName !== newName) {
@@ -1056,13 +1077,17 @@ export async function renameGameNote(
     }
     return { game_id: gameId, note_name: newName, status: "saved" };
   }
-  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}/rename`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ new_name: newName }),
-  });
-  if (!response.ok) throw new Error(await noteErrorMessage(response, "rename", newName));
+  const response = await fetch(
+    `/api/game/${gameId}/notes/${encodeURIComponent(noteName)}/rename`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_name: newName }),
+    },
+  );
+  if (!response.ok)
+    throw new Error(await noteErrorMessage(response, "rename", newName));
   return await response.json();
 }
 
@@ -1075,10 +1100,13 @@ export async function deleteGameNote(
     return { game_id: gameId, note_name: noteName, status: "deleted" };
   }
 
-  const response = await fetch(`/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
+  const response = await fetch(
+    `/api/game/${gameId}/notes/${encodeURIComponent(noteName)}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
 
   if (!response.ok) {
     throw new Error(await noteErrorMessage(response, "delete", noteName));

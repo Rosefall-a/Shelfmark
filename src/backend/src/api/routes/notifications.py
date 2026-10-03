@@ -4,13 +4,15 @@ no background job behind this."""
 
 import time
 from collections.abc import Sequence
-from uuid import UUID
+from typing import Literal
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_user
+from src.core.auth import get_current_admin, get_current_user
 from src.core.preferences import load_preferences
 from src.core.titles import display_title
 from src.database.models.anime import Anime
@@ -99,6 +101,53 @@ async def list_notifications(
         "items": [{**_read(n), "title": titles.get(n.id, n.title)} for n in rows],
         "unread": unread or 0,
     }
+
+
+@router.post("/regenerate")
+async def regenerate_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+) -> dict:
+    """Admin-only: runs the same generation the bell's poll triggers, on
+    demand, so a just-edited air date or release date doesn't need a poll
+    cycle to show up while testing."""
+    created = await generate_for_user(db, current_user.id)
+    return {"created": created}
+
+
+class TestNotificationRequest(BaseModel):
+    kind: Literal["episode_aired", "season_started", "sequel_announced", "movie_released"]
+    media_type: Literal["movie", "tv", "anime"]
+    title: str
+    body: str = ""
+
+
+@router.post("/test", status_code=status.HTTP_201_CREATED)
+async def create_test_notification(
+    payload: TestNotificationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+) -> dict:
+    """Admin-only: fabricates a real notification row for your own account
+    so the bell, the list, and read/unread/delete can all be exercised
+    without waiting on an actual episode to air or movie to release. The
+    media id is a random placeholder, so it won't link to a real page."""
+    now = int(time.time())
+    notification = Notification(
+        user_id=current_user.id,
+        kind=payload.kind,
+        media_type=payload.media_type,
+        media_id=uuid4(),
+        title=payload.title,
+        body=payload.body,
+        poster_url=None,
+        event_at=now,
+        dedupe_key=f"test:{uuid4()}",
+        created_at=now,
+    )
+    db.add(notification)
+    await db.commit()
+    return _read(notification)
 
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

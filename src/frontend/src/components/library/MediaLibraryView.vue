@@ -15,6 +15,7 @@ import type { SegmentOption } from "../SegmentedTabs.vue";
 import { preferences } from "../../state/preferences";
 import { matchesFilters } from "../../utils/libraryFilters";
 import type { LibraryFilters } from "../../utils/libraryFilters";
+import { blurOnLeave } from "../../utils/blurOnLeave";
 import {
   STATUS_BUCKETS,
   statusBucket,
@@ -123,14 +124,27 @@ const emit = defineEmits<{
 const router = useRouter();
 
 function maybeLoadMore() {
-  if (layout.value === "board" || props.loading || props.items.length >= props.total) return;
-  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1000) {
+  if (
+    layout.value === "board" ||
+    props.loading ||
+    props.items.length >= props.total
+  )
+    return;
+  if (
+    window.innerHeight + window.scrollY >=
+    document.documentElement.scrollHeight - 1000
+  ) {
     emit("load-more");
   }
 }
-onMounted(() => window.addEventListener("scroll", maybeLoadMore, { passive: true }));
+onMounted(() =>
+  window.addEventListener("scroll", maybeLoadMore, { passive: true }),
+);
 onBeforeUnmount(() => window.removeEventListener("scroll", maybeLoadMore));
-watch(() => props.items.length, () => requestAnimationFrame(maybeLoadMore));
+watch(
+  () => props.items.length,
+  () => requestAnimationFrame(maybeLoadMore),
+);
 
 // The mockup's per-item "type" field (TV/Movie/OVA/Series/Anthology) has
 // no real per-item equivalent — none of the three entities carry a
@@ -384,8 +398,16 @@ const boardPageStarts = reactive<Record<string, number>>({});
 const boardViewportWidth = ref(0);
 const boardContainer = ref<HTMLElement | null>(null);
 const boardVisibleCount = computed(() => {
-  const cardWidth = shelfCardSize.value === "compact" ? 150 : shelfCardSize.value === "large" ? 260 : 196;
-  return Math.max(1, Math.floor((boardViewportWidth.value + 14) / (cardWidth + 14)) || 1);
+  const cardWidth =
+    shelfCardSize.value === "compact"
+      ? 150
+      : shelfCardSize.value === "large"
+        ? 260
+        : 196;
+  return Math.max(
+    1,
+    Math.floor((boardViewportWidth.value + 14) / (cardWidth + 14)) || 1,
+  );
 });
 function resetBoardPages() {
   Object.keys(boardPageStarts).forEach((key) => delete boardPageStarts[key]);
@@ -396,7 +418,10 @@ function moveBoard(status: string, direction: -1 | 1, available: number) {
     boardPageStarts[status] = Math.max(0, current - available);
     return;
   }
-  if (current + available >= props.items.length && props.items.length < props.total) {
+  if (
+    current + available >= props.items.length &&
+    props.items.length < props.total
+  ) {
     emit("load-more");
   }
   boardPageStarts[status] = current + available;
@@ -409,7 +434,9 @@ function updateBoardViewport() {
 onMounted(updateBoardViewport);
 watch(shelfCardSize, () => requestAnimationFrame(updateBoardViewport));
 window.addEventListener("resize", updateBoardViewport);
-onBeforeUnmount(() => window.removeEventListener("resize", updateBoardViewport));
+onBeforeUnmount(() =>
+  window.removeEventListener("resize", updateBoardViewport),
+);
 
 const boardGroups = computed(() => {
   const statuses =
@@ -423,7 +450,12 @@ const boardGroups = computed(() => {
       );
       rowItems = rowItems.filter(matchesFilterState);
       const start = boardPageStarts[s.key] ?? 0;
-      return { status: s, rowItems, visibleItems: rowItems.slice(start, start + boardVisibleCount.value), start };
+      return {
+        status: s,
+        rowItems,
+        visibleItems: rowItems.slice(start, start + boardVisibleCount.value),
+        start,
+      };
     })
     .filter((g) => g.rowItems.length > 0);
 });
@@ -1156,6 +1188,7 @@ defineExpose({ openQuickAdd });
               :key="it.id"
               class="shelf-card"
               @click="handleCardClick(it)"
+              @mouseleave="blurOnLeave"
             >
               <div class="shelf-art-wrap">
                 <div class="shelf-art">
@@ -1178,6 +1211,87 @@ defineExpose({ openQuickAdd });
                 <span v-if="computedRank(it)" class="shelf-rank rank-badge"
                   >#{{ computedRank(it) }}</span
                 >
+
+                <div v-if="!selectMode" class="sc-actions no-card-click">
+                  <button
+                    v-if="it.canAdvance"
+                    type="button"
+                    class="sc-action"
+                    title="Mark next episode watched"
+                    @click.stop="advanceEpisode(it)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="sc-action"
+                    :class="{ active: it.favorite }"
+                    title="Favorite"
+                    @click.stop="emit('toggle-favorite', it.id)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      :fill="it.favorite ? 'currentColor' : 'none'"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                    >
+                      <path
+                        d="M12 21s-7.5-4.9-10.2-9.4C.2 8.6 1.4 5 4.9 4.1c2-.5 3.9.3 5.1 2C11.2 4.4 13.1 3.6 15.1 4.1c3.5.9 4.7 4.5 3.1 7.5C15.5 16.1 12 21 12 21z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="sc-action"
+                    :class="{ active: it.note }"
+                    :title="it.note ? 'Edit note' : 'Add note'"
+                    @click.stop="openNote(it)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+                      <path
+                        d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"
+                      />
+                      <line x1="8" y1="13" x2="16" y2="13" />
+                      <line x1="8" y1="17" x2="13" y2="17" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="sc-action"
+                    title="Edit"
+                    @click.stop="openEdit(it)"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div class="shelf-body">
                 <div class="shelf-title-row">
@@ -1186,9 +1300,9 @@ defineExpose({ openQuickAdd });
                     {{ it.score ? `★ ${it.score}` : "–" }}
                   </div>
                 </div>
-                <div class="shelf-type">{{ it.format ?? typeLabel }}</div>
-                <div v-if="it.releaseYear" class="shelf-year">
-                  {{ it.releaseYear }}
+                <div class="shelf-meta-row">
+                  <span class="shelf-type">{{ it.format ?? typeLabel }}</span>
+                  <span class="shelf-sub">{{ it.progressLabel }}</span>
                 </div>
                 <div class="shelf-progress-row">
                   <div class="list-progress-track">
@@ -1197,108 +1311,8 @@ defineExpose({ openQuickAdd });
                       :style="{ width: progressPct(it) + '%' }"
                     ></div>
                   </div>
-                  <div class="shelf-progress-info">
-                    <span class="shelf-sub">{{ it.progressLabel }}</span>
-                    <button
-                      v-if="it.canAdvance"
-                      type="button"
-                      class="plus-btn no-card-click"
-                      title="Mark next episode watched"
-                      @click.stop="advanceEpisode(it)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                      >
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    </button>
-                  </div>
                   <div v-if="it.airing" class="airing-tag">
                     <span class="dot"></span>Airing
-                  </div>
-                </div>
-                <div class="shelf-footer-row">
-                  <span class="pill" :class="statusBucket(it.status)">{{
-                    statusBucketLabel(it.status)
-                  }}</span>
-                  <div class="icon-cluster shelf-icon-cluster no-card-click">
-                    <button
-                      type="button"
-                      class="icon-btn"
-                      :class="{ active: it.favorite }"
-                      title="Favorite"
-                      @click.stop="emit('toggle-favorite', it.id)"
-                    >
-                      <svg
-                        v-if="it.favorite"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        stroke="none"
-                      >
-                        <path
-                          d="M12 21s-7.5-4.9-10.2-9.4C.2 8.6 1.4 5 4.9 4.1c2-.5 3.9.3 5.1 2C11.2 4.4 13.1 3.6 15.1 4.1c3.5.9 4.7 4.5 3.1 7.5C15.5 16.1 12 21 12 21z"
-                        />
-                      </svg>
-                      <svg
-                        v-else
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                      >
-                        <path
-                          d="M12 21s-7.5-4.9-10.2-9.4C.2 8.6 1.4 5 4.9 4.1c2-.5 3.9.3 5.1 2C11.2 4.4 13.1 3.6 15.1 4.1c3.5.9 4.7 4.5 3.1 7.5C15.5 16.1 12 21 12 21z"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="icon-btn"
-                      :class="{ active: it.note }"
-                      :title="it.note ? 'Edit note' : 'Add note'"
-                      @click.stop="openNote(it)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M14 3v4a1 1 0 0 0 1 1h4" />
-                        <path
-                          d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"
-                        />
-                        <line x1="8" y1="13" x2="16" y2="13" />
-                        <line x1="8" y1="17" x2="13" y2="17" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="icon-btn"
-                      title="Edit"
-                      @click.stop="openEdit(it)"
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <path d="M12 20h9" />
-                        <path
-                          d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
-                        />
-                      </svg>
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1323,8 +1337,23 @@ defineExpose({ openQuickAdd });
               <h2>{{ group.status.label }}</h2>
               <span class="n">{{ group.rowItems.length }}</span>
               <div class="board-nav">
-                <button type="button" :disabled="group.start === 0" @click="moveBoard(group.status.key, -1, boardVisibleCount)">‹</button>
-                <button type="button" :disabled="group.start + boardVisibleCount >= group.rowItems.length && items.length >= total" @click="moveBoard(group.status.key, 1, boardVisibleCount)">›</button>
+                <button
+                  type="button"
+                  :disabled="group.start === 0"
+                  @click="moveBoard(group.status.key, -1, boardVisibleCount)"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  :disabled="
+                    group.start + boardVisibleCount >= group.rowItems.length &&
+                    items.length >= total
+                  "
+                  @click="moveBoard(group.status.key, 1, boardVisibleCount)"
+                >
+                  ›
+                </button>
               </div>
             </div>
             <div ref="boardContainer" class="board-shelf">
@@ -1915,7 +1944,7 @@ defineExpose({ openQuickAdd });
 .search-wrap {
   position: relative;
   flex: 1;
-  min-width: 200px;
+  min-width: 140px;
   max-width: 340px;
 }
 .search-wrap svg {
@@ -2555,12 +2584,92 @@ defineExpose({ openQuickAdd });
   right: 8px;
   z-index: 2;
 }
+.shelf-card {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.shelf-card:hover {
+  transform: translateY(-3px);
+}
+.shelf-art-wrap {
+  transition:
+    box-shadow 0.28s ease,
+    border-color 0.2s ease;
+}
+.shelf-card:hover .shelf-art-wrap {
+  border-color: var(--border);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.45);
+}
+/* Actions ride on the poster and only appear while the card is hovered
+   or has keyboard focus, like the Games cards. */
+.sc-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 26px 8px 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+}
+.shelf-card:hover .sc-actions,
+.shelf-card:focus-within .sc-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.sc-action {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 20, 20, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.sc-action svg {
+  width: 13px;
+  height: 13px;
+}
+.sc-action:hover {
+  background: rgba(60, 60, 60, 0.9);
+}
+.sc-action.active {
+  color: #ff6f91;
+  border-color: rgba(255, 111, 145, 0.4);
+  background: rgba(224, 86, 122, 0.2);
+}
+.shelf-meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  min-width: 0;
+}
+.shelf-meta-row .shelf-type {
+  margin: 0;
+}
 .shelf-body {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .shelf-title-row {
   display: flex;

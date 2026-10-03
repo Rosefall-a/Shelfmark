@@ -16,7 +16,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   edit: [game: Game];
   "add-to-collection": [game: Game];
-  hover: [coverUrl: string | null];
   "toggle-select": [game: Game, shiftKey: boolean];
 }>();
 
@@ -220,10 +219,7 @@ function copyFolderPath() {
 </script>
 
 <template>
-  <div
-    class="game-card-wrap"
-    @mouseenter="emit('hover', game.bannerImageUrl || game.coverImageUrl)"
-  >
+  <div class="game-card-wrap">
     <div
       class="game-card"
       :class="{

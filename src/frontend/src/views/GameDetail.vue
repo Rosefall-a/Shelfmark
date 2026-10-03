@@ -101,8 +101,9 @@ import {
 import type { Achievement, AchievementTier, Game } from "../types/game";
 import GameFormModal from "../components/GameFormModal.vue";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
+import BackButton from "../components/BackButton.vue";
+import AccountChip from "../components/AccountChip.vue";
 import { computeScore } from "../utils/scoring";
-import { currentUser } from "../state/auth";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { useConfirm, usePrompt } from "../state/dialog";
@@ -1512,9 +1513,6 @@ watch(activeTab, (tab) => {
   }
 });
 
-// --- metadata history: which fields a manual edit or a metadata
-// search/refresh actually changed, and when (see FIELD_CHANGE_TRACKED_FIELDS
-// in api/routes/games.py for exactly which fields are tracked) -----------
 const gameCards = ref<Card[]>([]);
 const gameCardsLoading = ref(false);
 const creatingCard = ref(false);
@@ -1543,6 +1541,9 @@ async function createCardForGame() {
   }
 }
 
+// --- metadata history: which fields a manual edit or a metadata
+// search/refresh actually changed, and when (see FIELD_CHANGE_TRACKED_FIELDS
+// in api/routes/games.py for exactly which fields are tracked) -----------
 const fieldChanges = ref<FieldChange[]>([]);
 const fieldChangesLoading = ref(false);
 const fieldChangesError = ref<string | null>(null);
@@ -2094,33 +2095,9 @@ function formatPlaytime(minutes: number) {
       :style="{ backgroundImage: `url(${game.bannerImageUrl})` }"
     ></div>
 
-    <button
-      type="button"
-      class="back-arrow-button"
-      title="Back"
-      @click="goBackToLibrary"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M19 12H5" />
-        <path d="M12 19l-7-7 7-7" />
-      </svg>
-    </button>
+    <BackButton fixed @click="goBackToLibrary" />
 
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
+    <AccountChip fixed />
 
     <GameFormModal
       v-if="showEditModal"
@@ -2810,7 +2787,13 @@ function formatPlaytime(minutes: number) {
               :disabled="noteSaving || !draftName.trim()"
               @click="void saveDraft()"
             >
-              {{ noteSaving ? "Saving…" : editingNoteName ? "Save changes" : "Create note" }}
+              {{
+                noteSaving
+                  ? "Saving…"
+                  : editingNoteName
+                    ? "Save changes"
+                    : "Create note"
+              }}
             </button>
           </div>
         </div>
@@ -4152,10 +4135,6 @@ function formatPlaytime(minutes: number) {
         </button>
       </template>
     </section>
-
-    <section v-else class="coming-soon">
-      <p>{{ activeTab }} coming soon.</p>
-    </section>
   </main>
 
   <main v-else class="not-found">
@@ -4202,8 +4181,7 @@ function formatPlaytime(minutes: number) {
 .files-panel,
 .media-panel,
 .stats-panel,
-.world-map-panel,
-.coming-soon {
+.world-map-panel {
   position: relative;
   z-index: 1;
 }
@@ -4359,60 +4337,6 @@ function formatPlaytime(minutes: number) {
 .achievement-progress-badge:hover {
   background: rgba(214, 138, 52, 0.22);
   color: #d68a34;
-}
-.back-arrow-button {
-  position: fixed;
-  top: 16px;
-  left: 62px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(20, 20, 20, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 100;
-  transition: background 0.15s ease;
-}
-.back-arrow-button:hover {
-  background: rgba(40, 40, 40, 0.85);
-}
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
 }
 .hero-actions {
   position: absolute;
@@ -5653,13 +5577,8 @@ function formatPlaytime(minutes: number) {
   color: #777;
   margin: 0;
 }
-.coming-soon {
-  width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 48px 24px;
-  color: #777;
-  text-align: center;
+.empty-state.error {
+  color: #fca5a5;
 }
 
 .card-tab-panel {
@@ -5677,9 +5596,6 @@ function formatPlaytime(minutes: number) {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-.empty-state.error {
-  color: #fca5a5;
 }
 .card-open-btn {
   background: #d68a34;

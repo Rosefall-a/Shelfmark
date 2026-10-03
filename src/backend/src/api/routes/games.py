@@ -39,6 +39,7 @@ from src.api.schemas.game import (
     GameRead,
     GameUpdate,
 )
+from src.core.app_integrations import get_max_upload_size_mb
 from src.core.auth import get_current_user
 from src.core.config import settings
 from src.core.integrations import resolve_integrations
@@ -475,11 +476,12 @@ async def upload_game_asset(
     # save_game_asset decodes the actual image bytes with Pillow, which gives
     # us the real validation without rejecting otherwise valid manual uploads.
     image_bytes = await file.read()
-    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    max_upload_mb = await get_max_upload_size_mb(db)
+    max_bytes = max_upload_mb * 1024 * 1024
     if len(image_bytes) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Image is larger than the {settings.MAX_UPLOAD_SIZE_MB} MB limit.",
+            detail=f"Image is larger than the {max_upload_mb} MB limit.",
         )
 
     try:
@@ -541,11 +543,12 @@ async def download_game_asset(
             status_code=status.HTTP_400_BAD_REQUEST, detail="URL did not return an image."
         )
     image_bytes = response.content
-    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    max_upload_mb = await get_max_upload_size_mb(db)
+    max_bytes = max_upload_mb * 1024 * 1024
     if len(image_bytes) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Image is larger than the {settings.MAX_UPLOAD_SIZE_MB} MB limit.",
+            detail=f"Image is larger than the {max_upload_mb} MB limit.",
         )
 
     try:
@@ -620,7 +623,7 @@ async def upload_game_screenshots(
         limit_mb = (
             settings.MAX_CLIP_SIZE_MB
             if kind in ("clip", "soundtrack")
-            else settings.MAX_UPLOAD_SIZE_MB
+            else await get_max_upload_size_mb(db)
         )
         max_bytes = limit_mb * 1024 * 1024
 
@@ -861,7 +864,9 @@ async def upload_game_files(
 
     # a modpack zip is routinely hundreds of MB to a few GB — far past a
     # doc-sized limit
-    limit_mb = settings.MAX_WORLD_SAVE_SIZE_MB if kind == "modpack" else settings.MAX_UPLOAD_SIZE_MB
+    limit_mb = (
+        settings.MAX_WORLD_SAVE_SIZE_MB if kind == "modpack" else await get_max_upload_size_mb(db)
+    )
     max_bytes = limit_mb * 1024 * 1024
     results: list[dict] = []
     for file in files:

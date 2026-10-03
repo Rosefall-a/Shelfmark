@@ -16,6 +16,7 @@ import {
   watch,
 } from "vue";
 import { useRouter } from "vue-router";
+import { blurOnLeave } from "../utils/blurOnLeave";
 import {
   fetchCalendar,
   fetchActivity,
@@ -1260,10 +1261,15 @@ async function submitManualEntry() {
               </svg>
             </button>
             <button
-              v-if="calView !== 'agenda'"
               type="button"
               class="ui-btn ui-btn-sm ui-btn-secondary"
-              :disabled="calView === 'month' ? isCurrentMonth : isCurrentWeek"
+              :class="{ 'is-hidden': calView === 'agenda' }"
+              :aria-hidden="calView === 'agenda'"
+              :tabindex="calView === 'agenda' ? -1 : undefined"
+              :disabled="
+                calView === 'agenda' ||
+                (calView === 'month' ? isCurrentMonth : isCurrentWeek)
+              "
               title="Jump to today (T)"
               @click="goToday"
             >
@@ -1636,6 +1642,7 @@ async function submitManualEntry() {
                 class="entry-row"
                 :class="entry.eventType"
                 @click="openHistoryEntry(entry)"
+                @mouseleave="blurOnLeave"
               >
                 <span class="entry-icon">{{
                   HISTORY_ICONS[entry.eventType]
@@ -2012,6 +2019,10 @@ async function submitManualEntry() {
 .nav-btn:disabled {
   opacity: 0.3;
   cursor: default;
+}
+/* Hidden, not removed, in Agenda so the view switcher beside it keeps its place */
+.is-hidden {
+  visibility: hidden;
 }
 .month-bar-actions {
   display: flex;
