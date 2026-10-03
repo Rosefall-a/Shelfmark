@@ -29,6 +29,9 @@ export interface StatsOverview {
   top_tags: StatsBreakdownEntry[];
   release_year_breakdown: StatsBreakdownEntry[];
   format_breakdown: StatsBreakdownEntry[];
+  bounties_completed: number;
+  bounties_hard_completed: number;
+  bounty_points_total: number;
 }
 
 const MOCK_STATS: StatsOverview = {
@@ -46,6 +49,9 @@ const MOCK_STATS: StatsOverview = {
   top_tags: [],
   release_year_breakdown: [],
   format_breakdown: [],
+  bounties_completed: 0,
+  bounties_hard_completed: 0,
+  bounty_points_total: 0,
 };
 
 export async function fetchStatsOverview(): Promise<StatsOverview> {
@@ -70,6 +76,7 @@ export interface WeeklyDigest {
   games_added: number;
   achievements_unlocked: number;
   metadata_changes: number;
+  bounties_completed: number;
 }
 
 const MOCK_WEEKLY_DIGEST: WeeklyDigest = {
@@ -78,6 +85,7 @@ const MOCK_WEEKLY_DIGEST: WeeklyDigest = {
   games_added: 0,
   achievements_unlocked: 0,
   metadata_changes: 0,
+  bounties_completed: 0,
 };
 
 export async function fetchWeeklyDigest(): Promise<WeeklyDigest> {

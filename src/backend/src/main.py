@@ -10,8 +10,10 @@ from src.api.routes import (
     api_keys,
     anime,
     auth,
+    bounties,
     calendar_events,
     calendar_feed,
+    cards,
     default_game_assets,
     export_import,
     game_archives,
@@ -31,6 +33,7 @@ from src.api.routes import (
     tv_shows,
     users,
 )
+from src.api.routes import set as set_routes
 from src.api.routes.auth_oidc import router as auth_oidc_router
 from src.api.routes.deployment_settings import router as deployment_settings_router
 from src.api.routes.setup import router as setup_router
@@ -75,6 +78,7 @@ app.include_router(app_integrations.router)
 app.include_router(media.router)
 app.include_router(stats.router)
 app.include_router(library_sync.router)
+app.include_router(bounties.router)
 app.include_router(export_import.router)
 app.include_router(jobs.router)
 app.include_router(media_io.router)
@@ -86,6 +90,8 @@ app.include_router(preferences.router)
 app.include_router(calendar_events.router)
 app.include_router(calendar_feed.authed_router)
 app.include_router(calendar_feed.public_router)
+app.include_router(set_routes.router)
+app.include_router(cards.router)
 app.include_router(misc_router)
 
 

@@ -43,6 +43,7 @@ function isActive(path: string) {
 }
 
 const gamesExpanded = ref(isActive("/games") || isActive("/collections"));
+const cardsExpanded = ref(isActive("/cards") || isActive("/sets"));
 const mediaExpanded = ref(
   isActive("/movies") ||
     isActive("/tv") ||
@@ -310,6 +311,100 @@ async function handleLogout() {
 
       <div
         class="sidebar-parent-row"
+        :class="{ active: isActive('/cards') || isActive('/sets') }"
+      >
+        <button
+          type="button"
+          class="sidebar-item sidebar-parent-link"
+          @click="cardsExpanded = !cardsExpanded"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 10h18" />
+            <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          <span>Cards</span>
+        </button>
+        <button
+          type="button"
+          class="sidebar-expand-toggle"
+          :class="{ expanded: cardsExpanded }"
+          :title="cardsExpanded ? 'Collapse' : 'Expand'"
+          @click="cardsExpanded = !cardsExpanded"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      </div>
+
+      <div v-if="cardsExpanded" class="sidebar-subitems">
+        <router-link
+          to="/cards"
+          class="sidebar-item sidebar-subitem"
+          :class="{ active: isActive('/cards') }"
+          @click="close"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 10h18" />
+          </svg>
+          <span>All Cards</span>
+        </router-link>
+        <router-link
+          to="/sets"
+          class="sidebar-item sidebar-subitem"
+          :class="{ active: isActive('/sets') }"
+          @click="close"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span>Sets</span>
+        </router-link>
+      </div>
+
+      <div
+        class="sidebar-parent-row"
         :class="{
           active:
             isActive('/movies') ||
@@ -490,6 +585,28 @@ async function handleLogout() {
         <span class="sidebar-group-label-rule"></span>
       </div>
 
+      <router-link
+        to="/bounties"
+        class="sidebar-item"
+        :class="{ active: isActive('/bounties') }"
+        @click="close"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="5" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+        </svg>
+        <span>Bounties</span>
+      </router-link>
       <router-link
         to="/calendar"
         class="sidebar-item"

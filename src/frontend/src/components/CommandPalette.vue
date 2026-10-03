@@ -2,7 +2,9 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { fetchGames } from "../services/games";
+import { fetchBounties } from "../services/bounties";
 import type { Game } from "../types/game";
+import type { Bounty } from "../services/bounties";
 import { isCommandPaletteOpen } from "../state/commandPalette";
 import { smartCollections } from "../state/smartCollections";
 
@@ -17,14 +19,21 @@ const inputRef = ref<HTMLInputElement | null>(null);
 // list (a game added a minute ago) is an acceptable tradeoff for not
 // re-fetching the whole library every keystroke
 let gamesCache: Game[] | null = null;
+let bountiesCache: Bounty[] | null = null;
 const loaded = ref(false);
 
 async function ensureLoaded() {
   if (loaded.value) return;
   try {
-    gamesCache = await fetchGames();
+    const [games, bounties] = await Promise.all([
+      fetchGames(),
+      fetchBounties(),
+    ]);
+    gamesCache = games;
+    bountiesCache = bounties;
   } catch {
     gamesCache = gamesCache ?? [];
+    bountiesCache = bountiesCache ?? [];
   } finally {
     loaded.value = true;
   }
@@ -32,7 +41,7 @@ async function ensureLoaded() {
 
 interface Result {
   key: string;
-  kind: "game" | "collection" | "page";
+  kind: "game" | "collection" | "bounty" | "page";
   label: string;
   sublabel?: string;
   action: () => void;
@@ -59,6 +68,9 @@ const PAGE_SHORTCUTS: { label: string; to: string }[] = [
   { label: "Home", to: "/" },
   { label: "Games", to: "/games" },
   { label: "Collections", to: "/collections" },
+  { label: "Cards", to: "/cards" },
+  { label: "Sets", to: "/sets" },
+  { label: "Bounties", to: "/bounties" },
 ];
 
 const collectionNames = computed(() => {
@@ -107,6 +119,19 @@ const results = computed<Result[]>(() => {
       label: c,
       sublabel: "Collection",
       action: () => go(`/collections/${encodeURIComponent(c)}`),
+    });
+  }
+
+  const bounties = (bountiesCache ?? [])
+    .filter((b) => b.title.toLowerCase().includes(q))
+    .slice(0, 4);
+  for (const b of bounties) {
+    out.push({
+      key: "bounty:" + b.id,
+      kind: "bounty",
+      label: b.title,
+      sublabel: b.status,
+      action: () => go("/bounties"),
     });
   }
 
@@ -203,6 +228,7 @@ onUnmounted(() => window.removeEventListener("keydown", onGlobalKeydown));
 const KIND_ICON: Record<Result["kind"], string> = {
   game: "🎮",
   collection: "📁",
+  bounty: "🎯",
   page: "→",
 };
 </script>
@@ -215,7 +241,7 @@ const KIND_ICON: Record<Result["kind"], string> = {
         v-model="query"
         type="text"
         class="palette-input"
-        placeholder="Jump to a game, collection, or settings section…"
+        placeholder="Jump to a game, collection, bounty, or settings section…"
       />
       <div v-if="!loaded" class="palette-loading">Loading…</div>
       <div v-else-if="!results.length" class="palette-empty">No matches.</div>
