@@ -4,6 +4,7 @@ const PREFIX = "unnamed-tracking:pwa:";
 const CACHE = PREFIX + CONFIG.generation;
 const OFFLINE = "/pwa/offline.html";
 let retired = false;
+let precache = Promise.resolve();
 
 async function clean(keep) {
   const keys = await caches.keys();
@@ -13,28 +14,42 @@ async function clean(keep) {
 
 async function retire() {
   retired = true;
+  // An installing worker may still be writing the offline page. Do not report
+  // retirement until that operation has settled and its cache is removed.
+  try { await precache; } catch { /* Failed installation still needs cleanup. */ }
   try { await clean(null); } catch { /* Storage unavailable: still unregister. */ }
   await self.registration.unregister();
 }
 
 self.addEventListener("message", event => {
-  if (event.data?.type === "tracking-pwa-retire") event.waitUntil(retire());
+  if (event.data?.type === "tracking-pwa-retire") {
+    event.waitUntil(retire().then(() => event.ports?.[0]?.postMessage({ type: "tracking-pwa-retired" })));
+  }
 });
 
-self.addEventListener("install", event => event.waitUntil((async () => {
-  if (CONFIG.enabled) {
-    const response = await fetch(OFFLINE, { cache: "no-store", credentials: "omit" });
-    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) {
-      throw new Error("Offline page unavailable");
+self.addEventListener("install", event => {
+  precache = (async () => {
+    if (CONFIG.enabled && !retired) {
+      const response = await fetch(OFFLINE, { cache: "no-store", credentials: "omit" });
+      if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) {
+        throw new Error("Offline page unavailable");
+      }
+      if (!retired) await (await caches.open(CACHE)).put(OFFLINE, response);
     }
-    await (await caches.open(CACHE)).put(OFFLINE, response);
-  }
-  await self.skipWaiting();
-})()));
+  })();
+  event.waitUntil(precache.then(() => self.skipWaiting()));
+});
 
 self.addEventListener("activate", event => event.waitUntil((async () => {
-  if (!CONFIG.enabled) { await retire(); return; }
+  if (!CONFIG.enabled || retired) { await retire(); return; }
+  // The configuration response may predate a concurrent disable/uninstall.
+  // Network failure is not withdrawal; only affirmative server state retires.
+  try {
+    const state = await fetch("/pwa/status", { cache: "no-store", credentials: "omit" });
+    if (state.ok && (await state.json()).enabled === false) { await retire(); return; }
+  } catch { /* Keep neutral offline behavior during a transient outage. */ }
   await clean(CACHE);
+  if (retired) { await retire(); return; }
   await self.clients.claim();
 })()));
 
@@ -59,8 +74,8 @@ self.addEventListener("fetch", event => {
     } catch {
       try {
         if (!retired) {
-          const page = await (await caches.open(CACHE)).match(OFFLINE);
-          if (page) return page;
+          const page = await caches.match(OFFLINE, { cacheName: CACHE });
+          if (page && !retired) return page;
         }
       } catch { /* Storage failure must still yield neutral reconnect guidance. */ }
       return new Response("Waiting for internet. Reconnect and reload Unnamed Tracking.", {

@@ -28,6 +28,28 @@ function owned(worker: ServiceWorker | null | undefined) {
   return !!worker && new URL(worker.scriptURL).pathname === workerPath;
 }
 
+async function retireWorker(worker: ServiceWorker) {
+  await new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    const finish = () => {
+      window.clearTimeout(timeout);
+      channel.port1.close();
+      resolve();
+    };
+    // Earlier worker versions do not acknowledge retirement. Their caches are
+    // still cleared below; a failed worker must not block disablement forever.
+    const timeout = window.setTimeout(finish, 3000);
+    channel.port1.onmessage = (event) => {
+      if (event.data?.type === "tracking-pwa-retired") finish();
+    };
+    try {
+      worker.postMessage({ type: "tracking-pwa-retire" }, [channel.port2]);
+    } catch {
+      finish();
+    }
+  });
+}
+
 async function retire() {
   document.querySelector('link[data-tracking-pwa="manifest"]')?.remove();
   registration = undefined;
@@ -37,7 +59,10 @@ async function retire() {
   if ("serviceWorker" in navigator) {
     for (const item of await navigator.serviceWorker.getRegistrations()) {
       if (owned(item.active) || owned(item.waiting) || owned(item.installing)) {
-        item.active?.postMessage({ type: "tracking-pwa-retire" });
+        const workers = [item.active, item.waiting, item.installing].filter(
+          (worker): worker is ServiceWorker => owned(worker),
+        );
+        await Promise.all(workers.map(retireWorker));
         await item.unregister();
       }
     }
