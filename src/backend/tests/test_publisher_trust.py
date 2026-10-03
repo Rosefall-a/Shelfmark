@@ -101,3 +101,19 @@ def test_verifier_rejects_revoked_or_out_of_scope_signers(tmp_path: Path) -> Non
     write_signed_package(package, private_key, "other.plugin")
     with pytest.raises(PackageVerificationError, match="trusted for this plugin"):
         PluginPackageVerifier(load_trusted_publishers(registry)).inspect(package)
+
+
+def test_production_identities_keep_official_demo_and_generic_trust_separate() -> None:
+    publishers = load_trusted_publishers()
+    official = publishers["unnamed-tracking-official-2026-10-v1"]
+    examples = publishers["unnamed-tracking-examples-2026-10-v1"]
+    generic = publishers["unnamed-tracking-generic-2026-10-v1"]
+    assert len({official.public_key, examples.public_key, generic.public_key}) == 3
+    assert official.channel == "official" and official.allows_plugin("official.pwa")
+    assert not official.allows_plugin("example.lifecycle")
+    assert examples.channel == "demo" and examples.allows_plugin("example.lifecycle")
+    assert generic.channel == "community" and generic.allows_plugin("example.lifecycle")
+    assert generic.allows_plugin("plugin.lifecycle")
+    assert not examples.allows_plugin("official.pwa")
+    assert not generic.allows_plugin("official.pwa")
+    assert publishers["official-example-2026"].channel == "demo"

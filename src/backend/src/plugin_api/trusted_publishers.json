@@ -144,6 +144,43 @@
           "bad290ad26d739a0f3af00b7d9214af2888e9394d33066dd1afdfc4fc2e125c9"
         ]
       }
+    },
+    {
+      "key_id": "unnamed-tracking-examples-2026-10-v1",
+      "publisher": "Unnamed Tracking Official",
+      "public_key_b64": "P6pJrQYcAf2cgNGBQiMw0Qm0sKXbPzeDoCO10eu3BG0=",
+      "public_key_sha256": "7fc18854e6e5bb224d89df360f9551a16805bebcff863b1cdef073336b02a179",
+      "status": "active",
+      "plugin_id_prefixes": [
+        "example."
+      ],
+      "channel": "demo",
+      "legacy_manifest_hashes": {}
+    },
+    {
+      "key_id": "unnamed-tracking-official-2026-10-v1",
+      "publisher": "Unnamed Tracking Official",
+      "public_key_b64": "V+LOH39SJntXGLlbiN9mAJZP9z/PMRSI/6WIWHPatKc=",
+      "public_key_sha256": "2c88cfbd3738ab72d8b2a51be0fc09e6ef42c8b6baf4e8c4d316e10c10a36d60",
+      "status": "active",
+      "plugin_id_prefixes": [
+        "official."
+      ],
+      "channel": "official",
+      "legacy_manifest_hashes": {}
+    },
+    {
+      "key_id": "unnamed-tracking-generic-2026-10-v1",
+      "publisher": "Unnamed Tracking Official",
+      "public_key_b64": "U3+wQlMCm0okAxtw45s1LSPkauQb3K/TeIAycbE5nNY=",
+      "public_key_sha256": "d7f474ee7140a8b5733918389756ba1f6785702fb786b409c915bf802d299a9e",
+      "status": "active",
+      "plugin_id_prefixes": [
+        "example.",
+        "plugin."
+      ],
+      "channel": "community",
+      "legacy_manifest_hashes": {}
     }
   ]
 }
