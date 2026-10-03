@@ -33,6 +33,7 @@ nav:
       - AniList Import: user-guide/anilist.md
       - TV Shows: user-guide/tv-shows.md
       - Movies: user-guide/movies.md
+      - Document Viewer: user-guide/document-viewer.md
   - Integrations:
       - Overview: integrations/index.md
       - Playnite: integrations/playnite.md
@@ -51,3 +52,4 @@ nav:
       - API: development/api.md
       - API Examples: development/api-examples.md
       - Contributing: development/contributing.md
+      - Document Viewer: development/document-viewer.md

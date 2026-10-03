@@ -30,6 +30,7 @@ import {
   deleteGameScreenshot,
   updateMediaItem,
   uploadGameFiles,
+  renameGameFile,
   listGameFiles,
   deleteGameFile,
   fetchGameMediaTrash,
@@ -87,6 +88,7 @@ import UploadDropzone from "../components/UploadDropzone.vue";
 import ViewUploadSidebar from "../components/ViewUploadSidebar.vue";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
 import MediaTile from "../components/MediaTile.vue";
+import DocumentViewer from "../components/DocumentViewer.vue";
 import {
   startTask,
   updateTask,
@@ -1369,6 +1371,18 @@ async function onMediaFilesSelected(files: File[]) {
   await attempt();
 }
 
+async function renameMediaItem(item: MediaItem) {
+  if (!game.value) return;
+  const currentName = displayFileName(item.filename);
+  const name = await prompt({ title: "Rename file", message: "File name", defaultValue: currentName, confirmLabel: "Rename" });
+  if (!name || !name.trim() || name.trim() === currentName) return;
+  try {
+    const updated = await updateMediaItem(game.value.id, item.id, { filename: name.trim() });
+    const index = mediaItems.value.findIndex((m) => m.id === item.id);
+    if (index !== -1) mediaItems.value[index] = updated;
+  } catch (err) { mediaError.value = err instanceof Error ? err.message : "Failed to rename"; }
+}
+
 async function removeMedia(item: MediaItem) {
   if (!game.value) return;
   try {
@@ -1464,6 +1478,7 @@ const filesLoaded = ref<Record<FlatFileKind, string | null>>({
 });
 const filesError = ref<string | null>(null);
 const uploadingFiles = ref(false);
+const documentViewerFile = ref<GameFile | null>(null);
 
 const FILE_REFS: Record<FlatFileKind, typeof docsFiles> = {
   doc: docsFiles,
@@ -1619,6 +1634,27 @@ async function onGameFilesSelected(files: File[], kind: FlatFileKind) {
     }
   };
   await attempt();
+}
+
+function openDocument(file: GameFile) {
+  documentViewerFile.value = file;
+}
+
+function closeDocument() {
+  documentViewerFile.value = null;
+}
+
+async function renameGameFileItem(kind: FlatFileKind, file: GameFile) {
+  if (!game.value) return;
+  const currentName = displayFileName(file.filename);
+  const name = await prompt({ title: "Rename file", message: "File name", defaultValue: currentName, confirmLabel: "Rename" });
+  if (!name || !name.trim() || name.trim() === currentName) return;
+  try {
+    const updated = await renameGameFile(game.value.id, kind, file.filename, name.trim());
+    const files = filesRefFor(kind).value;
+    const index = files.findIndex((entry) => entry.filename === file.filename);
+    if (index !== -1) files[index] = updated;
+  } catch (err) { filesError.value = err instanceof Error ? err.message : "Failed to rename"; }
 }
 
 async function removeGameFile(kind: FlatFileKind, file: GameFile) {
@@ -3120,6 +3156,7 @@ function formatPlaytime(minutes: number) {
                 @preview="onPreviewMedia($event.url)"
                 @delete="removeMedia"
                 @save="saveMediaItem"
+                @rename="renameMediaItem"
               />
             </div>
           </div>
@@ -3426,6 +3463,7 @@ function formatPlaytime(minutes: number) {
                 @preview="onPreviewMedia($event.url)"
                 @delete="removeMedia"
                 @save="saveMediaItem"
+                @rename="renameMediaItem"
               />
             </div>
 
@@ -3684,14 +3722,15 @@ function formatPlaytime(minutes: number) {
                   />
                   <path d="M14 2v6h6" />
                 </svg>
-                <a
-                  :href="file.url"
-                  class="file-name"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >{{ displayFileName(file.filename) }}</a
+                <button
+                  type="button"
+                  class="file-name file-name-button"
+                  @click="openDocument(file)"
                 >
+                  {{ displayFileName(file.filename) }}
+                </button>
                 <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <button type="button" class="tile-remove-inline" title="Rename" @click="renameGameFileItem('doc', file)">✎</button>
                 <button
                   type="button"
                   class="tile-remove-inline"
@@ -4151,6 +4190,14 @@ function formatPlaytime(minutes: number) {
   <main v-else class="not-found">
     <p>Game not found.</p>
   </main>
+    <DocumentViewer
+      v-if="documentViewerFile"
+      :game-id="game?.id ?? ''"
+      :filename="documentViewerFile.filename"
+      :open="true"
+      @close="closeDocument"
+    />
+
 </template>
 
 <style scoped>
@@ -6067,6 +6114,19 @@ function formatPlaytime(minutes: number) {
   margin-top: 16px;
   background: #000;
 }
+.file-name-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.file-name-button:hover {
+  text-decoration: underline;
+}
+
 .file-size {
   color: #777;
   font-size: 0.78rem;

@@ -24,6 +24,7 @@ const emit = defineEmits<{
     profileId: string | null,
   ];
   preview: [item: MediaItem];
+  rename: [item: MediaItem];
 }>();
 
 const expanded = ref(false);
@@ -110,6 +111,7 @@ function linkedAchievementName(): string | null {
       {{ item.game_title }}
     </div>
 
+    <div class="media-filename">{{ item.filename.split("_").slice(1).join("_") || item.filename }}</div>
     <div class="media-meta-row">
       <div class="media-tags">
         <span
@@ -144,9 +146,10 @@ function linkedAchievementName(): string | null {
           {{ linkedAchievementName() }}
         </span>
       </div>
-      <button type="button" class="edit-toggle" @click="toggleExpanded">
-        {{ expanded ? "Close" : "Edit" }}
-      </button>
+      <div class="media-actions">
+        <button type="button" class="edit-toggle" @click="toggleExpanded">{{ expanded ? "Close" : "Edit" }}</button>
+        <button type="button" class="edit-toggle" @click="emit('rename', item)">Rename</button>
+      </div>
     </div>
 
     <div v-if="expanded" class="media-edit-panel">
@@ -257,6 +260,7 @@ function linkedAchievementName(): string | null {
   font-size: 0.72rem;
   font-weight: 600;
 }
+.media-filename { padding: 8px 8px 0; color: #fff; font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media-meta-row {
   display: flex;
   align-items: flex-start;
@@ -294,6 +298,7 @@ function linkedAchievementName(): string | null {
   color: #fff;
   font-weight: 700;
 }
+.media-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .edit-toggle {
   background: none;
   border: none;
