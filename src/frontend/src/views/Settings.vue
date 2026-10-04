@@ -29,8 +29,6 @@ import KeyboardShortcutsSection from "../components/settings/KeyboardShortcutsSe
 import ConnectionsSection from "../components/settings/ConnectionsSection.vue";
 import AniListImportSection from "../components/settings/AniListImportSection.vue";
 import ApiKeysSection from "../components/settings/ApiKeysSection.vue";
-import ServerIntegrationsSection from "../components/settings/ServerIntegrationsSection.vue";
-import OidcSettingsSection from "../components/settings/OidcSettingsSection.vue";
 import PasswordPolicySection from "../components/settings/PasswordPolicySection.vue";
 import AccountChip from "../components/AccountChip.vue";
 import BackButton from "../components/BackButton.vue";
@@ -196,7 +194,6 @@ watch(activeSection, async () => {
             :key="'metadata' + initialTab"
             :initial-tab="initialTab"
           />
-          <StatsSection v-else-if="activeSection === 'stats'" />
           <AdminSettings
             v-else-if="activeSection === 'admin' && currentUser?.is_admin"
             :key="'admin' + initialTab"
