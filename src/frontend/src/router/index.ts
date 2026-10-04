@@ -1,8 +1,14 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { currentUser, authChecked, checkAuth } from "../state/auth";
+import { currentUser, authChecked, authCheckFailed, checkAuth } from "../state/auth";
 import { saveLibraryScroll } from "../state/libraryScroll";
 import { appearanceLoaded, loadAppearanceSettings } from "../state/appearance";
 import { fetchSetupStatus } from "../services/setup";
+import {
+  classifySetupStatus,
+  rememberReturnPath,
+  safeReturnPath,
+  setStartupState,
+} from "../state/startup";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -191,55 +197,95 @@ const router = createRouter({
   ],
 });
 
-let setupState: "unknown" | "required" | "complete" | "error" = "unknown";
+let setupState: "unknown" | "required" | "complete" = "unknown";
 let startupUiShown = false;
+
+function loginRedirect(toPath: string) {
+  const returnPath = rememberReturnPath(toPath);
+  return returnPath
+    ? { path: "/login", query: { return_to: returnPath } }
+    : { path: "/login" };
+}
+
+function setupRedirect(toPath: string) {
+  const returnPath = rememberReturnPath(toPath);
+  return returnPath
+    ? { path: "/setup", query: { return_to: returnPath } }
+    : { path: "/setup" };
+}
 
 router.beforeEach(async (to, from) => {
   if (from.path === "/games") saveLibraryScroll(window.scrollY);
 
-  if (setupState === "unknown" || setupState === "error") {
+  if (setupState === "unknown") {
+    setStartupState("checking");
     try {
       const status = await fetchSetupStatus();
-      setupState = status.setup_required ? "required" : "complete";
-      if (
-        !status.setup_required &&
-        !status.startup_ui_enabled &&
-        to.path !== "/setup" &&
-        !startupUiShown
-      ) {
+      const state = classifySetupStatus(status);
+      setupState = state === "setup-required" ? "required" : "complete";
+      if (state === "setup-required") {
+        setStartupState("setup-required");
+      } else if (!status.startup_ui_enabled && to.path !== "/setup" && !startupUiShown) {
         startupUiShown = true;
-        return { path: "/setup" };
+        return setupRedirect(to.fullPath);
+      } else {
+        startupUiShown = true;
       }
-      startupUiShown = true;
-    } catch {
-      setupState = "error";
+    } catch (err) {
+      setStartupState(
+        "unavailable",
+        err instanceof Error ? err.message : "Unable to reach the backend.",
+      );
+      return false;
     }
   }
 
   if (setupState === "required" && to.path !== "/setup") {
+    setStartupState("setup-required");
     try {
-      setupState = (await fetchSetupStatus()).setup_required
-        ? "required"
-        : "complete";
-    } catch {
-      setupState = "error";
+      const status = await fetchSetupStatus();
+      if (!status.setup_required) {
+        setupState = "complete";
+      }
+    } catch (err) {
+      setStartupState(
+        "unavailable",
+        err instanceof Error ? err.message : "Unable to reach the backend.",
+      );
+      return false;
     }
   }
 
-  if (setupState === "required" || setupState === "error") {
-    if (to.path !== "/setup")
-      return {
-        path: "/setup",
-      };
+  if (setupState === "required") {
+    if (to.path !== "/setup") return setupRedirect(to.fullPath);
     return;
   }
+
   if (to.path === "/setup") {
-    const status = await fetchSetupStatus();
-    if (status.setup_required || !status.startup_ui_enabled) {
-      startupUiShown = true;
-      return;
+    try {
+      const status = await fetchSetupStatus();
+      if (status.setup_required) {
+        setStartupState("setup-required");
+        return;
+      }
+      setupState = "complete";
+      const returnPath = safeReturnPath(to.query.return_to);
+      if (!authChecked.value) await checkAuth();
+      if (currentUser.value) {
+        setStartupState("ready");
+        return returnPath ?? "/";
+      }
+      setStartupState("auth-required");
+      return returnPath
+        ? { path: "/login", query: { return_to: returnPath } }
+        : "/login";
+    } catch (err) {
+      setStartupState(
+        "unavailable",
+        err instanceof Error ? err.message : "Unable to reach the backend.",
+      );
+      return false;
     }
-    return currentUser.value ? "/" : "/login";
   }
 
   // This public route deliberately bypasses the normal auth redirect so a
@@ -247,10 +293,27 @@ router.beforeEach(async (to, from) => {
   if (to.path === "/login/oidcstart") return;
 
   if (!authChecked.value) await checkAuth();
-  if (to.path !== "/login" && !currentUser.value) return "/login";
-  if (to.path === "/login" && currentUser.value) return "/";
-  if (currentUser.value && !appearanceLoaded.value)
-    await loadAppearanceSettings();
+  if (authCheckFailed.value) {
+    setStartupState("unavailable", "Unable to reach the backend while checking authentication.");
+    return false;
+  }
+
+  if (to.path !== "/login" && !currentUser.value) {
+    setStartupState("auth-required");
+    return loginRedirect(to.fullPath);
+  }
+
+  if (to.path === "/login" && currentUser.value) {
+    setStartupState("ready");
+    return safeReturnPath(to.query.return_to) ?? "/";
+  }
+
+  if (currentUser.value) {
+    setStartupState("ready");
+    if (!appearanceLoaded.value) await loadAppearanceSettings();
+  } else {
+    setStartupState("auth-required");
+  }
 });
 
 export default router;

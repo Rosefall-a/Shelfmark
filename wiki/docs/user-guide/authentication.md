@@ -32,11 +32,5 @@ See [OpenID Connect / SSO](oidc.md) for provider settings and account matching.
 
 Sessions are stored server-side and have an expiry. Authenticated requests can use a bearer API key or the normal session cookie.
 
-For HTTPS deployments, configure `AUTH_COOKIE_SECURE=true` so the authentication cookie is restricted to secure connections.
-
-## Multiple application hosts
-
-Session cookie names are derived from the browser-visible Host value, including the port. Separate instances such as `localhost:5173` and `localhost:8080` therefore receive different cookie names and do not overwrite each other's browser cookie. The server-side session storage remains unchanged.
-
-The existing HttpOnly, SameSite=Lax and Secure behavior is preserved. Logout removes only the cookie associated with the current host.
+For HTTPS deployments, configure \`AUTH_COOKIE_SECURE=true\` so the authentication cookie is restricted to secure connections.
 

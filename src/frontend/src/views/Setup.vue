@@ -11,6 +11,7 @@ import {
   type SetupSection,
 } from "../services/setup";
 import { currentUser, checkAuth } from "../state/auth";
+import { consumeReturnPath } from "../state/startup";
 
 const route = useRoute();
 const router = useRouter();
@@ -191,7 +192,7 @@ onMounted(async () => {
 
     if (!status.setup_required && status.startup_mode === "development") {
       await checkAuth();
-      await router.replace("/");
+      await router.replace(consumeReturnPath(route.query.return_to) ?? "/");
       return;
     }
 
