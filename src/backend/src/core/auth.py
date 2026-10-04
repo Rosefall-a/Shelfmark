@@ -96,6 +96,16 @@ def session_cookie_name(host: str) -> str:
     return f"{SESSION_COOKIE_PREFIX}{host_hash}"
 
 
+async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> int:
+    """Delete sessions past their expiry (#142/#150). Authentication already
+    ignores them, but nothing ever removed them, so the table only grew.
+    Never touches a session that is still valid."""
+    cutoff = int(time.time()) if now is None else now
+    result = await db.execute(delete(UserSession).where(UserSession.expires_at <= cutoff))
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = _DB_DEPENDENCY,
@@ -145,16 +155,19 @@ async def ensure_primary_user(db: AsyncSession) -> User:
     email = settings.PRIMARY_USER_EMAIL.strip().lower()
     if not username or not email or not settings.PRIMARY_USER_PASSWORD:
         raise RuntimeError("Primary user username, email, and password must be configured.")
-    try:
-        validate_password(settings.PRIMARY_USER_PASSWORD)
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid primary user password: {exc}") from exc
 
     user = await db.scalar(select(User).where(User.username == username))
     if user is None:
         user = await db.scalar(select(User).where(User.email == email))
 
     if user is None:
+        # only a new account takes its password from the environment, so
+        # only then does the policy apply; checking it on every start made a
+        # later policy change crash startup for an account that already exists
+        try:
+            validate_password(settings.PRIMARY_USER_PASSWORD)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid primary user password: {exc}") from exc
         user = User(
             username=username,
             email=email,

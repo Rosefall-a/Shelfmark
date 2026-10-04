@@ -13,7 +13,7 @@ Use an OpenID Connect provider to let users sign in with an external identity pr
 - Provider groups can optionally grant administrator access.
 - Multiple named providers are supported.
 
-See the [OIDC / SSO guide](oidc.md).
+See the [OIDC / SSO guide](../user-guide/oidc.md).
 
 ### Playnite
 
@@ -48,7 +48,7 @@ Available metadata providers include:
 - TVDB
 - ScreenScraper
 
-See the [Metadata Providers guide](metadata-providers.md).
+See the [Metadata Providers guide](metadata.md).
 
 ### Account & data integrations
 

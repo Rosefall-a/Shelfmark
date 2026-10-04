@@ -2,9 +2,9 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import CollectionCard from "../components/CollectionCard.vue";
+import AccountChip from "../components/AccountChip.vue";
 import { fetchGames } from "../services/games";
 import type { Game } from "../types/game";
-import { currentUser } from "../state/auth";
 import {
   smartCollections,
   addSmartCollection,
@@ -251,24 +251,28 @@ function smartIdForName(name: string): string | undefined {
 
 <template>
   <main class="collections-page">
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
+    <AccountChip fixed />
 
     <div class="content">
       <div class="header-row">
-        <h1>Collections</h1>
+        <div>
+          <h1>Collections</h1>
+          <div class="sub">
+            {{ collectionSummaries.length }}
+            {{
+              collectionSummaries.length === 1 ? "collection" : "collections"
+            }}
+          </div>
+        </div>
         <div class="header-actions">
           <input
             v-model="searchQuery"
             type="text"
             class="search-input"
             placeholder="Search collections…"
+            aria-label="Search collections"
           />
-          <select v-model="sortBy" class="filter-select">
+          <select v-model="sortBy" class="filter-select" aria-label="Sort by">
             <option value="name">Name</option>
             <option value="count">Most Games</option>
           </select>
@@ -433,41 +437,9 @@ function smartIdForName(name: string): string | undefined {
   position: relative;
   padding: 84px 24px 24px;
   font-family: system-ui, sans-serif;
-  background: #121212;
+  background: #0d0d0d;
   min-height: 100vh;
   color: #fff;
-}
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
 }
 .header-row {
   display: flex;
@@ -479,8 +451,13 @@ function smartIdForName(name: string): string | undefined {
 }
 .header-row h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+.header-row .sub {
+  margin-top: 2px;
+  color: #888;
+  font-size: 0.85rem;
 }
 .header-actions {
   display: flex;
@@ -490,7 +467,7 @@ function smartIdForName(name: string): string | undefined {
 }
 .search-input,
 .filter-select {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #111;
   border: 1px solid #3a3a3a;
@@ -521,7 +498,7 @@ function smartIdForName(name: string): string | undefined {
   background-position: right 16px center;
 }
 .add-button {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #d68a34;
   color: #111;
@@ -535,7 +512,7 @@ function smartIdForName(name: string): string | undefined {
   position: relative;
 }
 .secondary-button {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid #3a3a3a;

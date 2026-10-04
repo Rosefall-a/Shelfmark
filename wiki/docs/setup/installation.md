@@ -22,4 +22,4 @@ See [Environment Variables](environment-variables.md) for optional configuration
 
 The application and PostgreSQL containers should both use persistent storage so rebuilding or replacing containers does not remove application data.
 
-For HTTPS deployments behind a reverse proxy, set `AUTH_COOKIE_SECURE=true`. See [OIDC / SSO](../integrations/oidc.md) for additional reverse-proxy considerations.
+For HTTPS deployments behind a reverse proxy, set `AUTH_COOKIE_SECURE=true`. See [OIDC / SSO](../user-guide/oidc.md) for additional reverse-proxy considerations.

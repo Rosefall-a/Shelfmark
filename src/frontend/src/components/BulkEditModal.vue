@@ -3,6 +3,7 @@ import { reactive, ref } from "vue";
 import { bulkUpdateGames } from "../services/games";
 import type { BulkEditFields } from "../services/games";
 import type { GameStatus } from "../types/game";
+import { PRIORITY_OPTIONS } from "../utils/priority";
 
 const props = defineProps<{
   gameIds: string[];
@@ -33,6 +34,8 @@ const apply = reactive({
   publisher: false,
   series: false,
   ageRating: false,
+  platform: false,
+  priority: false,
   tags: false,
   features: false,
 });
@@ -43,6 +46,8 @@ const developerValue = ref("");
 const publisherValue = ref("");
 const seriesValue = ref("");
 const ageRatingValue = ref("");
+const platformValue = ref("");
+const priorityValue = ref("");
 const tagsValue = ref("");
 const featuresValue = ref("");
 
@@ -66,6 +71,8 @@ async function submit() {
     if (apply.publisher) fields.publisher = publisherValue.value.trim() || null;
     if (apply.series) fields.series = seriesValue.value.trim() || null;
     if (apply.ageRating) fields.ageRating = ageRatingValue.value.trim() || null;
+    if (apply.platform) fields.platform = platformValue.value.trim() || null;
+    if (apply.priority) fields.priority = priorityValue.value || null;
     if (apply.tags)
       fields.tags = tagsValue.value
         .split(",")
@@ -118,6 +125,7 @@ async function submit() {
               v-model="statusValue"
               class="field-input"
               :disabled="!apply.status"
+              aria-label="New status"
             >
               <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
             </select>
@@ -132,6 +140,7 @@ async function submit() {
               v-model="favoriteValue"
               class="field-input"
               :disabled="!apply.favorite"
+              aria-label="Favorite"
             >
               <option :value="true">Mark as favorite</option>
               <option :value="false">Remove from favorites</option>
@@ -148,6 +157,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.developer"
+              aria-label="New developer"
               placeholder="Developer name"
             />
           </div>
@@ -162,6 +172,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.publisher"
+              aria-label="New publisher"
               placeholder="Publisher name"
             />
           </div>
@@ -176,6 +187,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.series"
+              aria-label="New series"
               placeholder="Franchise name"
             />
           </div>
@@ -190,8 +202,46 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.ageRating"
+              aria-label="New age rating"
               placeholder="e.g. 17+"
             />
+          </div>
+
+          <div class="field-row">
+            <label class="field-check">
+              <input v-model="apply.platform" type="checkbox" />
+              <span>Platform</span>
+            </label>
+            <input
+              v-model="platformValue"
+              type="text"
+              class="field-input"
+              :disabled="!apply.platform"
+              aria-label="New platform"
+              placeholder="e.g. PC, Nintendo Switch (blank clears)"
+            />
+          </div>
+
+          <div class="field-row">
+            <label class="field-check">
+              <input v-model="apply.priority" type="checkbox" />
+              <span>Priority</span>
+            </label>
+            <select
+              v-model="priorityValue"
+              class="field-input"
+              :disabled="!apply.priority"
+              aria-label="New priority"
+            >
+              <option value="">None (clear)</option>
+              <option
+                v-for="option in PRIORITY_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
           </div>
 
           <div class="field-row">
@@ -204,6 +254,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.tags"
+              aria-label="New tags"
               placeholder="Comma-separated: replaces existing tags"
             />
           </div>
@@ -218,6 +269,7 @@ async function submit() {
               type="text"
               class="field-input"
               :disabled="!apply.features"
+              aria-label="New features"
               placeholder="Comma-separated: replaces existing features"
             />
           </div>

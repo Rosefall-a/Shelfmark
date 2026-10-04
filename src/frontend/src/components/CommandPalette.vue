@@ -52,9 +52,14 @@ const SETTINGS_SHORTCUTS: { label: string; section: string }[] = [
   { label: "User Interface", section: "interface" },
   { label: "Appearance", section: "appearance" },
   { label: "Upload", section: "upload" },
-  { label: "Library Management", section: "library" },
-  { label: "Scan Settings", section: "scan" },
-  { label: "Metadata/API", section: "sources" },
+  { label: "Notifications", section: "notifications" },
+  { label: "Calendar", section: "calendar" },
+  { label: "Keyboard Shortcuts", section: "shortcuts" },
+  { label: "Connections", section: "connections" },
+  { label: "Library", section: "library" },
+  { label: "Media Trash", section: "media-trash" },
+  { label: "Metadata", section: "metadata" },
+  { label: "Metadata API keys", section: "sources" },
   { label: "Server Stats", section: "stats" },
   { label: "Export / Import", section: "export" },
 ];
@@ -63,8 +68,9 @@ const PAGE_SHORTCUTS: { label: string; to: string }[] = [
   { label: "Home", to: "/" },
   { label: "Games", to: "/games" },
   { label: "Collections", to: "/collections" },
+  { label: "Cards", to: "/cards" },
+  { label: "Sets", to: "/sets" },
   { label: "Bounties", to: "/bounties" },
-  { label: "Inbox", to: "/inbox" },
 ];
 
 const collectionNames = computed(() => {

@@ -31,7 +31,14 @@ const displayName = computed(() =>
 </script>
 
 <template>
-  <div class="collection-card-wrap" @click="emit('open', name)">
+  <div
+    class="collection-card-wrap"
+    role="button"
+    tabindex="0"
+    @click="emit('open', name)"
+    @keydown.enter.self="emit('open', name)"
+    @keydown.space.self.prevent="emit('open', name)"
+  >
     <div class="collection-card">
       <div class="cover">
         <div class="cover-grid">

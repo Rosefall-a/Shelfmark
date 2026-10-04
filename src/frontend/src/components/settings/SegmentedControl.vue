@@ -17,6 +17,7 @@ const emit = defineEmits<{
       type="button"
       class="segment"
       :class="{ active: modelValue === option.value }"
+      :aria-pressed="modelValue === option.value"
       @click="emit('update:modelValue', option.value)"
     >
       {{ option.label }}
@@ -27,6 +28,9 @@ const emit = defineEmits<{
 <style scoped>
 .segmented-control {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  box-sizing: border-box;
   background: #111;
   border: 1px solid #3a3a3a;
   border-radius: 8px;

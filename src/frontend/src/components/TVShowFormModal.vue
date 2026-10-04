@@ -5,6 +5,7 @@ import {
   updateTVShow,
   deleteTVShow,
   searchTVShowMetadata,
+  tvShowToInput,
 } from "../services/tvShows";
 import type { TVShowMetadataResult, SeasonInput } from "../services/tvShows";
 import type { TVShow, TVShowStatus } from "../types/tv_show";
@@ -197,7 +198,11 @@ async function submit() {
       seasons: props.show ? undefined : stagedSeasons.value,
     };
     const saved = props.show
-      ? await updateTVShow(props.show.id, input)
+      ? await updateTVShow(props.show.id, {
+          // keep the fields this form doesn't show
+          ...tvShowToInput(props.show),
+          ...input,
+        })
       : await createTVShow(input);
     emit("saved", saved);
   } catch (e) {
@@ -243,6 +248,7 @@ async function remove() {
               type="search"
               class="text-input"
               placeholder="Search by show title"
+              aria-label="Search by show title"
               @keyup.enter="searchMetadata"
             />
             <button
@@ -437,7 +443,7 @@ async function remove() {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--ui-z-modal);
   background: rgba(8, 6, 4, 0.72);
   display: flex;
   align-items: center;
@@ -474,7 +480,10 @@ async function remove() {
   border: none;
   color: #999;
   cursor: pointer;
-  padding: 4px;
+  width: 32px;
+  height: 32px;
+  margin: -3px -7px -3px 0;
+  border-radius: 50%;
   font-size: 1.2rem;
   line-height: 1;
 }
@@ -561,7 +570,11 @@ async function remove() {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+}
+.field-row > .field {
+  flex: 1 1 120px;
 }
 .checkbox-field {
   flex-direction: row;

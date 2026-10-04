@@ -116,4 +116,4 @@ Normal application authentication uses server-side sessions and authentication c
 
 OIDC/SSO is integrated into the same application authentication flow. OIDC provider credentials are kept server-side; client secrets are not exposed to the frontend.
 
-See [OIDC / SSO](../integrations/oidc.md) for provider configuration.
+See [OIDC / SSO](../user-guide/oidc.md) for provider configuration.
