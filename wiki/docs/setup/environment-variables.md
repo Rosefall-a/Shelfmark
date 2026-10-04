@@ -104,7 +104,7 @@ Secret fields are not returned as plaintext by the setup configuration API.
 | `OIDC_DEFAULT_LOGIN_METHOD` | `local` | Default login choice: `local` or `sso`. |
 | `OIDC_LOGIN_BUTTON_TEXT` | `Continue with SSO` | Text used for the SSO login button. |
 
-OIDC issuer, client ID, and client secret become required when the OIDC section is selected. See [OIDC / SSO](../integrations/oidc.md) for the callback and account-linking behavior.
+OIDC issuer, client ID, and client secret become required when the OIDC section is selected. See [OIDC / SSO](../user-guide/oidc.md) for the callback and account-linking behavior.
 
 ## Frontend development
 

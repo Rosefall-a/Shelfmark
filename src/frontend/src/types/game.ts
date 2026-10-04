@@ -101,6 +101,13 @@ export interface Game {
   folderLocation: string | null;
   releaseDate: string | null;
   source: string | null;
+  // the system it's played on, separate from `source` (where the copy came
+  // from), optional so hand-built/mock games don't need it
+  platform?: string | null;
+  // "1" (highest) .. "5" (lowest), see utils/priority.ts
+  priority?: string | null;
+  // the name the library sorts by; blank means the title
+  sortTitle?: string | null;
   ageRating: string | null;
   timeToBeatHours: number | null;
   region: string | null;

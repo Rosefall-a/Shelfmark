@@ -5,6 +5,7 @@ import {
   updateAnime,
   deleteAnime,
   searchAnimeMetadata,
+  animeToInput,
 } from "../services/anime";
 import type { AnimeMetadataResult } from "../services/anime";
 import type { Anime, AnimeStatus } from "../types/anime";
@@ -188,7 +189,11 @@ async function submit() {
       anilistId: fields.value.anilistId,
     };
     const saved = props.show
-      ? await updateAnime(props.show.id, input)
+      ? await updateAnime(props.show.id, {
+          // keep the fields this form doesn't show
+          ...animeToInput(props.show),
+          ...input,
+        })
       : await createAnime(input);
     emit("saved", saved);
   } catch (e) {
@@ -234,6 +239,7 @@ async function remove() {
               type="search"
               class="text-input"
               placeholder="Search by anime title"
+              aria-label="Search by anime title"
               @keyup.enter="searchMetadata"
             />
             <button
@@ -428,7 +434,7 @@ async function remove() {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--ui-z-modal);
   background: rgba(8, 6, 4, 0.72);
   display: flex;
   align-items: center;
@@ -465,7 +471,10 @@ async function remove() {
   border: none;
   color: #999;
   cursor: pointer;
-  padding: 4px;
+  width: 32px;
+  height: 32px;
+  margin: -3px -7px -3px 0;
+  border-radius: 50%;
   font-size: 1.2rem;
   line-height: 1;
 }
@@ -552,7 +561,11 @@ async function remove() {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+}
+.field-row > .field {
+  flex: 1 1 120px;
 }
 .checkbox-field {
   flex-direction: row;

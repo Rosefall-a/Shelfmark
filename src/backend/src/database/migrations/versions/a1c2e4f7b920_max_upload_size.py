@@ -1,0 +1,31 @@
+"""Add admin-editable max upload size override
+
+Revision ID: a1c2e4f7b920
+Revises: 7b2d4a9e8c11
+Create Date: 2026-09-28 00:00:00.000000
+
+"""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+from src.database import migration_helpers as h
+
+# revision identifiers, used by Alembic.
+revision: str = "a1c2e4f7b920"
+down_revision: Union[str, None] = "7b2d4a9e8c11"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    h.add_column_if_missing(
+        "app_integration_settings",
+        sa.Column("max_upload_size_mb", sa.Integer(), nullable=True),
+    )
+
+
+def downgrade() -> None:
+    op.execute("ALTER TABLE app_integration_settings DROP COLUMN IF EXISTS max_upload_size_mb")

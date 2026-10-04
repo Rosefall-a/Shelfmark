@@ -6,7 +6,7 @@ import secrets
 import time
 from typing import Final
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ _SCRYPT_N: Final = 2**14
 _SCRYPT_R: Final = 8
 _SCRYPT_P: Final = 1
 _DB_DEPENDENCY = Depends(get_db)
-SESSION_COOKIE: Final = "session"
+SESSION_COOKIE_PREFIX: Final = "session_"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
 
@@ -89,12 +89,31 @@ async def revoke_session(db: AsyncSession, session_token: str) -> bool:
     return bool(result.rowcount)
 
 
+def session_cookie_name(host: str) -> str:
+    """Return a stable cookie name scoped to one application host and port."""
+    normalized_host = host.strip().lower()
+    host_hash = hashlib.sha256(normalized_host.encode("utf-8")).hexdigest()[:16]
+    return f"{SESSION_COOKIE_PREFIX}{host_hash}"
+
+
+async def purge_expired_sessions(db: AsyncSession, now: int | None = None) -> int:
+    """Delete sessions past their expiry (#142/#150). Authentication already
+    ignores them, but nothing ever removed them, so the table only grew.
+    Never touches a session that is still valid."""
+    cutoff = int(time.time()) if now is None else now
+    result = await db.execute(delete(UserSession).where(UserSession.expires_at <= cutoff))
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
 async def get_current_user(
+    request: Request,
     db: AsyncSession = _DB_DEPENDENCY,
-    authorization: str | None = Header(default=None),
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = None,
 ) -> User:
     user: User | None = None
+    session_token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
+    authorization = request.headers.get("authorization")
     now = int(time.time())
 
     if authorization and authorization.startswith("Bearer "):
@@ -136,16 +155,19 @@ async def ensure_primary_user(db: AsyncSession) -> User:
     email = settings.PRIMARY_USER_EMAIL.strip().lower()
     if not username or not email or not settings.PRIMARY_USER_PASSWORD:
         raise RuntimeError("Primary user username, email, and password must be configured.")
-    try:
-        validate_password(settings.PRIMARY_USER_PASSWORD)
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid primary user password: {exc}") from exc
 
     user = await db.scalar(select(User).where(User.username == username))
     if user is None:
         user = await db.scalar(select(User).where(User.email == email))
 
     if user is None:
+        # only a new account takes its password from the environment, so
+        # only then does the policy apply; checking it on every start made a
+        # later policy change crash startup for an account that already exists
+        try:
+            validate_password(settings.PRIMARY_USER_PASSWORD)
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid primary user password: {exc}") from exc
         user = User(
             username=username,
             email=email,

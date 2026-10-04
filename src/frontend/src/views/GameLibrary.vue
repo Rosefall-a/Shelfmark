@@ -6,6 +6,9 @@ import GameCard from "../components/GameCard.vue";
 import SkeletonBlock from "../components/SkeletonBlock.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import BulkEditModal from "../components/BulkEditModal.vue";
+import RandomGamePicker from "../components/RandomGamePicker.vue";
+import { activePriority, priorityLabel } from "../utils/priority";
+import { formatDisplayDate } from "../utils/dates";
 import FilterCombobox from "../components/FilterCombobox.vue";
 import {
   fetchGames,
@@ -18,6 +21,7 @@ import { takeLibraryScroll } from "../state/libraryScroll";
 import { setLibraryNavOrder } from "../state/libraryNav";
 import { isCommandPaletteOpen } from "../state/commandPalette";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
+import AppTopBar from "../components/AppTopBar.vue";
 import { computeScore } from "../utils/scoring";
 import DOMPurify from "dompurify";
 import {
@@ -27,13 +31,24 @@ import {
 } from "../utils/platforms";
 import { GENRE_OPTIONS } from "../utils/genres";
 import type { Game, GameStatus } from "../types/game";
-import { currentUser } from "../state/auth";
 import { usePrompt } from "../state/dialog";
 
 const prompt = usePrompt();
 
 type ViewMode = "cards" | "list" | "detail" | "shelves";
-type SortBy = "name" | "recent" | "rating" | "playtime" | "neglected";
+const SORT_KEYS = [
+  "name",
+  "name_desc",
+  "recent",
+  "rating",
+  "playtime",
+  "last_played",
+  "neglected",
+  "priority",
+  "release",
+  "length",
+] as const;
+type SortBy = (typeof SORT_KEYS)[number];
 type AchievementsFilter = "all" | "has" | "none";
 type MissingFilter = "none" | "playtime" | "rating" | "tags" | "description";
 type CardDensity = "compact" | "cozy" | "large";
@@ -66,6 +81,7 @@ const gridFocusIndex = ref<number | null>(null);
 const selectMode = ref(false);
 const selectedIds = ref<Set<string>>(new Set());
 const showBulkEditModal = ref(false);
+const showRandomPicker = ref(false);
 
 // one-time nudge toward bulk edit, gone for good the first time it's
 // dismissed or the feature is actually used, not re-shown once discovered
@@ -481,7 +497,7 @@ if (
 const querySort = route.query.sort;
 if (
   typeof querySort === "string" &&
-  ["name", "recent", "rating", "playtime", "neglected"].includes(querySort)
+  (SORT_KEYS as readonly string[]).includes(querySort)
 ) {
   sortBy.value = querySort as SortBy;
 }
@@ -553,30 +569,6 @@ function setView(mode: ViewMode) {
   if (mode === "detail" && !selectedGame.value && games.value.length) {
     selectedGame.value = games.value[0];
   }
-}
-
-const bgLayers = ref<{ url: string | null; visible: boolean }[]>([
-  { url: null, visible: false },
-  { url: null, visible: false },
-]);
-const activeLayer = ref(0);
-
-// only crossfade once the cursor has settled on a card briefly, gliding
-// across many cards shouldn't flicker the ambient background
-let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-function setHoverImage(url: string | null) {
-  if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
-  hoverDebounceTimer = setTimeout(() => {
-    if (url === null) {
-      bgLayers.value[activeLayer.value].visible = false;
-      return;
-    }
-    const nextLayer = activeLayer.value === 0 ? 1 : 0;
-    bgLayers.value[nextLayer] = { url, visible: true };
-    bgLayers.value[activeLayer.value].visible = false;
-    activeLayer.value = nextLayer;
-  }, 400);
 }
 
 // guards against a slower, earlier loadGames() call overwriting a newer
@@ -922,8 +914,20 @@ const filteredGames = computed(() => {
     result = result.filter((g) => fuzzyTitleMatch(g.title, q));
   }
 
+  // missing values always sort last, whichever way the sort runs
+  const lastIfNull = <T,>(
+    x: T | null,
+    y: T | null,
+    compare: (x: T, y: T) => number,
+  ): number => {
+    if (x === null && y === null) return 0;
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return compare(x, y);
+  };
   result = [...result].sort((a, b) => {
     if (sortBy.value === "name") return a.title.localeCompare(b.title);
+    if (sortBy.value === "name_desc") return b.title.localeCompare(a.title);
     if (sortBy.value === "recent")
       return (b.dateAdded ?? "").localeCompare(a.dateAdded ?? "");
     if (sortBy.value === "rating") {
@@ -933,9 +937,26 @@ const filteredGames = computed(() => {
     }
     if (sortBy.value === "playtime")
       return gameTotalMinutes(b) - gameTotalMinutes(a);
+    if (sortBy.value === "last_played")
+      return lastIfNull(gameLastPlayed(a), gameLastPlayed(b), (x, y) =>
+        y.localeCompare(x),
+      );
     // never-played games sort first (most neglected), then oldest-last-played first
     if (sortBy.value === "neglected")
       return (gameLastPlayed(a) ?? "").localeCompare(gameLastPlayed(b) ?? "");
+    // 1 (highest) first; finished games have no priority, so they go last
+    if (sortBy.value === "priority")
+      return (
+        lastIfNull(activePriority(a), activePriority(b), (x, y) => x - y) ||
+        a.title.localeCompare(b.title)
+      );
+    if (sortBy.value === "release")
+      return lastIfNull(a.releaseDate, b.releaseDate, (x, y) =>
+        y.localeCompare(x),
+      );
+    // shortest first, for "something I can finish this weekend"
+    if (sortBy.value === "length")
+      return lastIfNull(a.timeToBeatHours, b.timeToBeatHours, (x, y) => x - y);
     return 0;
   });
 
@@ -1148,18 +1169,34 @@ function onResize() {
 onMounted(() => window.addEventListener("resize", onResize));
 onUnmounted(() => window.removeEventListener("resize", onResize));
 
+// Same card widths as the Media shelf (150 / 200 / 260px, 14px gap): the
+// column count is what an auto-fill grid of that minimum width would give
+// for the width the page actually has, so a "small" card is the same size
+// on both pages.
+const MIN_CARD_WIDTH: Record<CardDensity, number> = {
+  compact: 150,
+  cozy: 200,
+  large: 260,
+};
+const GRID_GAP = 14;
+const contentEl = ref<HTMLElement | null>(null);
+const gridWidth = ref(document.documentElement.clientWidth - 72);
+let contentObserver: ResizeObserver | null = null;
+onMounted(() => {
+  if (!contentEl.value) return;
+  contentObserver = new ResizeObserver((entries) => {
+    gridWidth.value = entries[0].contentRect.width;
+  });
+  contentObserver.observe(contentEl.value);
+});
+onUnmounted(() => contentObserver?.disconnect());
+
 const CARD_COLUMNS = computed(() => {
-  const w = viewportWidth.value;
-  let base: number;
-  if (w < 480) base = 2;
-  else if (w < 700) base = 3;
-  else if (w < 900) base = 4;
-  else if (w < 1150) base = 6;
-  else if (w < 1400) base = 8;
-  else base = 10;
-  if (cardDensity.value === "compact") return Math.round(base * 1.35);
-  if (cardDensity.value === "large") return Math.max(1, Math.round(base * 0.6));
-  return base;
+  const min = MIN_CARD_WIDTH[cardDensity.value];
+  return Math.max(
+    1,
+    Math.floor((gridWidth.value + GRID_GAP) / (min + GRID_GAP)),
+  );
 });
 const cardRowCount = computed(() =>
   Math.ceil(filteredGames.value.length / CARD_COLUMNS.value),
@@ -1218,24 +1255,16 @@ watch(viewMode, (mode) => {
 
 <template>
   <main class="library" :class="{ locked: viewMode === 'detail' }">
-    <div
-      v-for="(layer, i) in bgLayers"
-      :key="i"
-      class="ambient-bg"
-      :class="{ visible: layer.visible }"
-      :style="layer.url ? { backgroundImage: `url(${layer.url})` } : {}"
-    ></div>
+    <AppTopBar />
 
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
-
-    <div class="content">
+    <div ref="contentEl" class="content">
       <div class="header-row">
-        <h1>Games</h1>
+        <div>
+          <h1>Games</h1>
+          <div class="sub">
+            {{ games.length }} {{ games.length === 1 ? "game" : "games" }}
+          </div>
+        </div>
         <div class="header-actions">
           <div class="search-wrap">
             <input
@@ -1244,6 +1273,7 @@ watch(viewMode, (mode) => {
               type="text"
               class="search-input"
               placeholder="Search games… (/)"
+              aria-label="Search games"
               @focus="showRecentSearches = true"
               @blur="
                 showRecentSearches = false;
@@ -1276,7 +1306,11 @@ watch(viewMode, (mode) => {
               </button>
             </div>
           </div>
-          <select v-model="statusFilter" class="filter-select">
+          <select
+            v-model="statusFilter"
+            class="filter-select"
+            aria-label="Filter by status"
+          >
             <option v-for="s in statusOptions" :key="s" :value="s">
               {{ s === "all" ? "All statuses" : s }}
             </option>
@@ -1295,12 +1329,17 @@ watch(viewMode, (mode) => {
             placeholder="Genre"
             all-label="All genres"
           />
-          <select v-model="sortBy" class="filter-select">
-            <option value="name">Name</option>
+          <select v-model="sortBy" class="filter-select" aria-label="Sort by">
+            <option value="name">Name (A–Z)</option>
+            <option value="name_desc">Name (Z–A)</option>
             <option value="recent">Recently added</option>
             <option value="rating">Rating</option>
             <option value="playtime">Most Played</option>
+            <option value="last_played">Recently played</option>
             <option value="neglected">Neglected (least recently played)</option>
+            <option value="priority">Priority</option>
+            <option value="release">Release date (newest)</option>
+            <option value="length">Time to beat (shortest)</option>
           </select>
 
           <div
@@ -1486,6 +1525,16 @@ watch(viewMode, (mode) => {
             </div>
           </div>
 
+          <button
+            type="button"
+            class="advanced-toggle"
+            :disabled="!games.length"
+            title="Pick a game to play, filtered by status, platform, genre, length and priority"
+            @click="showRandomPicker = true"
+          >
+            Random
+          </button>
+
           <button type="button" class="add-button" @click="openAddModal">
             + Add Game
           </button>
@@ -1602,7 +1651,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>Achievements</label>
-          <select v-model="achievementsFilter" class="filter-select">
+          <select
+            v-model="achievementsFilter"
+            class="filter-select"
+            aria-label="Achievements"
+          >
             <option value="all">All games</option>
             <option value="has">Has achievements</option>
             <option value="none">No achievements</option>
@@ -1610,7 +1663,11 @@ watch(viewMode, (mode) => {
         </div>
         <div class="advanced-field">
           <label>What's missing</label>
-          <select v-model="missingFilter" class="filter-select">
+          <select
+            v-model="missingFilter"
+            class="filter-select"
+            aria-label="What's missing"
+          >
             <option value="none">Nothing, show everything</option>
             <option value="playtime">No playtime logged</option>
             <option value="rating">No rating</option>
@@ -1753,7 +1810,7 @@ watch(viewMode, (mode) => {
               to sync a library
             </li>
             <li>
-              Drop screenshots or files into the Inbox and assign them to a game
+              Drop screenshots or files into Upload and assign them to a game
               later
             </li>
             <li>
@@ -1790,7 +1847,6 @@ watch(viewMode, (mode) => {
               :keyboard-focused="
                 gridFocusIndex === virtualRow.index * CARD_COLUMNS + colIndex
               "
-              @hover="setHoverImage"
               @edit="openEditModal"
               @add-to-collection="handleAddToCollection"
               @toggle-select="toggleSelect"
@@ -1890,9 +1946,7 @@ watch(viewMode, (mode) => {
             </span>
             <span class="list-release">
               {{
-                game.releaseDate
-                  ? new Date(game.releaseDate).toLocaleDateString()
-                  : "N/A"
+                game.releaseDate ? formatDisplayDate(game.releaseDate) : "N/A"
               }}
             </span>
             <div class="list-actions">
@@ -2063,7 +2117,16 @@ watch(viewMode, (mode) => {
                   >
                     <span class="preview-detail-label">Released</span>
                     <span>{{
-                      new Date(selectedGame.releaseDate).toLocaleDateString()
+                      formatDisplayDate(selectedGame.releaseDate)
+                    }}</span>
+                  </div>
+                  <div
+                    v-if="activePriority(selectedGame) !== null"
+                    class="preview-detail-row"
+                  >
+                    <span class="preview-detail-label">Priority</span>
+                    <span>{{
+                      priorityLabel(activePriority(selectedGame)!)
                     }}</span>
                   </div>
                   <div v-if="selectedGame.dateAdded" class="preview-detail-row">
@@ -2258,6 +2321,12 @@ watch(viewMode, (mode) => {
         @saved="onBulkEditSaved"
       />
 
+      <RandomGamePicker
+        v-if="showRandomPicker"
+        :games="games"
+        @close="showRandomPicker = false"
+      />
+
       <div
         v-if="deletingGame"
         class="confirm-backdrop"
@@ -2296,9 +2365,8 @@ watch(viewMode, (mode) => {
 <style scoped>
 .library {
   position: relative;
-  padding: 84px 24px 24px;
   font-family: system-ui, sans-serif;
-  background: #121212;
+  background: #0d0d0d;
   min-height: 100vh;
   color: #fff;
   overflow-x: hidden;
@@ -2322,55 +2390,16 @@ watch(viewMode, (mode) => {
   height: auto;
   min-height: 0;
 }
-.ambient-bg {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  filter: blur(90px);
-  opacity: 0;
-  transform: scale(1.2);
-  transition: opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 0;
-}
-.ambient-bg.visible {
-  opacity: 0.35;
-}
 .content {
   position: relative;
   z-index: 1;
+  padding: 24px 24px 24px 48px;
+  box-sizing: border-box;
 }
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+@media (max-width: 720px) {
+  .content {
+    padding: 16px 14px 24px;
+  }
 }
 .header-row {
   display: flex;
@@ -2385,14 +2414,19 @@ watch(viewMode, (mode) => {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: #121212;
+  background: #0d0d0d;
   padding: 20px 0 16px;
   margin-top: -20px;
 }
 .header-row h1 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+.header-row .sub {
+  margin-top: 2px;
+  color: #888;
+  font-size: 0.85rem;
 }
 .header-actions {
   display: flex;
@@ -2402,7 +2436,7 @@ watch(viewMode, (mode) => {
 }
 .search-input,
 .filter-select {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #111;
   border: 1px solid #3a3a3a;
@@ -2643,6 +2677,17 @@ watch(viewMode, (mode) => {
 .first-use-hint-dismiss:hover {
   background: rgba(214, 138, 52, 0.24);
 }
+/* anchored to Select, the tip ran off a phone screen */
+@media (max-width: 600px) {
+  .first-use-hint {
+    position: fixed;
+    top: auto;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+  }
+}
 .density-toggle {
   display: flex;
   gap: 2px;
@@ -2650,7 +2695,7 @@ watch(viewMode, (mode) => {
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   padding: 3px;
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
 }
 .density-button {
@@ -2768,7 +2813,7 @@ watch(viewMode, (mode) => {
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   padding: 3px;
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
 }
 .view-toggle-button {
@@ -2796,7 +2841,7 @@ watch(viewMode, (mode) => {
   box-shadow: 0 2px 8px rgba(214, 138, 52, 0.4);
 }
 .add-button {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: #d68a34;
   color: #111;
@@ -2820,8 +2865,8 @@ watch(viewMode, (mode) => {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  gap: 16px;
-  padding-bottom: 16px;
+  gap: 14px;
+  padding-bottom: 14px;
 }
 .grid-row :deep(.game-card-wrap) {
   width: auto;
@@ -2830,7 +2875,7 @@ watch(viewMode, (mode) => {
 
 /* Advanced filters */
 .advanced-toggle {
-  height: 40px;
+  height: 38px;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid #3a3a3a;

@@ -186,6 +186,20 @@ class Game(Base):
         nullable=True,
     )
 
+    # the system it's played on ("PC", "PlayStation 5", "Switch"...) —
+    # separate from `source`, which is where the copy came from: a Steam
+    # game and a GOG game are both PC, a physical disc could be any console.
+    # NULL means not recorded; the UI then falls back to the source.
+    platform: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    # edition details ("NA", "PAL", "JP"... / "English", "Japanese"...),
+    # mostly meaningful for physical or imported copies
+    region: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # a library-sync provider's own stable id for this game (Steam appid,
     # RetroAchievements GameID, PSN npCommunicationId) — NULL for
     # manually-added/search-added games. A title alone isn't a stable

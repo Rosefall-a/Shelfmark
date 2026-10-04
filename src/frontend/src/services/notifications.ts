@@ -64,6 +64,49 @@ export async function fetchMediaNotifications(
   };
 }
 
+export async function createTestNotification(payload: {
+  kind: MediaNotificationKind;
+  mediaType: "movie" | "tv" | "anime";
+  title: string;
+  body: string;
+}): Promise<void> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return;
+  }
+
+  await ok(
+    await fetch("/api/notifications/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        kind: payload.kind,
+        media_type: payload.mediaType,
+        title: payload.title,
+        body: payload.body,
+      }),
+    }),
+    "create a test notification",
+  );
+}
+
+// Admin-only: runs the same generation the bell's poll triggers, on
+// demand, so a just-edited air date doesn't need a poll cycle to show up.
+export async function regenerateNotifications(): Promise<{ created: number }> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return { created: 0 };
+  }
+
+  const response = await ok(
+    await fetch("/api/notifications/regenerate", {
+      method: "POST",
+      credentials: "include",
+    }),
+    "regenerate notifications",
+  );
+  return await response.json();
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   await ok(
     await fetch(`/api/notifications/${id}/read`, {

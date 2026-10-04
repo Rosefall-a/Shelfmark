@@ -202,6 +202,12 @@ class Movie(Base):
         default=0,
     )
 
+    # where you left off in a movie you started but haven't finished, in
+    # minutes from the start; NULL when not started or already finished
+    progress_minutes: Mapped[int | None] = mapped_column(
+        nullable=True,
+    )
+
     note: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
