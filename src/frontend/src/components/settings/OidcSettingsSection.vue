@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import PasswordInput from "../PasswordInput.vue";
 import {
   fetchDeploymentSettings,
   updateDeploymentSettings,
@@ -275,40 +276,22 @@ async function save() {
         </div>
 
         <div class="grid">
-          <label
-            ><span>Provider name</span
-            ><input
-              v-model="provider.name"
-              placeholder="Authentik"
-              @blur="defaultProviderSlug(provider)"
-          /></label>
-          <label
-            ><span>Slug</span
-            ><input
-              v-model="provider.slug"
-              placeholder="authentik"
-              autocomplete="off"
-          /></label>
-          <label
-            ><span>Issuer / discovery URL</span
-            ><input
-              v-model="provider.issuer_url"
-              placeholder="https://id.example.com"
-          /></label>
-          <label
-            ><span>Client ID</span><input v-model="provider.client_id"
-          /></label>
-          <label
-            ><span>Client secret</span
-            ><input
+          <label><span>Provider name</span><input v-model="provider.name" placeholder="Authentik"
+              @blur="defaultProviderSlug(provider)" /></label>
+          <label><span>Slug</span><input v-model="provider.slug" placeholder="authentik" autocomplete="off" /></label>
+          <label><span>Issuer / discovery URL</span><input v-model="provider.issuer_url"
+              placeholder="https://id.example.com" /></label>
+          <label><span>Client ID</span><input v-model="provider.client_id" /></label>
+          <label>
+            <span>Client secret</span>
+            <PasswordInput
               v-model="provider.client_secret"
-              type="password"
-              :placeholder="
-                provider.client_secret_configured
-                  ? 'Leave blank to keep saved secret'
-                  : 'Required'
-              "
-          /></label>
+              :mode="provider.client_secret_configured ? 'replace' : 'new'"
+              :placeholder="provider.client_secret_configured ? 'Leave blank to keep saved secret' : 'Required'"
+              autocomplete="new-password"
+              :required="provider.enabled && !provider.client_secret_configured"
+            />
+          </label>
           <label><span>Scopes</span><input v-model="provider.scopes" /></label>
           <label
             ><span>Groups claim</span

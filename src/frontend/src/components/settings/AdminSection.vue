@@ -8,11 +8,15 @@ import {
   setUserAdmin,
 } from "../../services/admin";
 import ToggleButton from "./ToggleButton.vue";
+import PasswordInput from "../PasswordInput.vue";
 import type { AdminUser } from "../../services/admin";
+import PasswordRequirements from "./PasswordRequirements.vue";
+import { fetchPasswordPolicy, passwordValidationErrors, type PasswordPolicy } from "../../services/passwordPolicy";
 
 const users = ref<AdminUser[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const passwordPolicy = ref<PasswordPolicy | null>(null);
 
 async function loadUsers() {
   loading.value = true;
@@ -25,17 +29,36 @@ async function loadUsers() {
     loading.value = false;
   }
 }
-onMounted(loadUsers);
+onMounted(async () => {
+  await Promise.all([
+    loadUsers(),
+    fetchPasswordPolicy().then((policy) => { passwordPolicy.value = policy; }).catch((err) => {
+      error.value = err instanceof Error ? err.message : "Failed to load password policy";
+    }),
+  ]);
+});
 
 const showCreateForm = ref(false);
 const newUsername = ref("");
 const newEmail = ref("");
 const newPassword = ref("");
+const confirmPassword = ref("");
 const newIsAdmin = ref(false);
 const creating = ref(false);
 const createError = ref<string | null>(null);
 
 async function handleCreateUser() {
+  const validationErrors = passwordPolicy.value
+    ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
+    : ["Password requirements could not be loaded."];
+  if (validationErrors.length) {
+    createError.value = validationErrors[0];
+    return;
+  }
+  if (!newPassword.value || newPassword.value !== confirmPassword.value) {
+    createError.value = "The passwords do not match.";
+    return;
+  }
   creating.value = true;
   createError.value = null;
   try {
@@ -48,6 +71,7 @@ async function handleCreateUser() {
     newUsername.value = "";
     newEmail.value = "";
     newPassword.value = "";
+    confirmPassword.value = "";
     newIsAdmin.value = false;
     showCreateForm.value = false;
     await loadUsers();
@@ -96,6 +120,7 @@ function openCreateForm() {
   newUsername.value = "";
   newEmail.value = "";
   newPassword.value = "";
+  confirmPassword.value = "";
   newIsAdmin.value = false;
   createError.value = null;
   showCreateForm.value = true;
@@ -184,12 +209,21 @@ function openCreateForm() {
         /></label>
         <label class="field"
           ><span>Password</span
-          ><input
+          ><PasswordInput
             v-model="newPassword"
-            type="password"
-            required
+            mode="new"
             autocomplete="new-password"
-        /></label>
+            :required="true"
+          /></label>
+        <PasswordRequirements v-if="passwordPolicy" :password="newPassword" :policy="passwordPolicy" />
+        <label class="field"
+          ><span>Confirm password</span
+          ><PasswordInput
+            v-model="confirmPassword"
+            mode="new"
+            autocomplete="new-password"
+            :required="true"
+          /></label>
         <ToggleButton v-model="newIsAdmin" label="Grant admin access"
           >Grant admin access</ToggleButton
         >

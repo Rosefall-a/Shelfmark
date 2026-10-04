@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
+import PasswordInput from "../PasswordInput.vue";
 import { currentUser, checkAuth } from "../../state/auth";
+import PasswordRequirements from "./PasswordRequirements.vue";
+import { fetchPasswordPolicy, passwordValidationErrors, type PasswordPolicy } from "../../services/passwordPolicy";
 import {
   updateProfile,
   uploadProfilePicture,
@@ -33,9 +36,11 @@ watch(
 );
 const currentPassword = ref("");
 const newPassword = ref("");
+const confirmPassword = ref("");
 const saving = ref(false);
 const saveError = ref<string | null>(null);
 const saveSuccess = ref(false);
+const passwordPolicy = ref<PasswordPolicy | null>(null);
 
 // otherwise "Profile updated." keeps showing after a successful save even
 // once the user starts typing something new, reading as if the in-progress
@@ -46,10 +51,28 @@ watch([username, email], () => {
   saveSuccess.value = false;
 });
 
+onMounted(async () => {
+  try { passwordPolicy.value = await fetchPasswordPolicy(); }
+  catch (err) { saveError.value = err instanceof Error ? err.message : "Failed to load password policy"; }
+});
+
 const uploading = ref(false);
 const uploadError = ref<string | null>(null);
 
 async function saveProfile() {
+  if (newPassword.value) {
+    const validationErrors = passwordPolicy.value
+      ? passwordValidationErrors(newPassword.value, passwordPolicy.value)
+      : ["Password requirements could not be loaded."];
+    if (validationErrors.length) {
+      saveError.value = validationErrors[0];
+      return;
+    }
+  }
+  if (newPassword.value && newPassword.value !== confirmPassword.value) {
+    saveError.value = "The new passwords do not match.";
+    return;
+  }
   if (newPassword.value && !currentPassword.value) {
     saveError.value = "Enter your current password to set a new one.";
     return;
@@ -69,6 +92,7 @@ async function saveProfile() {
     await checkAuth();
     currentPassword.value = "";
     newPassword.value = "";
+    confirmPassword.value = "";
     saveSuccess.value = true;
   } catch (err) {
     saveError.value =
@@ -153,20 +177,27 @@ async function onAvatarFileChange(e: Event) {
 
       <label class="field">
         <span>New password (optional)</span>
-        <input
-          v-model="newPassword"
-          type="password"
-          autocomplete="new-password"
-        />
+        <PasswordInput v-model="newPassword" mode="new" autocomplete="new-password" />
+      </label>
+
+      <PasswordRequirements
+        v-if="newPassword && passwordPolicy"
+        :password="newPassword"
+        :policy="passwordPolicy"
+      />
+
+      <label v-if="newPassword" class="field">
+        <span>Confirm new password</span>
+        <PasswordInput v-model="confirmPassword" mode="new" autocomplete="new-password" :required="true" />
       </label>
 
       <label v-if="newPassword" class="field">
         <span>Current password (required to set a new one)</span>
-        <input
+        <PasswordInput
           v-model="currentPassword"
-          type="password"
+          mode="new"
           autocomplete="current-password"
-          required
+          :required="true"
         />
       </label>
 

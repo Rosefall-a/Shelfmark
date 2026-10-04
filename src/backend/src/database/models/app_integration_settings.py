@@ -51,6 +51,11 @@ class AppIntegrationSettings(Base):
     xbox_client_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     xbox_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    password_min_length: Mapped[int | None] = mapped_column(nullable=True)
+    password_require_uppercase: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_lowercase: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_digit: Mapped[bool | None] = mapped_column(nullable=True)
+    password_require_symbol: Mapped[bool | None] = mapped_column(nullable=True)
     # Admin-editable override for MAX_UPLOAD_SIZE_MB (core/config.py) — null
     # means "use the .env default", so a deployment that never touches this
     # in Settings behaves exactly as it did before this column existed.

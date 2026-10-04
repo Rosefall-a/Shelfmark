@@ -3,7 +3,7 @@ export interface OidcProviderSetting {
   slug: string;
   issuer_url: string;
   client_id: string;
-  client_secret?: string;
+  client_secret: string;
   scopes: string;
   redirect_uri: string | null;
   groups_claim: string;

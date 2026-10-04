@@ -25,16 +25,38 @@ SESSION_COOKIE_PREFIX: Final = "session_"
 SESSION_TTL_SECONDS: Final = 30 * 24 * 60 * 60
 API_KEY_PREFIX: Final = "utk_"
 
+_password_policy_override: dict[str, int | bool] | None = None
+
+
+def password_policy() -> dict[str, int | bool]:
+    if _password_policy_override is not None:
+        return dict(_password_policy_override)
+    return {
+        "min_length": settings.PASSWORD_MIN_LENGTH,
+        "require_uppercase": settings.PASSWORD_REQUIRE_UPPERCASE,
+        "require_lowercase": settings.PASSWORD_REQUIRE_LOWERCASE,
+        "require_digit": settings.PASSWORD_REQUIRE_DIGIT,
+        "require_symbol": settings.PASSWORD_REQUIRE_SYMBOL,
+    }
+
+
+def set_password_policy_override(policy: dict[str, int | bool] | None) -> None:
+    global _password_policy_override
+    _password_policy_override = dict(policy) if policy is not None else None
+
 
 def validate_password(password: str) -> str:
-    """Validate the minimum password policy and return the original value."""
-    if len(password) < 9:
-        raise ValueError("Password must be at least 9 characters long.")
-    if not re.search(r"[A-Z]", password):
+    """Validate the configured password policy and return the original value."""
+    policy = password_policy()
+    if len(password) < policy["min_length"]:
+        raise ValueError(f"Password must be at least {policy['min_length']} characters long.")
+    if policy["require_uppercase"] and not re.search(r"[A-Z]", password):
         raise ValueError("Password must contain an uppercase letter.")
-    if not re.search(r"[a-z]", password):
+    if policy["require_lowercase"] and not re.search(r"[a-z]", password):
         raise ValueError("Password must contain a lowercase letter.")
-    if not re.search(r"[^A-Za-z0-9]", password):
+    if policy["require_digit"] and not re.search(r"\d", password):
+        raise ValueError("Password must contain a number.")
+    if policy["require_symbol"] and not re.search(r"[^A-Za-z0-9]", password):
         raise ValueError("Password must contain a symbol.")
     return password
 

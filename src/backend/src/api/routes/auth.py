@@ -21,7 +21,9 @@ from src.core.auth import (
     get_current_user,
     hash_password,
     hash_token,
+    password_policy,
     revoke_session,
+    set_password_policy_override,
     validate_password,
     verify_password,
 )
@@ -29,6 +31,7 @@ from src.core.config import settings
 from src.core.crypto import encrypt_secret
 from src.database.models.auth import UserApiKey, UserSession
 from src.database.models.user import User
+from src.database.models.app_integration_settings import AppIntegrationSettings
 from src.database.session import get_db
 from src.features.metadata.games.psn import PSNClient, PSNError
 
@@ -78,6 +81,60 @@ class UserProfileUpdateRequest(BaseModel):
     @classmethod
     def validate_new_password(cls, value: str | None) -> str | None:
         return validate_password(value) if value is not None else None
+
+
+
+@router.get("/password-policy")
+async def get_password_policy() -> dict[str, int | bool]:
+    """Return the effective local-password policy without exposing secrets."""
+    return password_policy()
+
+
+class PasswordPolicyUpdate(BaseModel):
+    min_length: int = Field(ge=1, le=1024)
+    require_uppercase: bool
+    require_lowercase: bool
+    require_digit: bool
+    require_symbol: bool
+
+
+@router.put("/password-policy")
+async def update_password_policy(
+    payload: PasswordPolicyUpdate,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int | bool]:
+    del admin
+    from src.core.env_handler import EnvConfigHandler
+
+    handler = EnvConfigHandler()
+    if any(handler.has(name) for name in (
+        "PASSWORD_MIN_LENGTH",
+        "PASSWORD_REQUIRE_UPPERCASE",
+        "PASSWORD_REQUIRE_LOWERCASE",
+        "PASSWORD_REQUIRE_DIGIT",
+        "PASSWORD_REQUIRE_SYMBOL",
+    )):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Password policy is managed by the deployment environment and cannot be changed here.",
+        )
+
+    row = await db.scalar(select(AppIntegrationSettings).limit(1))
+    if row is None:
+        row = AppIntegrationSettings()
+        db.add(row)
+        await db.flush()
+
+    policy = payload.model_dump()
+    row.password_min_length = policy["min_length"]
+    row.password_require_uppercase = policy["require_uppercase"]
+    row.password_require_lowercase = policy["require_lowercase"]
+    row.password_require_digit = policy["require_digit"]
+    row.password_require_symbol = policy["require_symbol"]
+    await db.commit()
+    set_password_policy_override(policy)
+    return policy
 
 
 @router.post("/login")
