@@ -221,8 +221,14 @@ router.beforeEach(async (to, from) => {
     setStartupState("checking");
     try {
       const status = await fetchSetupStatus();
-      setupState = status.setup_required ? "required" : "complete";
-      if (!status.setup_required && !status.startup_ui_enabled && to.path !== "/setup" && !startupUiShown) {
+      const state = classifySetupStatus(status);
+      setupState = state === "setup-required" ? "required" : "complete";
+      if (state === "setup-required") {
+        setStartupState("setup-required");
+      } else if (!status.startup_ui_enabled && to.path !== "/setup" && !startupUiShown) {
+        startupUiShown = true;
+        return setupRedirect(to.fullPath);
+      } else {
         startupUiShown = true;
       }
     } catch (err) {
@@ -256,9 +262,30 @@ router.beforeEach(async (to, from) => {
   }
 
   if (to.path === "/setup") {
-    const status = await fetchSetupStatus();
-    if (status.setup_required || !status.startup_ui_enabled) { startupUiShown = true; return; }
-    return currentUser.value ? "/" : "/login";
+    try {
+      const status = await fetchSetupStatus();
+      if (status.setup_required) {
+        setStartupState("setup-required");
+        return;
+      }
+      setupState = "complete";
+      const returnPath = safeReturnPath(to.query.return_to);
+      if (!authChecked.value) await checkAuth();
+      if (currentUser.value) {
+        setStartupState("ready");
+        return returnPath ?? "/";
+      }
+      setStartupState("auth-required");
+      return returnPath
+        ? { path: "/login", query: { return_to: returnPath } }
+        : "/login";
+    } catch (err) {
+      setStartupState(
+        "unavailable",
+        err instanceof Error ? err.message : "Unable to reach the backend.",
+      );
+      return false;
+    }
   }
 
   // This public route deliberately bypasses the normal auth redirect so a

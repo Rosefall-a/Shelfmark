@@ -52,7 +52,7 @@ onMounted(async () => {
     )
     .catch(() => ({ enabled: false }));
   passwordResetAvailable.value = resetStatus.enabled;
-  if (route.query.oidc === "success") { await checkAuth(); await router.replace("/"); return; }
+  if (route.query.oidc === "success") { await checkAuth(); await router.replace(destination()); return; }
   if (typeof route.query.oidc_error === "string") error.value = oidcMessages[route.query.oidc_error] ?? "SSO sign-in failed.";
   if (localOnly) return;
   const oidc = await oidcLoginStatus();
@@ -66,11 +66,11 @@ onMounted(async () => {
 async function submit() {
   if (!usernameOrEmail.value.trim() || !password.value) { error.value = "Enter your username/email and password."; return; }
   loading.value = true; error.value = null;
-  try { await login(usernameOrEmail.value.trim(), password.value); await checkAuth(); await router.push("/"); }
+  try { await login(usernameOrEmail.value.trim(), password.value); await checkAuth(); await router.replace(destination()); }
   catch (err) { error.value = err instanceof Error ? err.message : "Login failed"; }
   finally { loading.value = false; }
 }
-function sso(slug?: string) { oidcLoading.value = true; error.value = null; try { startOidcLogin(slug); } catch (err) { error.value = err instanceof Error ? err.message : "Unable to start SSO."; oidcLoading.value = false; } }
+function sso(slug?: string) { rememberReturnPath(route.query.return_to); oidcLoading.value = true; error.value = null; try { startOidcLogin(slug); } catch (err) { error.value = err instanceof Error ? err.message : "Unable to start SSO."; oidcLoading.value = false; } }
 function buttonStyle(provider: OidcLoginProvider) { const hex = (provider.button_color || "#d68a34").slice(1); const r = parseInt(hex.slice(0, 2), 16); const g = parseInt(hex.slice(2, 4), 16); const b = parseInt(hex.slice(4, 6), 16); return { backgroundColor: provider.button_color || "#d68a34", borderColor: provider.button_color || "#d68a34", color: (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff" }; }
 </script>
 <template>
