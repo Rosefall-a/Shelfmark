@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
 
-from src.core.auth import SESSION_COOKIE, SESSION_TTL_SECONDS, hash_password, hash_token
+from src.core.auth import SESSION_TTL_SECONDS, hash_password, hash_token, session_cookie_name
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.oidc import OidcConfig, begin_oidc, oauth, register_oidc_provider
@@ -295,7 +295,7 @@ async def _complete_callback(request, db, config, client_name):
     await db.commit()
     response = RedirectResponse("/login?oidc=success", 303)
     response.set_cookie(
-        key=SESSION_COOKIE,
+        key=session_cookie_name(request.headers.get("host", "")),
         value=session_token,
         max_age=SESSION_TTL_SECONDS,
         httponly=True,
