@@ -33,6 +33,8 @@ export interface Movie {
   priority: string | null;
   favorite: boolean;
   rewatches: number;
+  // minutes into the movie where you left off, null when not started or done
+  progressMinutes: number | null;
   note: string | null;
   startDate: string | null;
   endDate: string | null;

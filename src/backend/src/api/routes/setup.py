@@ -12,12 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import (
-    SESSION_COOKIE,
     SESSION_TTL_SECONDS,
     get_current_admin,
     hash_password,
     hash_token,
     set_password_policy_override,
+    session_cookie_name,
     validate_password,
 )
 from src.core.config import settings
@@ -416,7 +416,7 @@ async def setup_admin(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists.") from exc
 
     response.set_cookie(
-        key=SESSION_COOKIE,
+        key=session_cookie_name(request.headers.get("host", "")),
         value=session_token,
         max_age=SESSION_TTL_SECONDS,
         httponly=True,

@@ -7,6 +7,7 @@
 import { computed, ref, watch } from "vue";
 import CheckIcon from "./CheckIcon.vue";
 import { formatAiringCountdown } from "../utils/countdown";
+import { blurOnLeave } from "../utils/blurOnLeave";
 
 export interface EpisodeVM {
   id: string;
@@ -278,6 +279,7 @@ function goToPage(p: number) {
           projected:
             countdownFor(ep.episodeNumber) && isProjectedFor(ep.episodeNumber),
         }"
+        @mouseleave="blurOnLeave"
       >
         <button
           type="button"

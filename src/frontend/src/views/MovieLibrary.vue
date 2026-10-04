@@ -82,10 +82,15 @@ async function loadMore() {
   if (loading.value || movies.value.length >= total.value) return;
   loading.value = true;
   try {
-    const page = await fetchMoviesPage(movies.value.length, pageSize, currentSearch.value);
+    const page = await fetchMoviesPage(
+      movies.value.length,
+      pageSize,
+      currentSearch.value,
+    );
     movies.value.push(...page.items);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Failed to load more movies.";
+    error.value =
+      e instanceof Error ? e.message : "Failed to load more movies.";
   } finally {
     loading.value = false;
   }

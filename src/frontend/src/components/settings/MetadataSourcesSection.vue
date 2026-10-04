@@ -549,11 +549,18 @@ function passwordPlaceholder(
   return `Paste your ${label.toLowerCase()}`;
 }
 
+// no personal key, but the server's own key covers searches (#234)
+function usesServerKey(key: string): boolean {
+  const entry = credentialStatus[key];
+  return entry?.status === "not_configured" && !!entry.server_configured;
+}
+
 function statusLabel(key: string): string {
   const status = credentialStatus[key]?.status;
   if (status === "connected") return "Connected";
   if (status === "saved" || status === "configured") return "Saved";
   if (status === "error") return "Error";
+  if (usesServerKey(key)) return "Using server key";
   return "Not configured";
 }
 function statusClass(key: string): string {
@@ -561,6 +568,7 @@ function statusClass(key: string): string {
   if (status === "connected") return "connected";
   if (status === "saved" || status === "configured") return "saved";
   if (status === "error") return "error";
+  if (usesServerKey(key)) return "saved";
   return "disconnected";
 }
 
@@ -710,6 +718,12 @@ async function toggleHltb(enabled: boolean) {
       achievement/account connections. Click a tile's key icon to configure it:
       hover a name for details.
     </p>
+    <p class="section-hint">
+      Keys saved here are yours alone. An administrator can also set server-wide
+      keys under Settings &rsaquo; Server Integrations; those are used for
+      anyone without their own, shown here as "Using server key". A key of your
+      own always takes precedence for your account.
+    </p>
 
     <h3 class="group-heading">Metadata</h3>
 
@@ -728,14 +742,26 @@ async function toggleHltb(enabled: boolean) {
         <div class="tile-body">
           <span
             class="tile-name"
-            title="Cover art and hero banners. Your key alone, not shared with other accounts."
+            title="Cover art and hero banners. Your own key, used instead of the server's for your account."
             >SteamGridDB</span
           >
           <span
             class="tile-status"
-            :class="steamgriddbApiKey ? 'connected' : 'disconnected'"
+            :class="
+              steamgriddbApiKey
+                ? 'connected'
+                : credentialStatus.SteamGridDB?.server_configured
+                  ? 'saved'
+                  : 'disconnected'
+            "
           >
-            {{ steamgriddbApiKey ? "Configured" : "Not configured" }}
+            {{
+              steamgriddbApiKey
+                ? "Configured"
+                : credentialStatus.SteamGridDB?.server_configured
+                  ? "Using server key"
+                  : "Not configured"
+            }}
           </span>
         </div>
         <p class="tile-desc">{{ SHORT_DESC.SteamGridDB }}</p>

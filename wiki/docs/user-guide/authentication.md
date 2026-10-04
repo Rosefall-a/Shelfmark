@@ -23,11 +23,11 @@ The application supplies its own visibility control and suppresses Edge's native
 
 Users can create API keys for integrations that need to authenticate without a browser session.
 
-API keys use the \`utk_\` prefix and are sent as:
+API keys use the `utk_` prefix and are sent as:
 
-\`\`\`http
+```http
 Authorization: Bearer utk_<secret>
-\`\`\`
+```
 
 Keys are associated with the user who created them and can be revoked. The server stores a hash of the key rather than the full secret.
 

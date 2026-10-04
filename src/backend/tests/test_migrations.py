@@ -47,3 +47,29 @@ def test_a_key_saved_in_settings_wins_over_the_environment(monkeypatch):
     assert keys.tmdb_api_key == "from-settings" and keys.sources["tmdb_api_key"] == "database"
     assert keys.omdb_api_key == "omdb-env" and keys.sources["omdb_api_key"] == "environment"
     assert keys.tvdb_api_key is None and "tvdb_api_key" not in keys.sources
+
+
+def test_every_migration_after_the_baseline_is_safe_to_rerun():
+    """migrate.py adopts a database from an older (squashed) history by
+    attaching it to the baseline and running every later migration on it.
+    Doing exactly that on the already-migrated test database must succeed and
+    change nothing, or an existing install would fail to start."""
+    from alembic import command
+    from sqlalchemy import create_engine, text
+
+    from src.core.config import settings
+
+    cfg = Config("alembic.ini")
+    script = _script()
+    head = script.get_current_head()
+    command.stamp(cfg, script.get_bases()[0], purge=True)
+    try:
+        command.upgrade(cfg, "head")
+    finally:
+        # never leave the shared test database detached from its real version
+        command.stamp(cfg, head, purge=True)
+
+    engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg"))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == head
+    engine.dispose()

@@ -9,6 +9,7 @@ import {
 } from "../services/oidc";
 import { checkAuth } from "../state/auth";
 import PasswordInput from "../components/PasswordInput.vue";
+import { consumeReturnPath, rememberReturnPath } from "../state/startup";
 
 const route = useRoute();
 const router = useRouter();
@@ -24,27 +25,52 @@ const ssoButtonText = ref("Continue with SSO");
 const oidcProviders = ref<OidcLoginProvider[]>([]);
 const passwordResetAvailable = ref(false);
 
+function destination(): string {
+  return consumeReturnPath(route.query.return_to) ?? "/";
+}
+
 const oidcMessages: Record<string, string> = {
-  not_configured: "SSO is not configured yet.", provider_unavailable: "The SSO provider is currently unavailable.", authentication_failed: "SSO authentication failed. Please try again.", verified_email_required: "Your SSO account must provide a verified email address.", account_disabled: "This account is disabled.", identity_missing: "Your SSO account did not provide the identity field required for account matching.", identity_conflict: "This SSO identity is already linked to another account.", user_creation_disabled: "Your SSO account is not registered and automatic account creation is disabled.",
+  not_configured: "SSO is not configured yet.",
+  provider_unavailable: "The SSO provider is currently unavailable.",
+  authentication_failed: "SSO authentication failed. Please try again.",
+  verified_email_required:
+    "Your SSO account must provide a verified email address.",
+  account_disabled: "This account is disabled.",
+  identity_missing:
+    "Your SSO account did not provide the identity field required for account matching.",
+  identity_conflict: "This SSO identity is already linked to another account.",
+  user_creation_disabled:
+    "Your SSO account is not registered and automatic account creation is disabled.",
 };
 
 onMounted(async () => {
-  const resetStatus = await fetch("/api/auth/password-reset/status").then(async (response) => response.ok ? response.json() as Promise<{ enabled: boolean }> : { enabled: false }).catch(() => ({ enabled: false }));
+  const resetStatus = await fetch("/api/auth/password-reset/status")
+    .then(async (response) =>
+      response.ok
+        ? (response.json() as Promise<{ enabled: boolean }>)
+        : { enabled: false },
+    )
+    .catch(() => ({ enabled: false }));
   passwordResetAvailable.value = resetStatus.enabled;
-  if (route.query.oidc === "success") { await checkAuth(); await router.replace("/"); return; }
+  if (route.query.oidc === "success") { await checkAuth(); await router.replace(destination()); return; }
   if (typeof route.query.oidc_error === "string") error.value = oidcMessages[route.query.oidc_error] ?? "SSO sign-in failed.";
   if (localOnly) return;
-  const oidc = await oidcLoginStatus(); oidcAvailable.value = oidc.enabled; oidcProviders.value = oidc.providers; ssoButtonText.value = oidc.login_button_text; loginMethod.value = oidc.enabled && oidc.default_login_method === "sso" ? "sso" : "local";
+  const oidc = await oidcLoginStatus();
+  oidcAvailable.value = oidc.enabled;
+  oidcProviders.value = oidc.providers;
+  ssoButtonText.value = oidc.login_button_text;
+  loginMethod.value =
+    oidc.enabled && oidc.default_login_method === "sso" ? "sso" : "local";
 });
 
 async function submit() {
   if (!usernameOrEmail.value.trim() || !password.value) { error.value = "Enter your username/email and password."; return; }
   loading.value = true; error.value = null;
-  try { await login(usernameOrEmail.value.trim(), password.value); await checkAuth(); await router.push("/"); }
+  try { await login(usernameOrEmail.value.trim(), password.value); await checkAuth(); await router.replace(destination()); }
   catch (err) { error.value = err instanceof Error ? err.message : "Login failed"; }
   finally { loading.value = false; }
 }
-function sso(slug?: string) { oidcLoading.value = true; error.value = null; try { startOidcLogin(slug); } catch (err) { error.value = err instanceof Error ? err.message : "Unable to start SSO."; oidcLoading.value = false; } }
+function sso(slug?: string) { rememberReturnPath(route.query.return_to); oidcLoading.value = true; error.value = null; try { startOidcLogin(slug); } catch (err) { error.value = err instanceof Error ? err.message : "Unable to start SSO."; oidcLoading.value = false; } }
 function buttonStyle(provider: OidcLoginProvider) { const hex = (provider.button_color || "#d68a34").slice(1); const r = parseInt(hex.slice(0, 2), 16); const g = parseInt(hex.slice(2, 4), 16); const b = parseInt(hex.slice(4, 6), 16); return { backgroundColor: provider.button_color || "#d68a34", borderColor: provider.button_color || "#d68a34", color: (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff" }; }
 </script>
 <template>

@@ -1,9 +1,12 @@
 # app/main.py
 import asyncio
 
-from fastapi import FastAPI
-from starlette.middleware.sessions import SessionMiddleware
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.routes import (
     app_integrations,
@@ -60,6 +63,24 @@ app.add_middleware(
 
 # The anime list alone is several MB of JSON; it compresses roughly tenfold.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# Pydantic's default 422 body echoes what was submitted (`input`, plus the
+# raw values in `ctx`), which puts plaintext passwords, tokens and API keys
+# into the browser, error UI and any proxy log. Keep only where the problem
+# is and what it is.
+_VALIDATION_ERROR_KEYS = ("type", "loc", "msg")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_without_submitted_values(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    errors = [
+        {key: error[key] for key in _VALIDATION_ERROR_KEYS if key in error}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
 
 app.include_router(default_game_assets.router)
 app.include_router(games.router)

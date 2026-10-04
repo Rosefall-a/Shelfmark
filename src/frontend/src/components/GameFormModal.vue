@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import {
   attachGameAssetFromUrl,
   createGame,
   fetchGames,
+  rankMetadataResults,
   searchGameMetadata,
   updateGame,
   uploadGameAsset,
@@ -17,6 +18,10 @@ import type {
 } from "../types/game";
 import type { GameLink, GameOwnership } from "../types/game";
 import { currentUser } from "../state/auth";
+import { fetchProviderCredentials } from "../services/settings";
+import { localDateInputToUnixSeconds, toLocalDateInput } from "../utils/dates";
+import { PRIORITY_OPTIONS, isFinished } from "../utils/priority";
+import { RETRO_PLATFORM_OPTIONS } from "../utils/platforms";
 
 const props = defineProps<{
   game?: Game | null;
@@ -27,6 +32,8 @@ const props = defineProps<{
 // GameDetail, CollectionDetail, HomeHub), so it works consistently
 // regardless of caller
 const availableParentGames = ref<Game[]>([]);
+// the ISO 4217 codes the API accepts (#11), so a typo can't fail the save
+const currencyCodes = ref<string[]>([]);
 onMounted(async () => {
   try {
     availableParentGames.value = (await fetchGames()).filter(
@@ -35,7 +42,50 @@ onMounted(async () => {
   } catch {
     // parent picker just stays empty, not worth failing the whole form
   }
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") return;
+  fetchProviderCredentials()
+    .then((status) => {
+      serverHasSteamgriddbKey.value = !!status.SteamGridDB?.server_configured;
+    })
+    .catch(() => {
+      // the hint just stays visible
+    });
+  try {
+    const response = await fetch("/api/currency-codes", {
+      credentials: "include",
+    });
+    if (response.ok) {
+      const body: { codes?: string[] } = await response.json();
+      currencyCodes.value = body.codes ?? [];
+    }
+  } catch {
+    // falls back to the free-text currency field
+  }
 });
+
+// suggestions only: any other system can still be typed in
+const PLATFORM_SUGGESTIONS = [
+  "PC",
+  "PlayStation 5",
+  "PlayStation 4",
+  "PlayStation 3",
+  "PS Vita",
+  "Xbox Series X|S",
+  "Xbox One",
+  "Xbox 360",
+  "Nintendo Switch",
+  "Nintendo Switch 2",
+  "Wii U",
+  "Wii",
+  "Nintendo 3DS",
+  "Nintendo DS",
+  "Steam Deck",
+  "Mac",
+  "Linux",
+  "Android",
+  "iOS",
+  ...RETRO_PLATFORM_OPTIONS,
+];
 
 const emit = defineEmits<{
   close: [];
@@ -56,17 +106,72 @@ const statuses: GameStatus[] = [
   "wishlist",
 ];
 
-const tabs = [
+const EDIT_TABS = [
   "General",
   "Ratings & Tags",
   "Media",
   "Links",
   "Ownership",
 ] as const;
-const activeTab = ref<(typeof tabs)[number]>("General");
+type Tab = "Find" | (typeof EDIT_TABS)[number];
+// Adding a game is a step-by-step flow (#55): a skippable metadata search
+// first, then each tab in turn with Next, and Add Game only on the last one.
+// Editing keeps the tabs as a plain form with the search on General.
+const tabs = computed<Tab[]>(() =>
+  isEditing.value ? [...EDIT_TABS] : ["Find", ...EDIT_TABS],
+);
+const activeTab = ref<Tab>(isEditing.value ? "General" : "Find");
+const stepIndex = computed(() => tabs.value.indexOf(activeTab.value));
+const isLastStep = computed(() => stepIndex.value === tabs.value.length - 1);
+const metadataApplied = ref(false);
+
+// keep the current step's tab in view when the tab row scrolls (phones)
+const tabsEl = ref<HTMLElement | null>(null);
+watch(activeTab, () =>
+  nextTick(() =>
+    tabsEl.value
+      ?.querySelector(".modal-tab.active")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+  ),
+);
+
+function validateGeneral(): boolean {
+  if (!title.value.trim()) {
+    error.value = "Title is required.";
+    activeTab.value = "General";
+    return false;
+  }
+  if (!isEditing.value && !folderLocation.value.trim()) {
+    error.value = "Folder name is required.";
+    activeTab.value = "General";
+    return false;
+  }
+  return true;
+}
+
+function goToStep(offset: number) {
+  if (offset > 0 && activeTab.value === "General" && !validateGeneral()) return;
+  error.value = null;
+  const next = tabs.value[stepIndex.value + offset];
+  if (next) activeTab.value = next;
+}
+
+// Only the last step (or the edit form) has a submit button, so Enter in a
+// field can't create a half-filled game early; if a submit does arrive
+// before the last step it moves on instead
+function onFormSubmit() {
+  if (!isEditing.value && !isLastStep.value) {
+    goToStep(1);
+    return;
+  }
+  void submit();
+}
 
 const title = ref(props.game?.title ?? "");
-const sortTitle = ref("");
+// the saved custom sorting name, blank when the library sorts by the title
+const sortTitle = ref(props.game?.sortTitle ?? "");
+const platform = ref(props.game?.platform ?? "");
+const priority = ref(props.game?.priority ?? "");
 const folderLocation = ref(props.game?.folderLocation ?? "");
 const status = ref<GameStatus>(props.game?.status ?? "backlog");
 const developer = ref(props.game?.developer ?? "");
@@ -89,7 +194,10 @@ const RELATIONSHIP_TYPE_OPTIONS: {
 ];
 const source = ref(props.game?.source ?? "");
 const ageRating = ref(props.game?.ageRating ?? "");
-const timeToBeatHours = ref(
+// v-model on a type="number" input hands back a number once it's typed in,
+// a string otherwise, so this must never assume either (calling .trim() on
+// the number made every save with a typed-in time to beat throw)
+const timeToBeatHours = ref<string | number>(
   props.game?.timeToBeatHours != null ? String(props.game.timeToBeatHours) : "",
 );
 const region = ref(props.game?.region ?? "");
@@ -98,9 +206,11 @@ const achievementsProvider = ref<AchievementsProvider>(
   props.game?.achievementsProvider ?? null,
 );
 const releaseDate = ref(props.game?.releaseDate ?? "");
-const dateAdded = ref(
-  props.game?.dateAdded ?? new Date().toISOString().slice(0, 10),
-);
+// the local calendar day (what <input type="date"> shows), the stored value
+// is a full timestamp; only sent back if it was actually changed, so saving
+// the form doesn't reset the time a game was added to midnight
+const initialDateAdded = toLocalDateInput(props.game?.dateAdded ?? new Date());
+const dateAdded = ref(initialDateAdded);
 const description = ref(props.game?.description ?? "");
 const profilesEnabled = ref(props.game?.profilesEnabled ?? false);
 const osrsStatsEnabled = ref(props.game?.osrsStatsEnabled ?? false);
@@ -151,8 +261,13 @@ const pickedBannerUrl = ref<string | null>(null);
 const keyArtCandidates = ref<string[]>([]);
 const bannerCandidates = ref<string[]>([]);
 
+// a personal key, or a server-wide one that searches fall back to (#234)
+const serverHasSteamgriddbKey = ref(false);
 const hasSteamgriddbKey = computed(
-  () => !!currentUser.value?.steamgriddb_api_key,
+  () =>
+    !!currentUser.value?.steamgriddb_api_key ||
+    serverHasSteamgriddbKey.value ||
+    steamgriddbConfigured.value,
 );
 
 async function searchMetadata() {
@@ -164,8 +279,9 @@ async function searchMetadata() {
   metadataMessage.value = null;
   providerWarnings.value = [];
   try {
-    const response = await searchGameMetadata(metadataQuery.value.trim());
-    metadataResults.value = response.results;
+    const query = metadataQuery.value.trim();
+    const response = await searchGameMetadata(query);
+    metadataResults.value = rankMetadataResults(response.results, query);
     steamgriddbConfigured.value = response.steamgriddb_configured;
     providerWarnings.value = response.provider_errors ?? [];
     if (!metadataResults.value.length)
@@ -206,6 +322,8 @@ function applyMetadata(result: MetadataSearchResult) {
   metadataResults.value = [];
   metadataQuery.value = result.title;
   metadataMessage.value = `Prefilled from ${result.provider}. Review the fields before saving.`;
+  metadataApplied.value = true;
+  if (!isEditing.value) activeTab.value = "General";
 }
 
 // when editing, the folder name is already real data, don't let the
@@ -235,16 +353,7 @@ function onBannerFileChange(e: Event) {
 }
 
 async function submit() {
-  if (!title.value.trim()) {
-    error.value = "Title is required.";
-    activeTab.value = "General";
-    return;
-  }
-  if (!isEditing.value && !folderLocation.value.trim()) {
-    error.value = "Folder name is required.";
-    activeTab.value = "General";
-    return;
-  }
+  if (!validateGeneral()) return;
 
   saving.value = true;
   error.value = null;
@@ -264,10 +373,16 @@ async function submit() {
       : null,
     releaseDate: releaseDate.value || null,
     dateAdded: dateAdded.value || null,
+    createdAt:
+      dateAdded.value && dateAdded.value !== initialDateAdded
+        ? localDateInputToUnixSeconds(dateAdded.value)
+        : null,
     completionDate: completionDate.value || null,
     source: source.value.trim() || null,
+    platform: platform.value.trim() || null,
+    priority: priority.value || null,
     ageRating: ageRating.value.trim() || null,
-    timeToBeatHours: timeToBeatHours.value.trim()
+    timeToBeatHours: String(timeToBeatHours.value).trim()
       ? Number(timeToBeatHours.value)
       : null,
     region: region.value.trim() || null,
@@ -348,7 +463,7 @@ async function submit() {
         </button>
       </div>
 
-      <nav class="modal-tabs">
+      <nav ref="tabsEl" class="modal-tabs">
         <button
           v-for="tab in tabs"
           :key="tab"
@@ -361,10 +476,16 @@ async function submit() {
         </button>
       </nav>
 
-      <form class="modal-form" @submit.prevent="submit">
+      <form class="modal-form" @submit.prevent="onFormSubmit">
         <div class="modal-body">
-          <div v-if="activeTab === 'General'" class="tab-panel">
-            <div class="metadata-search">
+          <div
+            v-if="activeTab === 'General' || activeTab === 'Find'"
+            class="tab-panel"
+          >
+            <div
+              v-if="activeTab === 'Find' || isEditing"
+              class="metadata-search"
+            >
               <div class="search-heading">
                 <strong>Find game metadata</strong>
                 <span
@@ -374,8 +495,10 @@ async function submit() {
               </div>
               <p v-if="!hasSteamgriddbKey" class="steamgriddb-hint">
                 Add your own SteamGridDB API key in
-                <router-link to="/settings" @click="emit('close')"
-                  >Settings</router-link
+                <router-link
+                  to="/settings?section=sources"
+                  @click="emit('close')"
+                  >Settings &rsaquo; Metadata/API</router-link
                 >
                 to also pull real cover and hero art automatically: without it,
                 only Steam's own (often lower-quality) images are used.
@@ -385,7 +508,8 @@ async function submit() {
                   v-model="metadataQuery"
                   type="search"
                   placeholder="Search by game title"
-                  @keyup.enter="searchMetadata"
+                  aria-label="Search game metadata by title"
+                  @keydown.enter.prevent="searchMetadata"
                 />
                 <button
                   type="button"
@@ -419,189 +543,236 @@ async function submit() {
                   {{ warning }}
                 </li>
               </ul>
+              <p v-if="activeTab === 'Find'" class="hint">
+                Pick a match to fill in the next steps for you, or skip this and
+                enter everything by hand.
+              </p>
             </div>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Title</span>
-                <input
-                  v-model="title"
-                  type="text"
-                  required
-                  @blur="suggestFolderFromTitle"
-                />
-              </label>
-              <label class="field">
-                <span>Sorting Name</span>
-                <input
-                  v-model="sortTitle"
-                  type="text"
-                  placeholder="defaults to Title"
-                />
-              </label>
-            </div>
+            <template v-if="activeTab === 'General'">
+              <div class="field-row">
+                <label class="field">
+                  <span>Title</span>
+                  <input
+                    v-model="title"
+                    type="text"
+                    required
+                    @blur="suggestFolderFromTitle"
+                  />
+                </label>
+                <label class="field">
+                  <span>Sorting Name</span>
+                  <input
+                    v-model="sortTitle"
+                    type="text"
+                    placeholder="defaults to Title"
+                  />
+                </label>
+              </div>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Folder name</span>
-                <input
-                  v-model="folderLocation"
-                  type="text"
-                  :required="!isEditing"
-                  pattern="[A-Za-z0-9_-]+"
-                  :placeholder="isEditing ? 'leave blank to keep current' : ''"
-                  @input="folderTouched = true"
-                />
-              </label>
-              <label class="field">
-                <span>Status</span>
-                <select v-model="status">
-                  <option v-for="s in statuses" :key="s" :value="s">
-                    {{ s }}
-                  </option>
-                </select>
-              </label>
-            </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Folder name</span>
+                  <input
+                    v-model="folderLocation"
+                    type="text"
+                    :required="!isEditing"
+                    pattern="[A-Za-z0-9_\-]+"
+                    title="Letters, numbers, underscores and hyphens only"
+                    :placeholder="
+                      isEditing ? 'leave blank to keep current' : ''
+                    "
+                    @input="folderTouched = true"
+                  />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select v-model="status">
+                    <option v-for="s in statuses" :key="s" :value="s">
+                      {{ s }}
+                    </option>
+                  </select>
+                </label>
+              </div>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Developer</span>
-                <input v-model="developer" type="text" />
-              </label>
-              <label class="field">
-                <span>Publisher</span>
-                <input v-model="publisher" type="text" />
-              </label>
-            </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Developer</span>
+                  <input v-model="developer" type="text" />
+                </label>
+                <label class="field">
+                  <span>Publisher</span>
+                  <input v-model="publisher" type="text" />
+                </label>
+              </div>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Series</span>
-                <input v-model="series" type="text" />
-              </label>
-              <label class="field">
-                <span>Source</span>
-                <input
-                  v-model="source"
-                  type="text"
-                  placeholder="Steam, GOG, physical..."
-                />
-              </label>
-            </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Series</span>
+                  <input v-model="series" type="text" />
+                </label>
+                <label class="field">
+                  <span>Source</span>
+                  <input
+                    v-model="source"
+                    type="text"
+                    placeholder="Steam, GOG, physical..."
+                  />
+                </label>
+              </div>
 
-            <div class="field-row">
-              <label class="field">
-                <span>Parent game</span>
-                <select v-model="parentGameId">
-                  <option value="">None: this is its own game</option>
-                  <option
-                    v-for="g in availableParentGames"
-                    :key="g.id"
-                    :value="g.id"
-                  >
-                    {{ g.title }}
-                  </option>
-                </select>
-              </label>
-              <label class="field">
-                <span>Relationship</span>
-                <select v-model="relationshipType" :disabled="!parentGameId">
-                  <option value="">N/A</option>
-                  <option
-                    v-for="opt in RELATIONSHIP_TYPE_OPTIONS"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
-                    {{ opt.label }}
-                  </option>
-                </select>
-              </label>
-            </div>
-
-            <div class="field-row">
-              <label class="checkbox-field">
-                <input v-model="profilesEnabled" type="checkbox" />
-                <span>
-                  Track multiple accounts on this game
+              <div class="field-row">
+                <label class="field">
+                  <span>Platform</span>
+                  <input
+                    v-model="platform"
+                    type="text"
+                    list="game-platform-suggestions"
+                    placeholder="PC, PlayStation 5, Switch..."
+                  />
+                  <datalist id="game-platform-suggestions">
+                    <option
+                      v-for="option in PLATFORM_SUGGESTIONS"
+                      :key="option"
+                      :value="option"
+                    />
+                  </datalist>
+                </label>
+                <label class="field">
+                  <span>Priority</span>
+                  <select v-model="priority">
+                    <option value="">None</option>
+                    <option
+                      v-for="option in PRIORITY_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
                   <small
-                    >Adds an account switcher with its own checklist and media
-                    for each account, useful for any game with multiple
-                    characters/accounts, not just OSRS.</small
+                    v-if="priority && isFinished(status)"
+                    class="field-hint"
+                    >Finished games are left out of priority sorting and the
+                    random picker.</small
                   >
-                </span>
-              </label>
-            </div>
+                </label>
+              </div>
 
-            <div v-if="profilesEnabled" class="field-row">
-              <label class="checkbox-field">
-                <input v-model="osrsStatsEnabled" type="checkbox" />
-                <span>
-                  Use OSRS stats (WiseOldMan)
-                  <small
-                    >Adds skill/boss syncing from wiseoldman.net, real skill
-                    icons, and dated stat history to each account. Only makes
-                    sense for Old School RuneScape.</small
-                  >
-                </span>
-              </label>
-            </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>Parent game</span>
+                  <select v-model="parentGameId">
+                    <option value="">None: this is its own game</option>
+                    <option
+                      v-for="g in availableParentGames"
+                      :key="g.id"
+                      :value="g.id"
+                    >
+                      {{ g.title }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Relationship</span>
+                  <select v-model="relationshipType" :disabled="!parentGameId">
+                    <option value="">N/A</option>
+                    <option
+                      v-for="opt in RELATIONSHIP_TYPE_OPTIONS"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                </label>
+              </div>
 
-            <div class="field-row">
+              <div class="field-row">
+                <label class="checkbox-field">
+                  <input v-model="profilesEnabled" type="checkbox" />
+                  <span>
+                    Track multiple accounts on this game
+                    <small
+                      >Adds an account switcher with its own checklist and media
+                      for each account, useful for any game with multiple
+                      characters/accounts, not just OSRS.</small
+                    >
+                  </span>
+                </label>
+              </div>
+
+              <div v-if="profilesEnabled" class="field-row">
+                <label class="checkbox-field">
+                  <input v-model="osrsStatsEnabled" type="checkbox" />
+                  <span>
+                    Use OSRS stats (WiseOldMan)
+                    <small
+                      >Adds skill/boss syncing from wiseoldman.net, real skill
+                      icons, and dated stat history to each account. Only makes
+                      sense for Old School RuneScape.</small
+                    >
+                  </span>
+                </label>
+              </div>
+
+              <div class="field-row">
+                <label class="field">
+                  <span>Age Rating</span>
+                  <input
+                    v-model="ageRating"
+                    type="text"
+                    placeholder="ESRB M, PEGI 18..."
+                  />
+                </label>
+                <label class="field">
+                  <span>Release Date</span>
+                  <input v-model="releaseDate" type="date" />
+                </label>
+              </div>
+
+              <div class="field-row">
+                <label class="field">
+                  <span>Time to Beat (hours)</span>
+                  <input
+                    v-model="timeToBeatHours"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="e.g. 12.5"
+                  />
+                </label>
+              </div>
+
+              <div class="field-row">
+                <label class="field">
+                  <span>Region</span>
+                  <input
+                    v-model="region"
+                    type="text"
+                    placeholder="NA, PAL, JP..."
+                  />
+                </label>
+                <label class="field">
+                  <span>Language</span>
+                  <input
+                    v-model="language"
+                    type="text"
+                    placeholder="English, Japanese..."
+                  />
+                </label>
+              </div>
+
               <label class="field">
-                <span>Age Rating</span>
-                <input
-                  v-model="ageRating"
-                  type="text"
-                  placeholder="ESRB M, PEGI 18..."
-                />
+                <span>Date added to library</span>
+                <input v-model="dateAdded" type="date" />
               </label>
-              <label class="field">
-                <span>Release Date</span>
-                <input v-model="releaseDate" type="date" />
-              </label>
-            </div>
 
-            <div class="field-row">
               <label class="field">
-                <span>Time to Beat (hours)</span>
-                <input
-                  v-model="timeToBeatHours"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="e.g. 12.5"
-                />
+                <span>Description</span>
+                <textarea v-model="description" rows="3"></textarea>
               </label>
-            </div>
-
-            <div class="field-row">
-              <label class="field">
-                <span>Region</span>
-                <input
-                  v-model="region"
-                  type="text"
-                  placeholder="NA, PAL, JP..."
-                />
-              </label>
-              <label class="field">
-                <span>Language</span>
-                <input
-                  v-model="language"
-                  type="text"
-                  placeholder="English, Japanese..."
-                />
-              </label>
-            </div>
-
-            <label class="field">
-              <span>Date added to library</span>
-              <input v-model="dateAdded" type="date" />
-            </label>
-
-            <label class="field">
-              <span>Description</span>
-              <textarea v-model="description" rows="3"></textarea>
-            </label>
+            </template>
           </div>
 
           <div v-else-if="activeTab === 'Ratings & Tags'" class="tab-panel">
@@ -664,15 +835,6 @@ async function submit() {
                 type="text"
                 placeholder="Achievements, Cloud Saves"
               />
-            </label>
-
-            <label class="field">
-              <span>Achievement Tracking</span>
-              <select v-model="achievementsProvider">
-                <option :value="null">None</option>
-                <option value="native">Native</option>
-                <option value="retroachievements">RetroAchievements</option>
-              </select>
             </label>
           </div>
 
@@ -807,7 +969,17 @@ async function submit() {
               </label>
               <label class="field">
                 <span>Currency</span>
+                <select v-if="currencyCodes.length" v-model="priceCurrency">
+                  <option
+                    v-for="code in currencyCodes"
+                    :key="code"
+                    :value="code"
+                  >
+                    {{ code }}
+                  </option>
+                </select>
                 <input
+                  v-else
                   v-model="priceCurrency"
                   type="text"
                   placeholder="USD"
@@ -838,11 +1010,37 @@ async function submit() {
           >
             Delete Game
           </button>
+          <span v-if="!isEditing" class="step-count">
+            Step {{ stepIndex + 1 }} of {{ tabs.length }}
+          </span>
           <div class="modal-actions-spacer"></div>
           <button type="button" class="secondary-button" @click="emit('close')">
             Cancel
           </button>
-          <button type="submit" class="primary-button" :disabled="saving">
+          <template v-if="!isEditing">
+            <button
+              v-if="stepIndex > 0"
+              type="button"
+              class="secondary-button"
+              @click="goToStep(-1)"
+            >
+              Back
+            </button>
+            <button
+              v-if="!isLastStep"
+              type="button"
+              class="primary-button"
+              @click="goToStep(1)"
+            >
+              {{ activeTab === "Find" && !metadataApplied ? "Skip" : "Next" }}
+            </button>
+          </template>
+          <button
+            v-if="isEditing || isLastStep"
+            type="submit"
+            class="primary-button"
+            :disabled="saving"
+          >
             {{ saving ? "Saving…" : isEditing ? "Save Changes" : "Add Game" }}
           </button>
         </div>
@@ -999,6 +1197,16 @@ async function submit() {
 .search-row input {
   flex: 1;
   min-width: 0;
+  background: #111;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 11px;
+  font: inherit;
+}
+.search-row input:focus {
+  outline: none;
+  border-color: #d68a34;
 }
 .metadata-results {
   display: grid;
@@ -1030,6 +1238,10 @@ async function submit() {
   font-size: 0.85rem;
   color: #ccc;
   flex: 1;
+  min-width: 0;
+}
+.tab-panel > .field {
+  flex: none;
 }
 .checkbox-field {
   display: flex;
@@ -1076,13 +1288,21 @@ async function submit() {
 }
 .field-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
-.ratings-row .field {
-  min-width: 0;
+.field-row > .field {
+  flex: 1 1 150px;
+}
+.ratings-row > .field {
+  flex-basis: 90px;
 }
 .link-row {
+  flex-wrap: nowrap;
   align-items: flex-end;
+}
+.link-row > .field {
+  flex-basis: 0;
 }
 .remove-button {
   background: rgba(220, 38, 38, 0.15);
@@ -1101,6 +1321,11 @@ async function submit() {
   color: #888;
   font-size: 0.8rem;
   margin: 0;
+}
+.field-hint {
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 .provider-warnings {
   list-style: none;
@@ -1172,6 +1397,14 @@ async function submit() {
 .modal-actions-spacer {
   flex: 1;
 }
+.step-count {
+  color: #888;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.modal-actions button {
+  white-space: nowrap;
+}
 .danger-button {
   background: rgba(220, 38, 38, 0.15);
   color: #fca5a5;
@@ -1218,5 +1451,28 @@ async function submit() {
 }
 .secondary-button:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+@media (max-width: 480px) {
+  .modal-header,
+  .modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .modal-tabs {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .modal-actions {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+  .step-count {
+    flex-basis: 100%;
+  }
+  .modal-actions .primary-button,
+  .modal-actions .secondary-button,
+  .modal-actions .danger-button {
+    padding: 10px 14px;
+  }
 }
 </style>

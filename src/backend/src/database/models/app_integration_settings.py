@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, String, Text
+from sqlalchemy import BigInteger, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -56,6 +56,10 @@ class AppIntegrationSettings(Base):
     password_require_lowercase: Mapped[bool | None] = mapped_column(nullable=True)
     password_require_digit: Mapped[bool | None] = mapped_column(nullable=True)
     password_require_symbol: Mapped[bool | None] = mapped_column(nullable=True)
+    # Admin-editable override for MAX_UPLOAD_SIZE_MB (core/config.py) — null
+    # means "use the .env default", so a deployment that never touches this
+    # in Settings behaves exactly as it did before this column existed.
+    max_upload_size_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     updated_at: Mapped[int] = mapped_column(
         BigInteger, nullable=False, default=time.time, onupdate=time.time

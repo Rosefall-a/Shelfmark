@@ -124,8 +124,13 @@ async def calendar_feed(token: str, db: AsyncSession = Depends(get_db)) -> Respo
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown calendar feed")
     prefs = await load_preferences(db, user.id)
     entries = await build_calendar_entries(
-        db, user.id, _FEED_DAYS, game_releases=bool(prefs["calendar_game_releases"])
+        db,
+        user.id,
+        _FEED_DAYS,
+        game_releases=bool(prefs["calendar_game_releases"]) and not prefs["calendar_hide_games"],
     )
+    if not prefs["calendar_show_estimated"]:
+        entries = [e for e in entries if not e.get("is_projected")]
     events = (
         (await db.execute(select(CalendarEvent).where(CalendarEvent.user_id == user.id)))
         .scalars()

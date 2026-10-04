@@ -169,6 +169,7 @@ async def list_movies(
         status_counts=status_counts,
     )
 
+
 @router.get("/get/{movie_id}", response_model=MovieRead)
 async def get_movie(
     movie_id: UUID,
@@ -177,6 +178,24 @@ async def get_movie(
 ) -> Movie:
     """Return one movie by ID."""
     return await _get_movie_or_404(movie_id, db, current_user.id)
+
+
+# statuses that mean "not started yet" (the UI's Plan to Watch): recording
+# where you left off moves a movie out of these into In progress. BACKLOG is
+# the UI's On Hold, a paused watch, so it keeps its status.
+_NOT_STARTED_STATUSES = {MovieStatus.WISHLIST, MovieStatus.WATCHLIST}
+_FINISHED_STATUSES = {MovieStatus.WATCHED, MovieStatus.FAVORITE}
+
+
+def _sync_watch_progress(movie: Movie, updates: dict) -> None:
+    """Keep the left-off point and the status telling the same story (#191):
+    saving a position in a movie you hadn't started means you're watching
+    it, and finishing it (Watched) means there's no position to resume."""
+    progress_set = bool(updates.get("progress_minutes"))
+    if progress_set and "status" not in updates and movie.status in _NOT_STARTED_STATUSES:
+        movie.status = MovieStatus.IN_PROGRESS
+    if "status" in updates and movie.status in _FINISHED_STATUSES and not progress_set:
+        movie.progress_minutes = None
 
 
 @router.patch("/update/{movie_id}", response_model=MovieRead)
@@ -193,6 +212,7 @@ async def update_movie(
     updates = payload.model_dump(exclude_unset=True)
 
     apply_updates_with_locking(movie, updates, _LOCKABLE_FIELDS)
+    _sync_watch_progress(movie, updates)
 
     if "title" in updates and "sort_title" not in updates:
         movie.sort_title = _derive_sort_title(movie.title)

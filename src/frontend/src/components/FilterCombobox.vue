@@ -67,6 +67,7 @@ function onBlur() {
       type="text"
       class="combobox-input"
       :placeholder="placeholder"
+      :aria-label="placeholder"
       :value="open ? query : displayLabel"
       @input="query = ($event.target as HTMLInputElement).value"
       @focus="onFocus"

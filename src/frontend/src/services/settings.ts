@@ -143,10 +143,68 @@ export async function fetchUploadLimits(): Promise<{
   return await response.json();
 }
 
+// Admin-only: overrides MAX_UPLOAD_SIZE_MB without touching the server's
+// environment. `null` clears the override and goes back to that default.
+export async function updateUploadLimit(
+  maxUploadSizeMb: number | null,
+): Promise<{ max_upload_size_mb: number }> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return { max_upload_size_mb: maxUploadSizeMb ?? 15 };
+  }
+
+  const response = await fetch("/api/settings/upload-limit", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ max_upload_size_mb: maxUploadSizeMb }),
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(
+      `Failed to update the upload limit: ${response.status} ${response.statusText} ${message}`,
+    );
+  }
+  return await response.json();
+}
+
+export interface SystemInfo {
+  server_time: number;
+  uptime_seconds: number;
+  debug: boolean;
+  python_version: string;
+  platform: string;
+}
+
+// Admin-only, for Settings > Administration > Dev Tools.
+export async function fetchSystemInfo(): Promise<SystemInfo> {
+  if (import.meta.env.VITE_USE_MOCK_DATA === "true") {
+    return {
+      server_time: Math.floor(Date.now() / 1000),
+      uptime_seconds: 3600,
+      debug: false,
+      python_version: "3.12.0",
+      platform: "Mock-Platform",
+    };
+  }
+
+  const response = await fetch("/api/settings/system-info", {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch system info: ${response.status} ${response.statusText}`,
+    );
+  }
+  return await response.json();
+}
+
 export interface ProviderCredentialStatus {
   status: "not_configured" | "configured" | "connected" | "saved" | "error";
   detail?: string | null;
   app_configured?: boolean;
+  // a server-wide key (Server Integrations or the environment) covers this
+  // provider for anyone without their own
+  server_configured?: boolean;
   // library-sync providers only (Steam, RetroAchievements, PlayStation)
   library_games?: number;
   last_synced_at?: number | null;

@@ -2,7 +2,6 @@ import { failedRequest } from "./apiError";
 import type { PaginatedResponse } from "../types/pagination";
 import type { Movie, MovieStatus } from "../types/movie";
 
-
 // The exact shape FastAPI sends, snake_case, matching the Python model
 // field-for-field. Nothing outside this file should ever see raw backend
 // data directly.
@@ -31,6 +30,7 @@ export interface BackendMovie {
   priority: string | null;
   favorite: boolean;
   rewatches: number;
+  progress_minutes: number | null;
   note: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -101,6 +101,7 @@ export function mapBackendMovieRaw(raw: BackendMovie): Movie {
     priority: raw.priority,
     favorite: raw.favorite,
     rewatches: raw.rewatches,
+    progressMinutes: raw.progress_minutes ?? null,
     note: raw.note,
     startDate: raw.start_date,
     endDate: raw.end_date,
@@ -127,7 +128,13 @@ export async function fetchMoviesPage(
   offset = 0,
   limit = 100,
   search = "",
-): Promise<{ items: Movie[]; total: number; offset: number; limit: number; statusCounts: Record<string, number> }> {
+): Promise<{
+  items: Movie[];
+  total: number;
+  offset: number;
+  limit: number;
+  statusCounts: Record<string, number>;
+}> {
   const params = new URLSearchParams({
     skip: String(offset),
     limit: String(limit),
@@ -136,7 +143,10 @@ export async function fetchMoviesPage(
   const response = await fetch(`/api/movie/list?${params}`, {
     credentials: "include",
   });
-  const page = await handle<PaginatedResponse<BackendMovie>>(response, "fetch movies");
+  const page = await handle<PaginatedResponse<BackendMovie>>(
+    response,
+    "fetch movies",
+  );
   return {
     items: page.items.map(mapBackendMovie),
     total: page.total,
@@ -228,6 +238,8 @@ export interface MovieInput {
   priority?: string | null;
   favorite?: boolean;
   rewatches?: number;
+  // left out = leave the saved position alone
+  progressMinutes?: number | null;
   note?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -270,6 +282,8 @@ function inputToBody(input: MovieInput): Record<string, unknown> {
     personal_rank: input.personalRank ?? null,
   };
   if (input.status) body.status = denormalizeStatus(input.status);
+  if (input.progressMinutes !== undefined)
+    body.progress_minutes = input.progressMinutes;
   return body;
 }
 

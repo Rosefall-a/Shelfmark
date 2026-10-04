@@ -7,15 +7,15 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import (
-    SESSION_COOKIE,
     SESSION_TTL_SECONDS,
+    session_cookie_name,
     create_api_key,
     get_current_admin,
     get_current_user,
@@ -139,7 +139,10 @@ async def update_password_policy(
 
 @router.post("/login")
 async def login(
-    payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     identifier = payload.username_or_email.strip()
     user = await db.scalar(
@@ -162,7 +165,7 @@ async def login(
     )
     await db.commit()
     response.set_cookie(
-        key=SESSION_COOKIE,
+        key=session_cookie_name(request.headers.get("host", "")),
         value=session_token,
         max_age=SESSION_TTL_SECONDS,
         httponly=True,
@@ -174,13 +177,14 @@ async def login(
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, str]:
+    session_token = request.cookies.get(session_cookie_name(request.headers.get("host", "")))
     if session_token:
         await revoke_session(db, session_token)
-    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(session_cookie_name(request.headers.get("host", "")))
     return {"status": "logged_out"}
 
 

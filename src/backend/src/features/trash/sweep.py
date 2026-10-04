@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from src.core.auth import purge_expired_sessions
 from src.database.models.game import Game
 from src.database.models.game_archive import GameArchive, GameArchiveVersion
 from src.database.models.game_checklist_item import GameChecklistItem
@@ -212,4 +213,13 @@ async def run_sweep_loop() -> None:
             await purge_expired_trash()
         except Exception:
             logger.exception("Trash sweep failed")
+        # a failed cleanup only means expired rows wait for the next sweep;
+        # it never affects startup or signing in
+        try:
+            async with SessionLocal() as db:
+                removed = await purge_expired_sessions(db)
+            if removed:
+                logger.info("Removed %d expired login session(s)", removed)
+        except Exception:
+            logger.exception("Expired session cleanup failed")
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
