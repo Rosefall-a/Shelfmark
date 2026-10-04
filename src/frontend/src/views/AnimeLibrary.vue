@@ -141,7 +141,11 @@ async function loadMore() {
   if (loading.value || shows.value.length >= total.value) return;
   loading.value = true;
   try {
-    const page = await fetchAnimePage(shows.value.length, pageSize, currentSearch.value);
+    const page = await fetchAnimePage(
+      shows.value.length,
+      pageSize,
+      currentSearch.value,
+    );
     shows.value.push(...page.items);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Failed to load more anime.";

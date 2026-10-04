@@ -273,8 +273,9 @@ async function deleteList(id: string) {
             type="text"
             class="ui-field search-input"
             placeholder="Search lists…"
+            aria-label="Search lists"
           />
-          <select v-model="sortBy" class="ui-field">
+          <select v-model="sortBy" class="ui-field" aria-label="Sort by">
             <option value="custom">My order</option>
             <option value="name">Name</option>
             <option value="count">Most titles</option>

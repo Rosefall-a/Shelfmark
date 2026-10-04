@@ -7,6 +7,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { useConfirm } from "../state/dialog";
+import { blurOnLeave } from "../utils/blurOnLeave";
 import {
   fetchRewatches,
   addRewatch,
@@ -434,7 +435,12 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
           No lists yet. Create one below.
         </p>
         <ul v-else class="list-options">
-          <li v-for="l in lists" :key="l.id" class="list-row">
+          <li
+            v-for="l in lists"
+            :key="l.id"
+            class="list-row"
+            @mouseleave="blurOnLeave"
+          >
             <input
               v-if="renamingId === l.id"
               v-model="renameDraft"
@@ -797,6 +803,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocumentClick));
 }
 .rename-input:focus {
   outline: none;
+  box-shadow: 0 0 0 2px rgba(214, 138, 52, 0.35);
 }
 .list-option {
   display: flex;

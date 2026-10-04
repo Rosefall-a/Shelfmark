@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createGameNote, renameGameNote, saveGameNote } from "../services/games";
+import {
+  createGameNote,
+  renameGameNote,
+  saveGameNote,
+} from "../services/games";
 
 describe("game note conflicts and renames", () => {
   afterEach(() => {

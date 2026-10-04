@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
-import { useRouter } from "vue-router";
 import GameCard from "../components/GameCard.vue";
 import GameFormModal from "../components/GameFormModal.vue";
 import { fetchGames, deleteGame } from "../services/games";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
-import type { Game } from "../types/game";
-import { currentUser } from "../state/auth";
+import RandomGamePicker from "../components/RandomGamePicker.vue";
+import AccountChip from "../components/AccountChip.vue";
 import { fetchBounties } from "../services/bounties";
 import type { Bounty } from "../services/bounties";
+import type { Game } from "../types/game";
+import { currentUser } from "../state/auth";
 import { fetchWeeklyDigest } from "../services/stats";
 import type { WeeklyDigest } from "../services/stats";
-
-const router = useRouter();
 
 const games = ref<Game[]>([]);
 const loading = ref(true);
@@ -30,34 +29,12 @@ const favoriteCount = computed(
   () => games.value.filter((g) => g.favorite).length,
 );
 
-const bgLayers = ref<{ url: string | null; visible: boolean }[]>([
-  { url: null, visible: false },
-  { url: null, visible: false },
-]);
-const activeLayer = ref(0);
-
-// only crossfade once the cursor has settled on a card briefly, gliding
-// across many cards shouldn't flicker the ambient background
-let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-function setHoverImage(url: string | null) {
-  if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
-  hoverDebounceTimer = setTimeout(() => {
-    if (url === null) {
-      bgLayers.value[activeLayer.value].visible = false;
-      return;
-    }
-    const nextLayer = activeLayer.value === 0 ? 1 : 0;
-    bgLayers.value[nextLayer] = { url, visible: true };
-    bgLayers.value[activeLayer.value].visible = false;
-    activeLayer.value = nextLayer;
-  }, 400);
-}
-
+// opens the filtered picker (#33) rather than jumping to any game at all,
+// finished and wishlisted ones included
+const showRandomPicker = ref(false);
 function pickRandomGame() {
   if (!games.value.length) return;
-  const random = games.value[Math.floor(Math.random() * games.value.length)];
-  router.push(`/games/${random.id}`);
+  showRandomPicker.value = true;
 }
 
 // same overlapping-call guard as GameLibrary.vue's loadGames, this is
@@ -103,8 +80,6 @@ function updateAllShelfArrows() {
 window.addEventListener("resize", updateAllShelfArrows);
 onUnmounted(() => window.removeEventListener("resize", updateAllShelfArrows));
 
-onMounted(loadGames);
-
 // --- Bounties: self-set goals inside a game, full list lives at /bounties
 const activeBounties = ref<Bounty[]>([]);
 const bountiesLoading = ref(true);
@@ -122,6 +97,8 @@ async function loadBounties() {
   }
 }
 onMounted(loadBounties);
+
+onMounted(loadGames);
 
 function openEditModal(game: Game) {
   editingGame.value = game;
@@ -336,8 +313,8 @@ onMounted(async () => {
     weeklyBounties.value = bounties;
     weeklyDigest.value = digest;
   } catch {
-    weeklyBounties.value = [];
     weeklyDigest.value = null;
+    weeklyBounties.value = [];
   }
 });
 const gamesPlayedThisWeek = computed(() => {
@@ -412,20 +389,7 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 
 <template>
   <main class="home">
-    <div
-      v-for="(layer, i) in bgLayers"
-      :key="i"
-      class="ambient-bg"
-      :class="{ visible: layer.visible }"
-      :style="layer.url ? { backgroundImage: `url(${layer.url})` } : {}"
-    ></div>
-
-    <div v-if="currentUser" class="profile-chip">
-      <span class="profile-name">{{ currentUser.username }}</span>
-      <div class="profile-avatar">
-        {{ currentUser.username.slice(0, 2).toUpperCase() }}
-      </div>
-    </div>
+    <AccountChip fixed />
 
     <div
       v-if="showWelcomeTour"
@@ -464,17 +428,17 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
               }}
               played</span
             >
-            <span v-if="achievementsUnlockedThisWeek" class="weekly-recap-item"
-              >{{ achievementsUnlockedThisWeek }} achievement{{
-                achievementsUnlockedThisWeek === 1 ? "" : "s"
-              }}
-              unlocked</span
-            >
             <span v-if="bountiesCompletedThisWeek" class="weekly-recap-item"
               >{{ bountiesCompletedThisWeek }} bount{{
                 bountiesCompletedThisWeek === 1 ? "y" : "ies"
               }}
               done</span
+            >
+            <span v-if="achievementsUnlockedThisWeek" class="weekly-recap-item"
+              >{{ achievementsUnlockedThisWeek }} achievement{{
+                achievementsUnlockedThisWeek === 1 ? "" : "s"
+              }}
+              unlocked</span
             >
             <span v-if="metadataChangesThisWeek" class="weekly-recap-item"
               >{{ metadataChangesThisWeek }} metadata change{{
@@ -796,7 +760,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
                 v-for="game in playingGames"
                 :key="game.id"
                 :game="game"
-                @hover="setHoverImage"
                 @edit="openEditModal"
                 @add-to-collection="handleAddToCollection"
               />
@@ -851,7 +814,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
                 v-for="game in recentlyAdded"
                 :key="game.id"
                 :game="game"
-                @hover="setHoverImage"
                 @edit="openEditModal"
                 @add-to-collection="handleAddToCollection"
               />
@@ -916,7 +878,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
                 v-for="game in group.games"
                 :key="game.id"
                 :game="game"
-                @hover="setHoverImage"
                 @edit="openEditModal"
                 @add-to-collection="handleAddToCollection"
               />
@@ -949,6 +910,12 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
         :game="collectionPickerGame"
         @close="collectionPickerGame = null"
         @added="onCollectionAdded"
+      />
+
+      <RandomGamePicker
+        v-if="showRandomPicker"
+        :games="games"
+        @close="showRandomPicker = false"
       />
 
       <div
@@ -988,7 +955,7 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   position: relative;
   padding: 84px 24px 24px;
   font-family: system-ui, sans-serif;
-  background: #121212;
+  background: #0d0d0d;
   min-height: 100vh;
   color: #fff;
   overflow: hidden;
@@ -1008,55 +975,9 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   z-index: 0;
   pointer-events: none;
 }
-.ambient-bg {
-  position: fixed;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  filter: blur(90px);
-  opacity: 0;
-  transform: scale(1.2);
-  transition: opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 0;
-}
-.ambient-bg.visible {
-  opacity: 0.35;
-}
 .content {
   position: relative;
   z-index: 1;
-}
-.profile-chip {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  padding: 6px 6px 6px 16px;
-}
-.profile-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #d68a34;
-  color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-}
-.profile-name {
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
 }
 .home-header {
   display: flex;
@@ -1146,8 +1067,8 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 }
 .home-header h1 {
   margin: 0;
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: 1.7rem;
+  font-weight: 800;
   color: #fff;
 }
 .stats-strip {
@@ -1218,6 +1139,10 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   color: #a3703c;
   cursor: pointer;
   font-size: 12px;
+  min-width: 28px;
+  min-height: 28px;
+  margin-top: -5px;
+  margin-bottom: -5px;
   padding: 2px 4px;
 }
 .onboarding-dismiss:hover {
@@ -1284,12 +1209,14 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   border-color: #3a3a3a;
   transform: translateY(-2px);
 }
-.bounty-widget {
+.bounty-widget,
+.goals-widget {
   max-width: 340px;
   text-decoration: none;
   color: inherit;
 }
-.bounty-widget:hover {
+.bounty-widget:hover,
+.goals-widget:hover {
   background: rgba(255, 255, 255, 0.06);
   border-color: #3a3a3a;
   transform: translateY(-2px);
@@ -1304,15 +1231,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   background: rgba(255, 255, 255, 0.06);
   border-color: #3a3a3a;
   transform: translateY(-2px);
-}
-.bounty-body {
-  flex: 1;
-  min-width: 0;
-}
-.bounty-body .widget-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .widget-icon {
   color: #d68a34;
@@ -1530,5 +1448,24 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 .danger-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.bounty-widget {
+  max-width: 340px;
+  text-decoration: none;
+  color: inherit;
+}
+.bounty-widget:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #3a3a3a;
+  transform: translateY(-2px);
+}
+.bounty-body {
+  flex: 1;
+  min-width: 0;
+}
+.bounty-body .widget-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

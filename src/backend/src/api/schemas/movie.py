@@ -32,6 +32,9 @@ class MovieBase(BaseModel):
     priority: str | None = Field(default=None, max_length=20)
     favorite: bool = False
     rewatches: int = Field(default=0, ge=0)
+    progress_minutes: int | None = Field(
+        default=None, ge=0, description="Minutes into the movie where you left off."
+    )
     note: str | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -76,6 +79,9 @@ class MovieUpdate(BaseModel):
     priority: str | None = Field(default=None, max_length=20)
     favorite: bool | None = None
     rewatches: int | None = Field(default=None, ge=0)
+    progress_minutes: int | None = Field(
+        default=None, ge=0, description="Minutes into the movie where you left off."
+    )
     note: str | None = None
     start_date: date | None = None
     end_date: date | None = None

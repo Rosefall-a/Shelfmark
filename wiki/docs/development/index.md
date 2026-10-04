@@ -97,6 +97,22 @@ The backend startup process also applies pending migrations. Keep the migration 
 
 For migration changes, test both a fresh database and an existing database where practical.
 
+### What happens on start
+
+Both the development backend container and the production image run `python -m src.database.migrate` before the API starts. It waits for the database, takes a lock so two starting containers never migrate at once, then decides what to do from the version the database records:
+
+| Database state | What the runner does |
+| --- | --- |
+| Empty | Builds everything from the migrations. |
+| Version is in this code's history | Runs the migrations newer than it. |
+| Version is not in the history (the history was squashed since), or tables exist with no version | Attaches the database to the first migration, keeping its data, and runs every migration after it. It then checks that every table and column the models need exists; if something is still missing it stops and names it. |
+
+A real failure stops startup with the reason instead of retrying the same error.
+
+### Writing a migration that is safe to re-run
+
+Because an adopted database is attached to the first migration and then runs every later one, each migration after the baseline must be safe on a database that already has part of what it adds. Use the create-if-missing wrappers in `src/database/migration_helpers.py` (`create_table_if_missing`, `add_column_if_missing`, `create_index_if_missing`, `create_unique_constraint_if_missing`, `drop_index_if_exists`) instead of calling `op.*` directly, and name every constraint explicitly so it can be looked up. `tests/test_migrations.py` re-runs the whole chain on the already-migrated test database to catch a migration that is not.
+
 ## Configuration development
 
 Application setup/configuration is registry-driven:

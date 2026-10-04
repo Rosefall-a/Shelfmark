@@ -813,14 +813,23 @@ async function togglePoints() {
         type="text"
         class="field-input search-input"
         placeholder="Search bounties…"
+        aria-label="Search bounties"
       />
-      <select v-model="typeFilter" class="field-input">
+      <select
+        v-model="typeFilter"
+        class="field-input"
+        aria-label="Filter by type"
+      >
         <option value="">All types</option>
         <option v-for="(label, key) in TYPE_LABELS" :key="key" :value="key">
           {{ label }}
         </option>
       </select>
-      <select v-model="difficultyFilter" class="field-input">
+      <select
+        v-model="difficultyFilter"
+        class="field-input"
+        aria-label="Filter by difficulty"
+      >
         <option value="">All difficulties</option>
         <option
           v-for="(label, key) in DIFFICULTY_LABELS"
@@ -830,7 +839,11 @@ async function togglePoints() {
           {{ label }}
         </option>
       </select>
-      <select v-model="gameFilter" class="field-input">
+      <select
+        v-model="gameFilter"
+        class="field-input"
+        aria-label="Filter by game"
+      >
         <option value="">All games</option>
         <option v-for="g in gamesWithBounties" :key="g.id" :value="g.id">
           {{ g.title }}
