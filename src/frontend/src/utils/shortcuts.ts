@@ -47,7 +47,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       {
         keys: "Ctrl/Cmd + K",
-        label: "Jump to a game, collection, bounty, or settings section",
+        label: "Jump to a game, collection, or settings section",
       },
       { keys: "?", label: "Show the shortcuts list" },
       { keys: "Esc", label: "Close the notification or profile menu" },

@@ -35,7 +35,6 @@ It does **not** generically restore:
 - anime
 - screenshots or other folder assets
 - save archives
-- bounties
 
 Game folder-name collisions are given a new available folder name rather than overwriting an existing game.
 

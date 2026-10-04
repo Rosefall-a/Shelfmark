@@ -3,8 +3,8 @@ backups or moving to a new server. Export covers games, movies, TV shows,
 and anime; import (re-creating rows from a snapshot) still only handles
 games — movies/TV/anime each have their own creation quirks (seasons,
 episodes, per-provider ids) that make a safe generic importer a real
-separate effort, not a silent gap. Folder assets, screenshots, saves,
-and bounties aren't included in either direction."""
+separate effort, not a silent gap. Folder assets, screenshots and saves
+aren't included in either direction."""
 
 import time
 
