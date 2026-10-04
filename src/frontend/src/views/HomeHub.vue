@@ -6,8 +6,6 @@ import { fetchGames, deleteGame } from "../services/games";
 import CollectionPickerModal from "../components/CollectionPickerModal.vue";
 import RandomGamePicker from "../components/RandomGamePicker.vue";
 import AccountChip from "../components/AccountChip.vue";
-import { fetchBounties } from "../services/bounties";
-import type { Bounty } from "../services/bounties";
 import type { Game } from "../types/game";
 import { currentUser } from "../state/auth";
 import { fetchWeeklyDigest } from "../services/stats";
@@ -79,24 +77,6 @@ function updateAllShelfArrows() {
 
 window.addEventListener("resize", updateAllShelfArrows);
 onUnmounted(() => window.removeEventListener("resize", updateAllShelfArrows));
-
-// --- Bounties: self-set goals inside a game, full list lives at /bounties
-const activeBounties = ref<Bounty[]>([]);
-const bountiesLoading = ref(true);
-
-async function loadBounties() {
-  bountiesLoading.value = true;
-  try {
-    activeBounties.value = await fetchBounties({ status: "active" });
-  } catch {
-    // no points, no stakes, a failed fetch just means the widget shows
-    // nothing today, not worth surfacing an error for
-    activeBounties.value = [];
-  } finally {
-    bountiesLoading.value = false;
-  }
-}
-onMounted(loadBounties);
 
 onMounted(loadGames);
 
@@ -247,12 +227,6 @@ const onboardingSteps = computed(() => [
     hint: "The heart icon on any card",
     to: "/games",
   },
-  {
-    done: activeBounties.value.length > 0,
-    label: "Set a goal",
-    hint: "A lightweight bounty for something you want to finish",
-    to: "/bounties",
-  },
 ]);
 const showChecklist = computed(
   () => !checklistDismissed.value && onboardingSteps.value.some((s) => !s.done),
@@ -274,7 +248,7 @@ function dismissWelcomeTour() {
 const TOUR_STEPS = [
   {
     title: "Find anything fast",
-    body: "Press Ctrl/Cmd+K anywhere to jump straight to a game, collection, bounty, or Settings section.",
+    body: "Press Ctrl/Cmd+K anywhere to jump straight to a game, collection, or Settings section.",
   },
   {
     title: "Filter and save combos",
@@ -285,10 +259,6 @@ const TOUR_STEPS = [
     body: "Group games however you like, in any order, open a collection and hit Reorder to arrange it.",
   },
   {
-    title: "Bounties",
-    body: "Optional personal goals with points if you want the extra structure, set one, or let the random picker suggest something.",
-  },
-  {
     title: "Press ? anytime",
     body: "Shows every keyboard shortcut this app supports.",
   },
@@ -296,9 +266,8 @@ const TOUR_STEPS = [
 
 // --- "this week" recap: playtime data has no history (just a running
 // total + lastPlayedAt), so "minutes logged this week" isn't derivable,
-// this counts what actually is: games touched, bounties finished,
-// achievements unlocked, and metadata edited/refreshed ------
-const weeklyBounties = ref<Bounty[]>([]);
+// this counts what actually is: games touched, achievements unlocked,
+// and metadata edited/refreshed ------
 const weeklyDigestSetting = ref(
   localStorage.getItem("weeklyDigestEnabled") !== "false",
 );
@@ -306,27 +275,15 @@ const weeklyDigest = ref<WeeklyDigest | null>(null);
 onMounted(async () => {
   if (!weeklyDigestSetting.value) return;
   try {
-    const [bounties, digest] = await Promise.all([
-      fetchBounties({ status: "completed" }),
-      fetchWeeklyDigest(),
-    ]);
-    weeklyBounties.value = bounties;
-    weeklyDigest.value = digest;
+    weeklyDigest.value = await fetchWeeklyDigest();
   } catch {
     weeklyDigest.value = null;
-    weeklyBounties.value = [];
   }
 });
 const gamesPlayedThisWeek = computed(() => {
   const weekAgo = Date.now() - 7 * 86_400_000;
   return games.value.filter(
     (g) => g.lastPlayedAt && new Date(g.lastPlayedAt).getTime() >= weekAgo,
-  ).length;
-});
-const bountiesCompletedThisWeek = computed(() => {
-  const weekAgo = Date.now() / 1000 - 7 * 86_400;
-  return weeklyBounties.value.filter(
-    (b) => b.completed_at !== null && b.completed_at >= weekAgo,
   ).length;
 });
 const achievementsUnlockedThisWeek = computed(
@@ -339,7 +296,6 @@ const showWeeklyRecap = computed(
   () =>
     weeklyDigestSetting.value &&
     (gamesPlayedThisWeek.value > 0 ||
-      bountiesCompletedThisWeek.value > 0 ||
       achievementsUnlockedThisWeek.value > 0 ||
       metadataChangesThisWeek.value > 0),
 );
@@ -427,12 +383,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
                 gamesPlayedThisWeek === 1 ? "" : "s"
               }}
               played</span
-            >
-            <span v-if="bountiesCompletedThisWeek" class="weekly-recap-item"
-              >{{ bountiesCompletedThisWeek }} bount{{
-                bountiesCompletedThisWeek === 1 ? "y" : "ies"
-              }}
-              done</span
             >
             <span v-if="achievementsUnlockedThisWeek" class="weekly-recap-item"
               >{{ achievementsUnlockedThisWeek }} achievement{{
@@ -567,68 +517,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
             <span class="widget-subtitle">Can't decide? Let us choose.</span>
           </div>
         </button>
-
-        <router-link
-          v-if="activeBounties.length"
-          to="/bounties"
-          class="widget-card bounty-widget"
-        >
-          <svg
-            class="widget-icon"
-            viewBox="0 0 24 24"
-            width="22"
-            height="22"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="5" />
-            <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-          </svg>
-          <div class="bounty-body">
-            <span class="widget-title"
-              >{{ activeBounties.length }} active
-              {{ activeBounties.length === 1 ? "bounty" : "bounties" }}</span
-            >
-            <span
-              class="widget-subtitle"
-              v-for="b in activeBounties.slice(0, 2)"
-              :key="b.id"
-            >
-              {{ b.title }}{{ b.game_title ? `, ${b.game_title}` : "" }}
-            </span>
-          </div>
-        </router-link>
-        <router-link
-          v-else-if="!bountiesLoading"
-          to="/bounties"
-          class="widget-card goals-widget"
-        >
-          <svg
-            class="widget-icon"
-            viewBox="0 0 24 24"
-            width="22"
-            height="22"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="5" />
-            <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-          </svg>
-          <div>
-            <span class="widget-title">Goals & bounties</span>
-            <span class="widget-subtitle"
-              >Set a goal for one of your games</span
-            >
-          </div>
-        </router-link>
 
         <router-link
           v-if="staleBacklogGames.length"
@@ -1209,18 +1097,6 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
   border-color: #3a3a3a;
   transform: translateY(-2px);
 }
-.bounty-widget,
-.goals-widget {
-  max-width: 340px;
-  text-decoration: none;
-  color: inherit;
-}
-.bounty-widget:hover,
-.goals-widget:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: #3a3a3a;
-  transform: translateY(-2px);
-}
 .backlog-widget,
 .on-this-day-widget {
   max-width: 340px;
@@ -1448,24 +1324,5 @@ function scrollShelf(e: MouseEvent, dir: 1 | -1) {
 .danger-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-.bounty-widget {
-  max-width: 340px;
-  text-decoration: none;
-  color: inherit;
-}
-.bounty-widget:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: #3a3a3a;
-  transform: translateY(-2px);
-}
-.bounty-body {
-  flex: 1;
-  min-width: 0;
-}
-.bounty-body .widget-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

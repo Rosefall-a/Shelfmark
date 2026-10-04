@@ -1813,10 +1813,6 @@ watch(viewMode, (mode) => {
               Drop screenshots or files into Upload and assign them to a game
               later
             </li>
-            <li>
-              Set up a Bounty once you've added a few games, for a lightweight
-              goal to work toward
-            </li>
           </ul>
         </template>
       </div>

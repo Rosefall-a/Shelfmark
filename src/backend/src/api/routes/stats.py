@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import get_current_user
 from src.database.models.achievement import Achievement
-from src.database.models.bounty import Bounty, BountyPointTransaction
 from src.database.models.game import Game
 from src.database.models.game_field_change import GameFieldChange
 from src.database.models.user import User
@@ -117,17 +116,6 @@ async def get_stats_overview(
     format_case = case((Game.physical_condition.is_not(None), "Physical"), else_="Digital")
     format_stmt = select(format_case, func.count(Game.id)).where(user_filter).group_by(format_case)
 
-    bounty_filter = Bounty.user_id == current_user.id
-    bounties_completed_stmt = select(func.count()).where(
-        bounty_filter, Bounty.status == "completed"
-    )
-    bounties_hard_stmt = select(func.count()).where(
-        bounty_filter, Bounty.status == "completed", Bounty.difficulty.in_(["hard", "extreme"])
-    )
-    bounty_points_stmt = select(func.coalesce(func.sum(BountyPointTransaction.amount), 0)).where(
-        BountyPointTransaction.user_id == current_user.id
-    )
-
     # NOTE: a single AsyncSession can't run concurrent statements — these
     # run sequentially, not via asyncio.gather, despite all being cheap
     # aggregate queries that would otherwise be a good gather() candidate.
@@ -141,9 +129,6 @@ async def get_stats_overview(
     top_tags_result = await db.execute(top_tags_stmt)
     release_year_result = await db.execute(release_year_stmt)
     format_result = await db.execute(format_stmt)
-    bounties_completed = await db.scalar(bounties_completed_stmt)
-    bounties_hard_completed = await db.scalar(bounties_hard_stmt)
-    bounty_points_total = await db.scalar(bounty_points_stmt)
 
     total_games, favorite_count, total_playtime_seconds, total_spent, average_rating = (
         totals_result.one()
@@ -187,9 +172,6 @@ async def get_stats_overview(
         "format_breakdown": [
             {"label": label, "count": count} for label, count in format_result.all()
         ],
-        "bounties_completed": int(bounties_completed or 0),
-        "bounties_hard_completed": int(bounties_hard_completed or 0),
-        "bounty_points_total": int(bounty_points_total or 0),
     }
 
 
@@ -220,17 +202,11 @@ async def get_weekly_digest(
         .join(Game, GameFieldChange.game_id == Game.id)
         .where(user_filter, GameFieldChange.changed_at >= week_ago)
     )
-    bounties_stmt = select(func.count(Bounty.id)).where(
-        Bounty.user_id == current_user.id,
-        Bounty.status == "completed",
-        Bounty.completed_at >= week_ago,
-    )
 
     games_played = await db.scalar(games_played_stmt)
     games_added = await db.scalar(games_added_stmt)
     achievements_unlocked = await db.scalar(achievements_stmt)
     metadata_changes = await db.scalar(metadata_changes_stmt)
-    bounties_completed = await db.scalar(bounties_stmt)
 
     return {
         "period_start": week_ago,
@@ -238,5 +214,4 @@ async def get_weekly_digest(
         "games_added": int(games_added or 0),
         "achievements_unlocked": int(achievements_unlocked or 0),
         "metadata_changes": int(metadata_changes or 0),
-        "bounties_completed": int(bounties_completed or 0),
     }

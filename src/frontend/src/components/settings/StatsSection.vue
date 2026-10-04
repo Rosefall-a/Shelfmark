@@ -189,18 +189,6 @@ const formatBreakdown = computed(() => stats.value?.format_breakdown ?? []);
           }}</span>
           <span class="tile-label">Completed (beaten/mastered)</span>
         </div>
-        <div class="tile">
-          <span class="tile-value">{{ stats.bounties_completed }}</span>
-          <span class="tile-label">Bounties completed</span>
-        </div>
-        <div class="tile">
-          <span class="tile-value">{{ stats.bounty_points_total }}</span>
-          <span class="tile-label">Bounty points earned</span>
-        </div>
-        <div class="tile">
-          <span class="tile-value">{{ stats.bounties_hard_completed }}</span>
-          <span class="tile-label">Hard+ challenges completed</span>
-        </div>
       </div>
 
       <div v-if="burnDown" class="burn-down-card">

@@ -19,22 +19,17 @@ import type {
   MediaNotification,
   MediaNotificationKind,
 } from "../services/notifications";
-import {
-  notifications as bountyNotifications,
-  refreshMediaNotifications,
-} from "../state/notifications";
+import { refreshMediaNotifications } from "../state/notifications";
 import { useKeptAlive } from "../utils/useKeptAlive";
 import { useConfirm } from "../state/dialog";
 
-type Filter =
-  "all" | "unread" | "episodes" | "seasons" | "releases" | "bounties";
+type Filter = "all" | "unread" | "episodes" | "seasons" | "releases";
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
   { key: "episodes", label: "Episodes" },
   { key: "seasons", label: "Seasons" },
   { key: "releases", label: "Releases" },
-  { key: "bounties", label: "Bounties" },
 ];
 
 const router = useRouter();
@@ -85,7 +80,6 @@ const counts = computed(() => {
     episodes: 0,
     seasons: 0,
     releases: 0,
-    bounties: bountyNotifications.value.length,
   };
   for (const n of items.value) c[KIND_META[n.kind].group] += 1;
   return c;
@@ -98,7 +92,6 @@ const filterOptions = computed<SegmentOption[]>(() =>
   })),
 );
 const shown = computed(() => {
-  if (filter.value === "bounties") return [];
   return items.value.filter((n) => {
     if (filter.value === "all") return true;
     if (filter.value === "unread") return !n.read;
@@ -254,30 +247,6 @@ function toggleOpen(n: MediaNotification) {
       <p v-if="error" class="ui-state error">{{ error }}</p>
       <p v-if="loading" class="ui-state">Loading…</p>
 
-      <template v-else-if="filter === 'bounties'">
-        <p v-if="!bountyNotifications.length" class="ui-state">
-          No bounty deadlines or suggestions right now.
-        </p>
-        <div v-else class="list">
-          <router-link
-            v-for="b in bountyNotifications"
-            :key="b.id"
-            :to="b.to"
-            class="card plain"
-          >
-            <span class="card-main">
-              <span class="card-title">{{ b.title }}</span>
-              <span class="card-body">{{ b.detail }}</span>
-            </span>
-            <span
-              class="badge"
-              :class="b.kind === 'deadline' ? 'red' : 'amber'"
-              >{{ b.kind === "deadline" ? "Deadline" : "Suggested" }}</span
-            >
-          </router-link>
-        </div>
-      </template>
-
       <template v-else>
         <div v-if="!grouped.length" class="empty">
           <p class="empty-title">
@@ -429,14 +398,6 @@ function toggleOpen(n: MediaNotification) {
 .card.unread {
   border-left: 3px solid #d68a34;
 }
-.card.plain {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  text-decoration: none;
-  color: inherit;
-}
 .card-row {
   display: flex;
   align-items: center;
@@ -511,10 +472,6 @@ function toggleOpen(n: MediaNotification) {
 .badge.violet {
   background: rgba(157, 140, 217, 0.16);
   color: #9d8cd9;
-}
-.badge.red {
-  background: rgba(217, 111, 111, 0.16);
-  color: #d96f6f;
 }
 .unread-dot {
   width: 8px;
